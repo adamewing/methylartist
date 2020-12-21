@@ -1957,5 +1957,13 @@ if __name__ == '__main__':
     parser_composite.add_argument('--excl_ambig', action='store_true', default=False)
     parser_composite.add_argument('--svg', action='store_true', default=False)
 
+    # options for DSS input generator
+    parser_dss.add_argument('-b', '--bam', required=True, help='bam used for nanopolish methylation calling')
+    parser_dss.add_argument('-m', '--methdata', required=True, help='whole genome nanopolish methylation tabix')
+    parser_dss.add_argument('-s', '--binsize', required=True, help='bin size')
+    parser_dss.add_argument('-f', '--fai', required=True, help='fasta index (.fai)')
+    parser_dss.add_argument('-p', '--procs', default=1, help='multiprocessing')
+    parser_dss.add_argument('--excl_ambig', action='store_true', default=False)
+
     args = parser.parse_args()
     main(args)
