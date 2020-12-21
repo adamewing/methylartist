@@ -585,7 +585,7 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
     return revised_coord_meth_pos, meth_profile
 
 
-def get_meth_calls_dss(bam_fn, meth_fn, chrom, seg_start, seg_end):
+def get_meth_calls_dss(bam_fn, meth_fn, chrom, seg_start, seg_end, phased):
     meth_tbx = pysam.Tabixfile(meth_fn)
 
     if chrom not in meth_tbx.contigs:
@@ -610,11 +610,9 @@ def get_meth_calls_dss(bam_fn, meth_fn, chrom, seg_start, seg_end):
     os.remove(tmp_methdata)
 
     reads = {}
-    if args.excl_ambig:
-        reads = exclude_ambiguous_phased_reads(bam_fn, chrom, seg_start, seg_end)
-    else:
-        reads = get_phased_reads(bam_fn, chrom, seg_start, seg_end)
 
+    reads = get_phased_reads(bam_fn, chrom, seg_start, seg_end, tag_untagged=phased)
+    
     readnames = []
     for r in reads.keys():
         if r in methdata.index:
@@ -652,30 +650,45 @@ def get_meth_calls_dss(bam_fn, meth_fn, chrom, seg_start, seg_end):
     meth_data[1] = dd(list)
     meth_data[2] = dd(list)
 
-    for name, read in seg_methreads.items():
-        if read.phase is None:
-            continue
-
-        if read.phase.split(':')[1] not in ['1','2']:
-            continue
-
-        for loc in read.llrs.keys():
-            phase = int(read.phase.split(':')[1])
-            assert phase in (1,2)
-
-            meth_data[phase][loc].append(read.meth_calls[loc])
-
     meth_table = {}
     meth_table[1] = dd(dict)
     meth_table[2] = dd(dict)
 
-    for phase in (1,2):
+    if phased:
+        for name, read in seg_methreads.items():
+            if read.phase is None:
+                continue
+
+            if read.phase.split(':')[1] not in ['1','2']:
+                continue
+
+            for loc in read.llrs.keys():
+                phase = int(read.phase.split(':')[1])
+                assert phase in (1,2)
+
+                meth_data[phase][loc].append(read.meth_calls[loc])
+
+
+        for phase in (1,2):
+            for loc in meth_data[phase]:
+                pos = loc+seg_start
+                meth_table[phase][pos]['chr'] = chrom
+                meth_table[phase][pos]['N'] = len([call for call in meth_data[phase][loc] if call != 0])
+                meth_table[phase][pos]['X'] = len([call for call in meth_data[phase][loc] if call == 1])
+
+    else:
+        # pass through as phase 1 if not analysing phases
+        phase = 1
+
+        for name, read in seg_methreads.items():
+            for loc in read.llrs.keys():
+                meth_data[phase][loc].append(read.meth_calls[loc])
+
         for loc in meth_data[phase]:
             pos = loc+seg_start
             meth_table[phase][pos]['chr'] = chrom
             meth_table[phase][pos]['N'] = len([call for call in meth_data[phase][loc] if call != 0])
             meth_table[phase][pos]['X'] = len([call for call in meth_data[phase][loc] if call == 1])
-
 
     return [meth_table[1], meth_table[2]]
 
@@ -1817,7 +1830,7 @@ def dss(args):
                 seg_start = int(seg_start)
                 seg_end = int(seg_end)
 
-                res = pool.apply_async(get_meth_calls_dss, [args.bam, args.methdata, chrom, seg_start, seg_end])
+                res = pool.apply_async(get_meth_calls_dss, [args.bam, args.methdata, chrom, seg_start, seg_end, args.phased])
 
                 results.append(res)
 
@@ -1828,23 +1841,38 @@ def dss(args):
         if seg_meth_table is None:
             continue
 
+        if args.phased:
+            for phase in (0,1):
+                seg_meth_table_store[phase].append(pd.DataFrame.from_dict(seg_meth_table[phase]).T)
+
+        else:
+            seg_meth_table_store[0].append(pd.DataFrame.from_dict(seg_meth_table[0]).T)
+
+    if args.phased:
         for phase in (0,1):
+            meth_table[phase] = pd.concat(seg_meth_table_store[phase])
 
-            seg_meth_table_store[phase].append(pd.DataFrame.from_dict(seg_meth_table[phase]).T)
+    else:
+        meth_table[0] = pd.concat(seg_meth_table_store[0])
 
+    if args.phased:
+        for phase in (0,1):
+            meth_table[phase]['pos'] = meth_table[phase].index
+            meth_table[phase] = meth_table[phase].sort_values(['chr', 'pos'])
 
-    for phase in (0,1):
-        meth_table[phase] = pd.concat(seg_meth_table_store[phase])
+            outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.phase_%d.DSS.txt' % phase
 
+            logger.info('writing %s' % outfn)
+            meth_table[phase].to_csv(outfn, columns=['chr','pos','N','X'], index=False, sep='\t')
 
-    for phase in (0,1):
-        meth_table[phase]['pos'] = meth_table[phase].index
-        meth_table[phase] = meth_table[phase].sort_values(['chr', 'pos'])
+    else:
+        meth_table[0]['pos'] = meth_table[0].index
+        meth_table[0] = meth_table[0].sort_values(['chr', 'pos'])
 
-        outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.phase_%d.DSS.txt' % phase
+        outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.DSS.txt'
 
         logger.info('writing %s' % outfn)
-        meth_table[phase].to_csv(outfn, columns=['chr','pos','N','X'], index=False, sep='\t')
+        meth_table[0].to_csv(outfn, columns=['chr','pos','N','X'], index=False, sep='\t')
 
 
 def main(args):
@@ -1963,7 +1991,7 @@ if __name__ == '__main__':
     parser_dss.add_argument('-s', '--binsize', required=True, help='bin size')
     parser_dss.add_argument('-f', '--fai', required=True, help='fasta index (.fai)')
     parser_dss.add_argument('-p', '--procs', default=1, help='multiprocessing')
-    parser_dss.add_argument('--excl_ambig', action='store_true', default=False)
+    parser_dss.add_argument('--phased', action='store_true', default=False, help='multiprocessing')
 
     args = parser.parse_args()
     main(args)
