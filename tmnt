@@ -1988,7 +1988,7 @@ if __name__ == '__main__':
     # options for DSS input generator
     parser_dss.add_argument('-b', '--bam', required=True, help='bam used for nanopolish methylation calling')
     parser_dss.add_argument('-m', '--methdata', required=True, help='whole genome nanopolish methylation tabix')
-    parser_dss.add_argument('-s', '--binsize', required=True, help='bin size')
+    parser_dss.add_argument('-s', '--binsize', default=1000000, help='bin size for parallelisation, default = 1000000')
     parser_dss.add_argument('-f', '--fai', required=True, help='fasta index (.fai)')
     parser_dss.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_dss.add_argument('--phased', action='store_true', default=False, help='multiprocessing')
