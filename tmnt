@@ -1,11 +1,15 @@
 #!/usr/bin/env python
 
+import os
+import sys
 import argparse
 import gzip
+import csv
 import logging
 import multiprocessing as mp
 import matplotlib
 import random
+import sqlite3
 
 # Force matplotlib to not use any Xwindows backend.
 matplotlib.use('Agg')
@@ -20,7 +24,6 @@ from matplotlib.patches import ConnectionPatch
 import seaborn as sns
 
 import numpy as np
-import os
 import pandas as pd
 import pysam
 import scipy.stats as ss
@@ -42,23 +45,18 @@ logger.setLevel(logging.INFO)
 
 
 class Read:
-    def __init__(self, read_name, cpg_loc, llr, phase=None):
+    def __init__(self, read_name, cpg_loc, stat, methcall, phase=None):
         self.read_name = read_name
         self.llrs = {}
         self.meth_calls = {}
         self.phase = phase
 
-        self.add_cpg(cpg_loc, llr)
+        self.add_cpg(cpg_loc, stat, methcall)
 
-    def add_cpg(self, cpg_loc, llr, cutoff = 2.5):
-        self.llrs[cpg_loc] = llr
-
-        if llr > cutoff:
-            self.meth_calls[cpg_loc] = 1
-        elif llr < -1*cutoff:
-            self.meth_calls[cpg_loc] = -1
-        else:
-            self.meth_calls[cpg_loc] = 0
+    def add_cpg(self, cpg_loc, stat, methcall):
+        assert methcall in (-1,0,1)
+        self.llrs[cpg_loc] = stat
+        self.meth_calls[cpg_loc] = methcall
 
 
 class Gene:
@@ -121,6 +119,16 @@ class Gene:
         new_exons.append(last_block)
 
         self.exons = new_exons
+
+
+def np_callmeth(llr, cutoff=2.5):
+    if llr > cutoff:
+        return 1
+
+    if llr < cutoff*-1:
+        return -1
+
+    return 0
 
 
 def exclude_ambiguous_reads(fn, chrom, start, end, min_mapq=10):
@@ -238,31 +246,9 @@ def rc(dna):
     return dna.translate(complements)[::-1]
 
 
-def get_segmeth_calls(bam_fn, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand):
-    meth_tbx = pysam.Tabixfile(meth_fn)
-
-    tmp_methdata = str(uuid4()) +'.tmp.methdata.tsv'
-
-    with open(tmp_methdata, 'w') as meth_out:
-        # header
-        with gzip.open(meth_fn, 'rt') as _:
-            for line in _:
-                assert line.startswith('chromosome')
-                meth_out.write(line)
-                break
-
-        if chrom not in meth_tbx.contigs:
-            logger.warning('contig %s not in %s' % (chrom, meth_fn))
-            os.remove(tmp_methdata)
-            return None, None
-
-        for rec in meth_tbx.fetch(chrom, seg_start, seg_end):
-            meth_out.write(str(rec)+'\n')
-
-    # index by read_name
-    methdata = pd.read_csv(tmp_methdata, sep='\t', header=0, index_col=4)
-
-    os.remove(tmp_methdata)
+def get_segmeth_calls(bam_fn, meth_db, chrom, seg_start, seg_end, seg_name, seg_strand):
+    conn = sqlite3.connect(meth_db)
+    c = conn.cursor()
 
     reads = []
     if args.excl_ambig:
@@ -270,33 +256,28 @@ def get_segmeth_calls(bam_fn, meth_fn, chrom, seg_start, seg_end, seg_name, seg_
     else:
         reads = get_reads(bam_fn, chrom, seg_start, seg_end)
 
-    reads = list(set(reads).intersection(set(methdata.index)))
-
-    methdata = methdata.loc[reads]
+    reads = list(set(reads))
 
     seg_reads = {}
 
-    for index, row in methdata.iterrows():
-        r_start = row['start']
-        r_end   = row['end']
-        llr     = row['log_lik_ratio']
-        seq     = row['sequence']
+    for index in reads:
+        for row in c.execute("SELECT chrom, pos, stat, methstate FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-        # get per-CG position (nanopolish/calculate_methylation_frequency.py)
-        cg_pos = seq.find("CG")
-        first_cg_pos = cg_pos
+            cg_chrom, cg_start, stat, methstate = row
 
-        while cg_pos != -1:
-            cg_start = r_start + cg_pos - first_cg_pos
-            cg_pos = seq.find("CG", cg_pos + 1)
+            if chrom != cg_chrom:
+                continue
+
+            if cg_start < seg_start or cg_start > seg_end:
+                continue
 
             cg_seg_start = cg_start - seg_start
 
-            if cg_start >= seg_start and cg_start <= seg_end:
-                if index not in seg_reads:
-                    seg_reads[index] = Read(index, cg_seg_start, llr)
-                else:
-                    seg_reads[index].add_cpg(cg_seg_start, llr)
+            if index not in seg_reads:
+                seg_reads[index] = Read(index, cg_seg_start, stat, methstate)
+            else:
+                seg_reads[index].add_cpg(cg_seg_start, stat, methstate)
+
 
     seg_meth_calls = dd(int)
 
@@ -309,7 +290,7 @@ def get_segmeth_calls(bam_fn, meth_fn, chrom, seg_start, seg_end, seg_name, seg_
 
 
 
-def get_meth_locus(args, bam, meth):
+def get_meth_locus(args, bam, meth_db):
     # used for locus plots
     # set up
     assert ':' in args.interval
@@ -321,28 +302,8 @@ def get_meth_locus(args, bam, meth):
     bamname = '.'.join(os.path.basename(bam).split('.')[:-1])
     fn_prefix = os.path.basename(bamname) + '.' + '_'.join(args.interval.split(':')[:2])
 
-    meth_tbx = pysam.Tabixfile(meth)
-
-    tmp_methdata = fn_prefix+'.tmp.methdata.tsv'
-
-    with open(tmp_methdata, 'w') as meth_out:
-        # header
-        with gzip.open(meth, 'rt') as _:
-            for line in _:
-                assert line.startswith('chromosome')
-                meth_out.write(line)
-                break
-
-        assert chrom in meth_tbx.contigs
-
-        for rec in meth_tbx.fetch(chrom, elt_start, elt_end):
-            meth_out.write(str(rec)+'\n')
-
-    # index by read_name
-    methdata = pd.read_csv(tmp_methdata, sep='\t', header=0, index_col=4)
-
-    if not args.keep_tmp_table:
-        os.remove(tmp_methdata)
+    conn = sqlite3.connect(meth_db)
+    c = conn.cursor()
 
     # get list of relevant reads (exludes reads not anchored outside interval)
     reads = []
@@ -351,7 +312,7 @@ def get_meth_locus(args, bam, meth):
     else:
         reads = get_reads(bam, chrom, elt_start, elt_end)
         
-    reads = list(set(reads).intersection(set(methdata.index)))
+    reads = list(set(reads))
 
     if args.unambig_highlight and args.highlight:
         h_coords = []
@@ -374,33 +335,27 @@ def get_meth_locus(args, bam, meth):
 
         reads = new_reads
 
+    seg_reads = {}
 
-    methdata = methdata.loc[reads]
+    for index in reads:
+        for row in c.execute("SELECT chrom, pos, stat, methstate FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-    reads = {}
+            cg_chrom, cg_start, stat, methstate = row
 
-    for index, row in methdata.iterrows():
-        r_start = row['start']
-        r_end   = row['end']
-        llr     = row['log_lik_ratio']
-        seq     = row['sequence']
+            if chrom != cg_chrom:
+                continue
 
-        # get per-CG position (nanopolish/calculate_methylation_frequency.py)
-        cg_pos = seq.find("CG")
-        first_cg_pos = cg_pos
-        while cg_pos != -1:
-            cg_start = r_start + cg_pos - first_cg_pos
-            cg_pos = seq.find("CG", cg_pos + 1)
+            if cg_start < elt_start or cg_start > elt_end:
+                continue
 
-            cg_elt_start = cg_start - (elt_start)
+            cg_seg_start = cg_start - elt_start
 
-            if cg_start >= elt_start and cg_start <= elt_end:
-                if index not in reads:
-                    reads[index] = Read(index, cg_elt_start, llr)
-                else:
-                    reads[index].add_cpg(cg_elt_start, llr)
+            if index not in seg_reads:
+                seg_reads[index] = Read(index, cg_seg_start, stat, methstate)
+            else:
+                seg_reads[index].add_cpg(cg_seg_start, stat, methstate)
 
-    return reads
+    return seg_reads
 
 
 def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, seg_strand):
@@ -409,27 +364,8 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
     te_ref_seq = single_seq_fa(args.teref)
     ref = pysam.Fastafile(args.ref)
 
-    meth_tbx = pysam.Tabixfile(args.meth)
-
-    tmp_methdata = str(uuid4()) +'.tmp.methdata.tsv'
-
-    with open(tmp_methdata, 'w') as meth_out:
-        # header
-        with gzip.open(args.meth, 'rt') as _:
-            for line in _:
-                assert line.startswith('chromosome')
-                meth_out.write(line)
-                break
-
-        assert seg_chrom in meth_tbx.contigs
-
-        for rec in meth_tbx.fetch(seg_chrom, seg_start, seg_end):
-            meth_out.write(str(rec)+'\n')
-
-    # index by read_name
-    methdata = pd.read_csv(tmp_methdata, sep='\t', header=0, index_col=4)
-
-    os.remove(tmp_methdata)
+    conn = sqlite3.connect(args.meth)
+    c = conn.cursor()
 
     reads = []
     if args.excl_ambig:
@@ -437,33 +373,27 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
     else:
         reads = get_reads(args.bam, seg_chrom, seg_start, seg_end)
 
-    reads = list(set(reads).intersection(set(methdata.index)))
-
-    methdata = methdata.loc[reads]
+    reads = list(set(reads))
 
     seg_reads = {}
 
-    for index, row in methdata.iterrows():
-        r_start = row['start']
-        r_end   = row['end']
-        llr     = row['log_lik_ratio']
-        seq     = row['sequence']
+    for index in reads:
+        for row in c.execute("SELECT chrom, pos, stat, methstate FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-        # get per-CG position (nanopolish/calculate_methylation_frequency.py)
-        cg_pos = seq.find("CG")
-        first_cg_pos = cg_pos
+            cg_chrom, cg_start, stat, methstate = row
 
-        while cg_pos != -1:
-            cg_start = r_start + cg_pos - first_cg_pos
-            cg_pos = seq.find("CG", cg_pos + 1)
+            if seg_chrom != cg_chrom:
+                continue
+
+            if cg_start < seg_start or cg_start > seg_end:
+                continue
 
             cg_seg_start = cg_start - seg_start
 
-            if cg_start >= seg_start and cg_start <= seg_end:
-                if index not in seg_reads:
-                    seg_reads[index] = Read(index, cg_seg_start, llr)
-                else:
-                    seg_reads[index].add_cpg(cg_seg_start, llr)
+            if index not in seg_reads:
+                seg_reads[index] = Read(index, cg_seg_start, stat, methstate)
+            else:
+                seg_reads[index].add_cpg(cg_seg_start, stat, methstate)
 
     meth_table = dd(dict)
     sample = '.'.join(args.bam.split('.')[:-1])
@@ -586,64 +516,32 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
 
 
 def get_meth_calls_dss(bam_fn, meth_fn, chrom, seg_start, seg_end, phased):
-    meth_tbx = pysam.Tabixfile(meth_fn)
-
-    if chrom not in meth_tbx.contigs:
-        return None
-
-    tmp_methdata = str(uuid4()) +'.tmp.methdata.tsv'
-
-    with open(tmp_methdata, 'w') as meth_out:
-        # header
-        with gzip.open(meth_fn, 'rt') as _:
-            for line in _:
-                assert line.startswith('chromosome')
-                meth_out.write(line)
-                break
-
-        for rec in meth_tbx.fetch(chrom, seg_start, seg_end):
-            meth_out.write(str(rec)+'\n')
-
-    # index by read_name
-    methdata = pd.read_csv(tmp_methdata, sep='\t', header=0, index_col=4)
-
-    os.remove(tmp_methdata)
-
-    reads = {}
+    conn = sqlite3.connect(meth_fn)
+    c = conn.cursor()
 
     reads = get_phased_reads(bam_fn, chrom, seg_start, seg_end, tag_untagged=phased)
     
-    readnames = []
-    for r in reads.keys():
-        if r in methdata.index:
-            readnames.append(r)
-
-    methdata = methdata.loc[readnames]
-
+    readnames = list(set(reads.keys()))
 
     seg_methreads = {}
 
-    for index, row in methdata.iterrows():
-        r_start = row['start']
-        r_end   = row['end']
-        llr     = row['log_lik_ratio']
-        seq     = row['sequence']
+    for index in reads:
+        for row in c.execute("SELECT chrom, pos, stat, methstate FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-        # get per-CG position (nanopolish/calculate_methylation_frequency.py)
-        cg_pos = seq.find("CG")
-        first_cg_pos = cg_pos
+            cg_chrom, cg_start, stat, methstate = row
 
-        while cg_pos != -1:
-            cg_start = r_start + cg_pos - first_cg_pos
-            cg_pos = seq.find("CG", cg_pos + 1)
+            if chrom != cg_chrom:
+                continue
+
+            if cg_start < seg_start or cg_start > seg_end:
+                continue
 
             cg_seg_start = cg_start - seg_start
 
-            if cg_start >= seg_start and cg_start <= seg_end:
-                if index not in seg_methreads:
-                    seg_methreads[index] = Read(index, cg_seg_start, llr, phase=reads[index])
-                else:
-                    seg_methreads[index].add_cpg(cg_seg_start, llr)
+            if index not in seg_methreads:
+                seg_methreads[index] = Read(index, cg_seg_start, stat, methstate, phase=reads[index])
+            else:
+                seg_methreads[index].add_cpg(cg_seg_start, stat, methstate)
 
 
     meth_data = {}
@@ -657,6 +555,9 @@ def get_meth_calls_dss(bam_fn, meth_fn, chrom, seg_start, seg_end, phased):
     if phased:
         for name, read in seg_methreads.items():
             if read.phase is None:
+                continue
+
+            if read.phase == 'unphased':
                 continue
 
             if read.phase.split(':')[1] not in ['1','2']:
@@ -850,6 +751,66 @@ def build_genes(gtf, chrom, start, end):
 
 
 ## tools
+
+def db_nanopolish(args):
+    basename = '.'.join(args.methdata.split('.')[:-1])
+    db_fn = basename + '.db'
+
+    if args.db:
+        if args.db.endswith('.db'):
+            db_fn = args.db
+        else:
+            dn_fn = args.db + '.db'
+
+    logger.info('database output name: ' + db_fn)
+
+    if os.path.exists(db_fn):
+        sys.exit('database %s already exists' % db_fn)
+
+    conn = sqlite3.connect(db_fn)
+
+    c = conn.cursor()
+
+    c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer)''')
+    c.execute('''CREATE INDEX read_index ON methdata(readname)''')
+
+    for tsv in args.methdata.split(','):
+        methdata = None
+
+        if tsv.endswith('.gz'):
+            methdata = gzip.open(tsv, 'rt')
+        else:
+            methdata = open(tsv)
+
+        logger.info('parsing ' + tsv)
+
+        csv_reader = csv.DictReader(methdata, delimiter='\t')
+
+        for row in csv_reader:
+            r_start = int(row['start'])
+            r_end   = int(row['end'])
+            llr     = float(row['log_lik_ratio'])
+            seq     = row['sequence']
+
+            if args.scalegroup:
+                llr = llr/float(row['num_motifs'])
+
+            # get per-CG position (nanopolish/calculate_methylation_frequency.py)
+            cg_pos = seq.find("CG")
+            first_cg_pos = cg_pos
+
+            while cg_pos != -1:
+                cg_start = r_start + cg_pos - first_cg_pos
+                cg_pos = seq.find("CG", cg_pos + 1)
+
+                ins_data = (row['chromosome'], cg_start, row['strand'], row['read_name'], llr, np_callmeth(llr, cutoff=float(args.thresh)))
+                c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d)" % ins_data)
+
+        logger.info('commiting records from %s to %s' % (tsv, db_fn))
+        conn.commit()
+
+    conn.close()
+
 
 def segmeth(args):
     '''
@@ -1091,8 +1052,8 @@ def locus(args):
 
     with open(args.data) as _:
         for line in _:
-            bam, meth = line.strip().split()
-            data[bam] = meth
+            bam, meth_db = line.strip().split()
+            data[bam] = meth_db
 
     # table for plotting
 
@@ -1102,9 +1063,9 @@ def locus(args):
 
     reads = {}
 
-    for bam, meth in data.items():
+    for bam, meth_db in data.items():
         bamname = '.'.join(os.path.basename(bam).split('.')[:-1])
-        reads[bamname] = get_meth_locus(args, bam, meth)
+        reads[bamname] = get_meth_locus(args, bam, meth_db)
 
         for name, read in reads[bamname].items():
             for loc in read.llrs.keys():
@@ -1344,33 +1305,13 @@ def haplocus(args):
     h_end = []
     h_cpg_start = []
     h_cpg_end = []
+    h_colors = []
 
-    h_colors = sns.color_palette("Blues", n_colors=len(args.highlight.split(',')))
+    if args.highlight:
+        h_colors = sns.color_palette("Blues", n_colors=len(args.highlight.split(',')))
 
-    # get relevant genome chunk to tmp tsv
-
-    meth_tbx = pysam.Tabixfile(args.methdata)
-
-    tmp_methdata = fn_prefix+'.tmp.methdata.tsv'
-
-    with open(tmp_methdata, 'w') as meth_out:
-        # header
-        with gzip.open(args.methdata, 'rt') as _:
-            for line in _:
-                assert line.startswith('chromosome')
-                meth_out.write(line)
-                break
-
-        assert chrom in meth_tbx.contigs
-
-        for rec in meth_tbx.fetch(chrom, elt_start, elt_end):
-            meth_out.write(str(rec)+'\n')
-
-    # index by read_name
-    methdata = pd.read_csv(tmp_methdata, sep='\t', header=0, index_col=4)
-
-    if not args.keep_tmp_table:
-        os.remove(tmp_methdata)
+    conn = sqlite3.connect(args.methdata)
+    c = conn.cursor()
 
     # get list of relevant reads (exludes reads not anchored outside interval)
     reads = {}
@@ -1379,10 +1320,7 @@ def haplocus(args):
     else:
         reads = get_phased_reads(args.bam, chrom, elt_start, elt_end, tag_untagged=args.tag_untagged, ignore_tags=args.ignore_tags)
 
-    readnames = []
-    for r in reads.keys():
-        if r in methdata.index:
-            readnames.append(r)
+    readnames = list(set(reads.keys()))
 
     if args.unambig_highlight and args.highlight:
         h_coords = []
@@ -1397,7 +1335,6 @@ def haplocus(args):
         h_min, h_max = h_coords[0], h_coords[-1]
 
         excl_reads = get_ambiguous_reads(args.bam, chrom, h_min, h_max)
-        print(excl_reads)
 
         new_reads = []
         for read in readnames:
@@ -1406,30 +1343,26 @@ def haplocus(args):
 
         readnames = new_reads
 
-    methdata = methdata.loc[readnames]
-
     methreads = {}
 
-    for index, row in methdata.iterrows():
-        r_start = row['start']
-        r_end   = row['end']
-        llr     = row['log_lik_ratio']
-        seq     = row['sequence']
+    for index in readnames:
+        for row in c.execute("SELECT chrom, pos, stat, methstate FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-        # get per-CG position (nanopolish/calculate_methylation_frequency.py)
-        cg_pos = seq.find("CG")
-        first_cg_pos = cg_pos
-        while cg_pos != -1:
-            cg_start = r_start + cg_pos - first_cg_pos
-            cg_pos = seq.find("CG", cg_pos + 1)
+            cg_chrom, cg_start, stat, methstate = row
 
-            cg_elt_start = cg_start - elt_start
+            if chrom != cg_chrom:
+                continue
 
-            if cg_start >= elt_start and cg_start <= elt_end:
-                if index not in methreads:
-                    methreads[index] = Read(index, cg_elt_start, llr, phase=reads[index])
-                else:
-                    methreads[index].add_cpg(cg_elt_start, llr)
+            if cg_start < elt_start or cg_start > elt_end:
+                continue
+
+            cg_seg_start = cg_start - elt_start
+
+            if index not in methreads:
+                methreads[index] = Read(index, cg_seg_start, stat, methstate, phase=reads[index])
+            else:
+                methreads[index].add_cpg(cg_seg_start, stat, methstate)
+
 
     # table for plotting
     meth_table = dd(dict)
@@ -1884,12 +1817,13 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers(title="tool", dest="tool")
     subparsers.required = True
 
-    parser_segmeth   = subparsers.add_parser('segmeth')
-    parser_segplot   = subparsers.add_parser('segplot')
-    parser_locus     = subparsers.add_parser('locus')
-    parser_haplocus  = subparsers.add_parser('haplocus')
-    parser_composite = subparsers.add_parser('composite')
-    parser_dss = subparsers.add_parser('dss')
+    parser_nanopolish = subparsers.add_parser('db-nanopolish')
+    parser_segmeth    = subparsers.add_parser('segmeth')
+    parser_segplot    = subparsers.add_parser('segplot')
+    parser_locus      = subparsers.add_parser('locus')
+    parser_haplocus   = subparsers.add_parser('haplocus')
+    parser_composite  = subparsers.add_parser('composite')
+    parser_dss        = subparsers.add_parser('dss')
 
     parser_segmeth.set_defaults(func=segmeth)
     parser_segplot.set_defaults(func=segplot)
@@ -1897,9 +1831,10 @@ if __name__ == '__main__':
     parser_haplocus.set_defaults(func=haplocus)
     parser_composite.set_defaults(func=composite)
     parser_dss.set_defaults(func=dss)
+    parser_nanopolish.set_defaults(func=db_nanopolish)
 
     # options for methylation segments
-    parser_segmeth.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation tabix (whitespace-delimited)')
+    parser_segmeth.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
     parser_segmeth.add_argument('-i', '--intervals', required=True, help='.bed file')
     parser_segmeth.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_segmeth.add_argument('--excl_ambig', action='store_true', default=False)
@@ -1919,7 +1854,7 @@ if __name__ == '__main__':
     parser_segplot.add_argument('--svg', default=False, action='store_true')
 
     # options for locus-specific plots
-    parser_locus.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation tabix (whitespace-delimited)')
+    parser_locus.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line (whitespace-delimited)')
     parser_locus.add_argument('-i', '--interval', required=True, help='chr:start-end')
     parser_locus.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
     parser_locus.add_argument('-l', '--highlight', default=None, help='format: start-end')
@@ -1932,15 +1867,14 @@ if __name__ == '__main__':
     parser_locus.add_argument('--methcall_ymax', default=None)
     parser_locus.add_argument('--methcall_xmin', default=None)
     parser_locus.add_argument('--methcall_xmax', default=None)
-    parser_locus.add_argument('--keep_tmp_table', action='store_true', default=False)
     parser_locus.add_argument('--excl_ambig', action='store_true', default=False)
     parser_locus.add_argument('--unambig_highlight', action='store_true', default=False)
     parser_locus.add_argument('--svg', action='store_true')    
 
     # options for haplotype locus plots
-    parser_haplocus.add_argument('-b', '--bam', required=True, help='bam used for nanopolish methylation calling')
+    parser_haplocus.add_argument('-b', '--bam', required=True, help='bam used for methylation calling')
     parser_haplocus.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
-    parser_haplocus.add_argument('-m', '--methdata', required=True, help='whole genome nanopolish methylation tabix')
+    parser_haplocus.add_argument('-m', '--methdata', required=True, help='methylation database')
     parser_haplocus.add_argument('-i', '--interval', required=True, help='chr:start-end')
     parser_haplocus.add_argument('-l', '--highlight', default=None, help='format: start-end')
     parser_haplocus.add_argument('-s', '--slidingwindowsize', default=20, help='size of sliding window for smoothed plot (default=20)')
@@ -1950,7 +1884,6 @@ if __name__ == '__main__':
     parser_haplocus.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default=8)')
     parser_haplocus.add_argument('--maskcutoff', default=20, help='windowed read count masking cutoff (default=20)')
     parser_haplocus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
-    parser_haplocus.add_argument('--keep_tmp_table', action='store_true', default=False)
     parser_haplocus.add_argument('--excl_ambig', action='store_true', default=False)
     parser_haplocus.add_argument('--unambig_highlight', action='store_true', default=False)
     parser_haplocus.add_argument('--ignore_tags', action='store_true', default=False)
@@ -1962,7 +1895,7 @@ if __name__ == '__main__':
     # options for composite plots
     parser_composite.add_argument('-s', '--segdata', required=True, help='segmeth output')
     parser_composite.add_argument('-b', '--bam', required=True)
-    parser_composite.add_argument('-m', '--meth', required=True, help='methylation tabix')
+    parser_composite.add_argument('-m', '--meth', required=True, help='methylation database')
     parser_composite.add_argument('-f', '--fams', required=True, help='families, comma delimited, corresponds to values in seg_name column in segmeth output')
     parser_composite.add_argument('-r', '--ref', required=True, help='ref genome fasta')
     parser_composite.add_argument('-t', '--teref', required=True, help='TE ref fasta')
@@ -1986,12 +1919,18 @@ if __name__ == '__main__':
     parser_composite.add_argument('--svg', action='store_true', default=False)
 
     # options for DSS input generator
-    parser_dss.add_argument('-b', '--bam', required=True, help='bam used for nanopolish methylation calling')
-    parser_dss.add_argument('-m', '--methdata', required=True, help='whole genome nanopolish methylation tabix')
+    parser_dss.add_argument('-b', '--bam', required=True, help='bam used for methylation calling')
+    parser_dss.add_argument('-m', '--methdata', required=True, help='methylation database')
     parser_dss.add_argument('-s', '--binsize', default=1000000, help='bin size for parallelisation, default = 1000000')
     parser_dss.add_argument('-f', '--fai', required=True, help='fasta index (.fai)')
     parser_dss.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_dss.add_argument('--phased', action='store_true', default=False, help='multiprocessing')
+
+    # options for nanopolish db
+    parser_nanopolish.add_argument('-m', '--methdata', required=True, help='whole genome nanopolish methylation output, can be comma-delimited')
+    parser_nanopolish.add_argument('-d', '--db', default=None, help='database name (default: auto-infer)')
+    parser_nanopolish.add_argument('-t', '--thresh', default=2.5, help='llr threshold (default = 2.5; if using --scalegroup the suggested setting is 2.0)')
+    parser_nanopolish.add_argument('--scalegroup', default=False, action='store_true', help='scale threshold by number of CpGs in a group')
 
     args = parser.parse_args()
     main(args)
