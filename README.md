@@ -44,6 +44,8 @@ Sample input file `-d/--data` has the following whitespace-delimited fields (one
 
 Highly recommend parallelising with `-p/--proc` option if possible.
 
+Can be used to generate genome-wide methylation stats aggregated over windows via `bedtools makewindows`.
+
 ### segplot
 
 Generates strip plots or violin plots (`-v/--violin`) from `segmeth` output.
@@ -62,6 +64,8 @@ Generates smoothed haplotype-aware methylation profiles across specific loci for
 
 Generates "composite" methylation plots where multiple per-element profiles are aligned to and plotted against a reference sequence.
 
-### dss
+### wgmeth
 
-Creates genome-wide files suitable for input to DSS for statistical assessment of differential methylation.
+Outputs genome-wide statistics on CpGs covered by at least one call. By default, `wgmeth` yields output in bedMethyl format (0-based coordinates).
+
+The `--dss` option yields genome-wide files suitable for input to DSS for statistical assessment of differential methylation (1-based coordinates).
