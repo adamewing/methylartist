@@ -574,9 +574,13 @@ def get_meth_calls_wg(bam_fn, meth_fn, chrom, seg_start, seg_end, phased):
         for phase in (1,2):
             for loc in meth_data[phase]:
                 pos = loc+seg_start
-                meth_table[phase][pos]['chr'] = chrom
-                meth_table[phase][pos]['N'] = len([call for call in meth_data[phase][loc] if call != 0])
-                meth_table[phase][pos]['X'] = len([call for call in meth_data[phase][loc] if call == 1])
+                N = len([call for call in meth_data[phase][loc] if call != 0]) # call 0 == ambiguous
+                X = len([call for call in meth_data[phase][loc] if call == 1]) # call 1 == methylated
+
+                if N > 0:
+                    meth_table[phase][pos]['chr'] = chrom
+                    meth_table[phase][pos]['N'] = N 
+                    meth_table[phase][pos]['X'] = X 
 
     else:
         # pass through as phase 1 if not analysing phases
@@ -588,9 +592,13 @@ def get_meth_calls_wg(bam_fn, meth_fn, chrom, seg_start, seg_end, phased):
 
         for loc in meth_data[phase]:
             pos = loc+seg_start
-            meth_table[phase][pos]['chr'] = chrom
-            meth_table[phase][pos]['N'] = len([call for call in meth_data[phase][loc] if call != 0])
-            meth_table[phase][pos]['X'] = len([call for call in meth_data[phase][loc] if call == 1])
+            N = len([call for call in meth_data[phase][loc] if call != 0])
+            X = len([call for call in meth_data[phase][loc] if call == 1])
+
+            if N > 0:
+                meth_table[phase][pos]['chr'] = chrom
+                meth_table[phase][pos]['N'] = N 
+                meth_table[phase][pos]['X'] = X 
 
     return [meth_table[1], meth_table[2]]
 
@@ -1872,14 +1880,14 @@ if __name__ == '__main__':
     parser_locus      = subparsers.add_parser('locus')
     parser_haplocus   = subparsers.add_parser('haplocus')
     parser_composite  = subparsers.add_parser('composite')
-    parser_dss        = subparsers.add_parser('dss')
+    parser_wgmeth     = subparsers.add_parser('wgmeth')
 
     parser_segmeth.set_defaults(func=segmeth)
     parser_segplot.set_defaults(func=segplot)
     parser_locus.set_defaults(func=locus)
     parser_haplocus.set_defaults(func=haplocus)
     parser_composite.set_defaults(func=composite)
-    parser_dss.set_defaults(func=dss)
+    parser_wgmeth.set_defaults(func=wgmeth)
     parser_nanopolish.set_defaults(func=db_nanopolish)
     parser_megalodon.set_defaults(func=db_megalodon)
     parser_guppy.set_defaults(func=db_guppy)
