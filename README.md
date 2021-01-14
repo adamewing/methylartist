@@ -24,14 +24,14 @@ Once coverted, the sqlite .db file can be input to TMNT functions (e.g. `segplot
 
 ## Commands:
 
-### db_nanopolish
+### db-nanopolish
 
 Load nanopolish methylation into sqlite db. Needs to be done before running methylation parsing or plotting commands.
 
-### db_megalodon
+### db-megalodon
 (work in progress)
 
-### db_guppy
+### db-guppy
 (work in progress)
 
 ### segmeth
@@ -40,7 +40,7 @@ Outputs aggregate methylation / demethylation call counts over intervals. Requir
 
 Requires whitespace-delimited list of segments in a BED-like format: chromosome, start, end, label, strand.
 
-Sample input file `-d/--data` has the following whitespace-delimited fields (one sample per line): BAM file, Methylation DB (generated with e.g. `db_nanopolish`)
+Sample input file `-d/--data` has the following whitespace-delimited fields (one sample per line): BAM file, Methylation DB (generated with e.g. `db-nanopolish`)
 
 Highly recommend parallelising with `-p/--proc` option if possible.
 
@@ -52,7 +52,7 @@ Generates strip plots or violin plots (`-v/--violin`) from `segmeth` output.
 
 Generates smoothed methylation profiles across specific loci with many configurable parameters for one or more samples.
 
-Sample input file `-d/--data` has the following whitespace-delimited fields (one sample per line): BAM file, Methylation DB (generated with e.g. `db_nanopolish`)
+Sample input file `-d/--data` has the following whitespace-delimited fields (one sample per line): BAM file, Methylation DB (generated with e.g. `db-nanopolish`)
 
 ### haplocus
 
