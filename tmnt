@@ -516,7 +516,7 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
     return revised_coord_meth_pos, meth_profile
 
 
-def get_meth_calls_dss(bam_fn, meth_fn, chrom, seg_start, seg_end, phased):
+def get_meth_calls_wg(bam_fn, meth_fn, chrom, seg_start, seg_end, phased):
     conn = sqlite3.connect(meth_fn)
     c = conn.cursor()
 
@@ -1752,9 +1752,9 @@ def composite(args):
         logger.info('plotted to %s.composite.png' % fn_base)
 
 
-def dss(args):
+def wgmeth(args):
     '''
-    generates output compatible with the DSS R package for differential methylation
+    generates whole genome output in DSS or bedmethyl format
     '''
 
     meth_table = [None, None]
@@ -1779,7 +1779,7 @@ def dss(args):
                 seg_start = int(seg_start)
                 seg_end = int(seg_end)
 
-                res = pool.apply_async(get_meth_calls_dss, [args.bam, args.methdata, chrom, seg_start, seg_end, args.phased])
+                res = pool.apply_async(get_meth_calls_wg, [args.bam, args.methdata, chrom, seg_start, seg_end, args.phased])
 
                 results.append(res)
 
@@ -1809,10 +1809,30 @@ def dss(args):
             meth_table[phase]['pos'] = meth_table[phase].index
             meth_table[phase] = meth_table[phase].sort_values(['chr', 'pos'])
 
-            outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.phase_%d.DSS.txt' % phase
+            outfn = None
+
+            if args.dss:
+                outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.phase_%d.DSS.txt' % phase
+            else:
+                outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.phase_%d.methyl.bed' % phase
 
             logger.info('writing %s' % outfn)
-            meth_table[phase].to_csv(outfn, columns=['chr','pos','N','X'], index=False, sep='\t')
+
+            if args.dss:
+                meth_table[phase].to_csv(outfn, columns=['chr','pos','N','X'], index=False, sep='\t') # 1-based
+
+            else:
+                meth_table[phase]['score']  = meth_table[phase]['N']
+                meth_table[phase]['score']  = meth_table[phase]['score'].where(meth_table[phase]['score'] <= 1000, 1000) # cap score at 1000
+                meth_table[phase]['start']  = meth_table[phase]['pos']-1 # 0-based
+                meth_table[phase]['end']    = meth_table[phase]['pos']
+                meth_table[phase]['pct']    = meth_table[phase]['X']/meth_table[phase]['N']
+                meth_table[phase]['name']   = '.'.join(args.methdata.split('.')[:-1])
+                meth_table[phase]['strand'] = '.'
+                meth_table[phase]['colour'] = '0,0,0'
+
+                meth_table[phase].to_csv(outfn, columns=['chr','start','end','name', 'score', 'strand', 'start', 'end', 'colour', 'N', 'pct'], header=False, index=False, sep='\t')
+
 
     else:
         meth_table[0]['pos'] = meth_table[0].index
@@ -1821,8 +1841,19 @@ def dss(args):
         outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.DSS.txt'
 
         logger.info('writing %s' % outfn)
-        meth_table[0].to_csv(outfn, columns=['chr','pos','N','X'], index=False, sep='\t')
+        if args.dss:
+            meth_table[0].to_csv(outfn, columns=['chr','pos','N','X'], index=False, sep='\t')
+        else:
+            meth_table[0]['score']  = meth_table[0]['N']
+            meth_table[0]['score']  = meth_table[0]['score'].where(meth_table[0]['score'] <= 1000, 1000)
+            meth_table[0]['start']  = meth_table[0]['pos']-1
+            meth_table[0]['end']    = meth_table[0]['pos']
+            meth_table[0]['pct']    = meth_table[0]['X']/meth_table[0]['N']
+            meth_table[0]['name']   = '.'.join(args.methdata.split('.')[:-1])
+            meth_table[0]['strand'] = '.'
+            meth_table[0]['colour'] = '0,0,0'
 
+            meth_table[0].to_csv(outfn, columns=['chr','start','end','name', 'score', 'strand', 'start', 'end', 'colour', 'N', 'pct'], header=False, index=False, sep='\t')
 
 def main(args):
     args.func(args)
@@ -1938,13 +1969,14 @@ if __name__ == '__main__':
     parser_composite.add_argument('--excl_ambig', action='store_true', default=False)
     parser_composite.add_argument('--svg', action='store_true', default=False)
 
-    # options for DSS input generator
-    parser_dss.add_argument('-b', '--bam', required=True, help='bam used for methylation calling')
-    parser_dss.add_argument('-m', '--methdata', required=True, help='methylation database')
-    parser_dss.add_argument('-s', '--binsize', default=1000000, help='bin size for parallelisation, default = 1000000')
-    parser_dss.add_argument('-f', '--fai', required=True, help='fasta index (.fai)')
-    parser_dss.add_argument('-p', '--procs', default=1, help='multiprocessing')
-    parser_dss.add_argument('--phased', action='store_true', default=False, help='multiprocessing')
+    # options for whole genome output
+    parser_wgmeth.add_argument('-b', '--bam', required=True, help='bam used for methylation calling')
+    parser_wgmeth.add_argument('-m', '--methdata', required=True, help='methylation database')
+    parser_wgmeth.add_argument('-s', '--binsize', default=1000000, help='bin size for parallelisation, default = 1000000')
+    parser_wgmeth.add_argument('-f', '--fai', required=True, help='fasta index (.fai)')
+    parser_wgmeth.add_argument('-p', '--procs', default=1, help='multiprocessing')
+    parser_wgmeth.add_argument('--dss', default=False, action='store_true', help='output in DSS format (default = bedMethyl)')
+    parser_wgmeth.add_argument('--phased', action='store_true', default=False, help='multiprocessing')
 
     # options for megalodon db
     # TODO
