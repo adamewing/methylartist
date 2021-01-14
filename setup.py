@@ -20,7 +20,8 @@ setup(
         'scipy',
         'pandas',
         'matplotlib',
-        'seaborn'
+        'seaborn',
+        'ont-fast5-api'
     ]
 
 )

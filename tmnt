@@ -37,6 +37,7 @@ from collections import Counter
 from itertools import product
 from operator import itemgetter
 
+from ont_fast5_api.fast5_interface import get_fast5_file
 
 FORMAT = '%(asctime)s %(message)s'
 logging.basicConfig(format=FORMAT)
@@ -751,6 +752,14 @@ def build_genes(gtf, chrom, start, end):
 
 
 ## tools
+
+def db_guppy(args):
+    pass
+
+
+def db_megalodon(args):
+    pass
+
 
 def db_nanopolish(args):
     basename = '.'.join(args.methdata.split('.')[:-1])
@@ -1818,6 +1827,8 @@ if __name__ == '__main__':
     subparsers.required = True
 
     parser_nanopolish = subparsers.add_parser('db-nanopolish')
+    parser_megalodon  = subparsers.add_parser('db-megalodon')
+    parser_guppy      = subparsers.add_parser('db-guppy')
     parser_segmeth    = subparsers.add_parser('segmeth')
     parser_segplot    = subparsers.add_parser('segplot')
     parser_locus      = subparsers.add_parser('locus')
@@ -1832,6 +1843,8 @@ if __name__ == '__main__':
     parser_composite.set_defaults(func=composite)
     parser_dss.set_defaults(func=dss)
     parser_nanopolish.set_defaults(func=db_nanopolish)
+    parser_megalodon.set_defaults(func=db_megalodon)
+    parser_guppy.set_defaults(func=db_guppy)
 
     # options for methylation segments
     parser_segmeth.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
@@ -1925,6 +1938,12 @@ if __name__ == '__main__':
     parser_dss.add_argument('-f', '--fai', required=True, help='fasta index (.fai)')
     parser_dss.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_dss.add_argument('--phased', action='store_true', default=False, help='multiprocessing')
+
+    # options for megalodon db
+    # TODO
+
+    # options for guppy db
+    # TODO
 
     # options for nanopolish db
     parser_nanopolish.add_argument('-m', '--methdata', required=True, help='whole genome nanopolish methylation output, can be comma-delimited')
