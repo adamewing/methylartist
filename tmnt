@@ -1846,7 +1846,13 @@ def wgmeth(args):
         meth_table[0]['pos'] = meth_table[0].index
         meth_table[0] = meth_table[0].sort_values(['chr', 'pos'])
 
-        outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.DSS.txt'
+        outfn = None
+
+        if args.dss:
+            outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.DSS.txt'
+        else:
+            outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.methyl.bed'
+        
 
         logger.info('writing %s' % outfn)
         if args.dss:
