@@ -28,6 +28,18 @@ Once coverted, the sqlite .db file can be input to TMNT functions (e.g. `segplot
 
 Load nanopolish methylation into sqlite db. Needs to be done before running methylation parsing or plotting commands.
 
+Example:
+
+Loading results from `nanopolish call-methylation` to a database:
+
+`tmnt db-nanopolish -m MCF7_ATCC_REP1.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db`
+
+Appending additional results to the above database:
+
+`tmnt db-nanopolish -m MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -a`
+
+Inputs cat be uncompressed or .gzipped.
+
 ### db-megalodon
 (work in progress)
 
@@ -93,6 +105,23 @@ chr1:30493390-30499556  chr1    30493390        30499556        L1PA4   +       
 ### segplot
 
 Generates strip plots or violin plots (`-v/--violin`) from `segmeth` output.
+
+Examples:
+
+Strip plot of L1HS, L1PA2, L1PA4, and L1PA6 elements across two samples:
+
+`tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_Euro.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10`
+
+![strip plot](https://github.com/adamewing/tmnt/blob/main/docs/segplot_example_strip.png?raw=true)
+
+As above, but use violin plots:
+
+`tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_Euro.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10 --violin`
+
+![violin plot](https://github.com/adamewing/tmnt/blob/main/docs/segplot_example_violin.png?raw=true)
+
+Note that default output is in .png format. For .svg vector output suitable for editing in inkscape or illustrator add the `--svg` option. Note that for strip plots, this is often inadvisable due to the large number of points.
+
 
 ### locus
 
