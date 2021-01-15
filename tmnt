@@ -1864,7 +1864,7 @@ def wgmeth(args):
             meth_table[0]['score']  = meth_table[0]['score'].where(meth_table[0]['score'] <= 1000, 1000)
             meth_table[0]['start']  = meth_table[0]['pos']-1
             meth_table[0]['end']    = meth_table[0]['pos']
-            meth_table[0]['pct']    = meth_table[0]['X']/meth_table[0]['N']
+            meth_table[0]['pct']    = meth_table[0]['X']/meth_table[0]['N']*100
             meth_table[0]['name']   = '.'.join(args.methdata.split('.')[:-1])
             meth_table[0]['strand'] = '.'
             meth_table[0]['colour'] = '0,0,0'
