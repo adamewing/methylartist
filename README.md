@@ -160,6 +160,54 @@ tmnt haplocus -b MCF7_Euro.haplotag.bam -m MCF7_Euro.nanopolish.db -g Homo_sapie
 
 Generates "composite" methylation plots where multiple per-element profiles are aligned to and plotted against a reference sequence.
 
+Example:
+
+First aggregate methylation counts over intervals corresponding to the TE family of interest:
+```
+tmnt segmeth -d MCF7_data.txt -i L1HS.bed -p 32 --excl_ambig
+```
+
+The consensus sequence for establishing a common coordinate system is in `L1Ta.fa` (fasta formatted with one sequence)
+
+The contents of `L1HS.bed` are formatted as follows (first 10 lines):
+
+```
+chr1    34566056        34572105        L1HS    -
+chr1    67078892        67084915        L1HS    -
+chr1    71513699        71519742        L1HS    +
+chr1    80939204        80945257        L1HS    -
+chr1    84052390        84058406        L1HS    -
+chr1    85748520        85754548        L1HS    +
+chr1    85927068        85933100        L1HS    +
+chr1    86679081        86685111        L1HS    -
+chr1    104770248       104776278       L1HS    -
+chr1    104843834       104849864       L1HS    -
+```
+
+Output file from `segmeth`, `L1HS.MCF7_data.excl_ambig.segmeth.tsv` (first 10 lines):
+
+```
+seg_id  seg_chrom       seg_start       seg_end seg_name        seg_strand      MCF7_ATCC.haplotag_meth_calls   MCF7_ATCC.haplotag_unmeth_calls MCF7_ATCC.haplotag_no_calls     MCF7_ATCC.haplotag_methfrac     MCF7_Euro.haplotag_meth_calls     MCF7_Euro.haplotag_unmeth_calls MCF7_Euro.haplotag_no_calls     MCF7_Euro.haplotag_methfrac
+chr1:34566056-34572105  chr1    34566056        34572105        L1HS    -       895     741     1123    0.5470660146699267      803     407     596     0.6636363636363637
+chr1:67078892-67084915  chr1    67078892        67084915        L1HS    -       1067    472     796     0.6933073424301495      976     356     779     0.7327327327327328
+chr1:71513699-71519742  chr1    71513699        71519742        L1HS    +       673     464     775     0.5919085312225154      679     329     633     0.6736111111111112
+chr1:80939204-80945257  chr1    80939204        80945257        L1HS    -       131     23      58      0.8506493506493507      607     104     538     0.8537271448663853
+chr1:84052390-84058406  chr1    84052390        84058406        L1HS    -       173     81      211     0.6811023622047244      0       0       0       NaN
+chr1:85748520-85754548  chr1    85748520        85754548        L1HS    +       717     268     714     0.7279187817258883      835     181     717     0.8218503937007874
+chr1:85927068-85933100  chr1    85927068        85933100        L1HS    +       1029    318     775     0.7639198218262806      301     154     323     0.6615384615384615
+chr1:86679081-86685111  chr1    86679081        86685111        L1HS    -       560     239     801     0.7008760951188986      619     260     368     0.7042093287827076
+chr1:104770248-104776278        chr1    104770248       104776278       L1HS    -       447     403     612     0.5258823529411765      714     538     673     0.570287539936102
+```
+
+Command to `tmnt composite` (note the parsing of individual profiles can be parallelised via `-p`):
+
+```
+tmnt composite -b MCF7_ATCC.haplotag.bam -m MCF7_ATCC.nanopolish.db -s L1HS.MCF7_data.excl_ambig.segmeth.tsv -f L1HS -r Homo_sapiens_assembly38.fasta -t L1Ta.fa -p 32
+```
+
+![composite plot](https://github.com/adamewing/tmnt/blob/main/docs/composite_example.png?raw=true)
+
+
 ### wgmeth
 
 Outputs genome-wide statistics on CpGs covered by at least one call. By default, `wgmeth` yields output in bedMethyl format (0-based coordinates).
