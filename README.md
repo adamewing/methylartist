@@ -153,7 +153,7 @@ Plot of the PEG3 imprinted region on chromosome 19, hg38.
 tmnt haplocus -b MCF7_Euro.haplotag.bam -m MCF7_Euro.nanopolish.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --topspacing 25 -i chr19:56810076-56870725 -l 56835076-56841076
 ```
 
-![locus plot](https://github.com/adamewing/tmnt/blob/main/docs/locus_example.png?raw=true)
+![haplocus plot](https://github.com/adamewing/tmnt/blob/main/docs/haplocus_example.png?raw=true)
 
 
 ### composite
