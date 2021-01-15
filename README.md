@@ -210,6 +210,31 @@ tmnt composite -b MCF7_ATCC.haplotag.bam -m MCF7_ATCC.nanopolish.db -s L1HS.MCF7
 
 ### wgmeth
 
-Outputs genome-wide statistics on CpGs covered by at least one call. By default, `wgmeth` yields output in bedMethyl format (0-based coordinates).
+Outputs genome-wide statistics on CpGs covered by at least one call. By default, `wgmeth` yields output in bedMethyl format (0-based coordinates):
+```
+chr1    10467   10468   MCF7_Euro.nanopolish    3       .       10467   10468   0,0,0   3       1.0
+chr1    10469   10470   MCF7_Euro.nanopolish    3       .       10469   10470   0,0,0   3       1.0
+chr1    10482   10483   MCF7_Euro.nanopolish    7       .       10482   10483   0,0,0   7       0.7142857142857143
+chr1    10487   10488   MCF7_Euro.nanopolish    7       .       10487   10488   0,0,0   7       0.7142857142857143
+chr1    10491   10492   MCF7_Euro.nanopolish    7       .       10491   10492   0,0,0   7       0.7142857142857143
+chr1    10495   10496   MCF7_Euro.nanopolish    7       .       10495   10496   0,0,0   7       0.7142857142857143
+chr1    10523   10524   MCF7_Euro.nanopolish    8       .       10523   10524   0,0,0   8       0.875
+chr1    10540   10541   MCF7_Euro.nanopolish    11      .       10540   10541   0,0,0   11      0.9090909090909091
+chr1    10561   10562   MCF7_Euro.nanopolish    10      .       10561   10562   0,0,0   10      1.0
+chr1    10569   10570   MCF7_Euro.nanopolish    10      .       10569   10570   0,0,0   10      1.0
+```
 
-The `--dss` option yields genome-wide files suitable for input to DSS for statistical assessment of differential methylation (1-based coordinates).
+The `--dss` option yields genome-wide files suitable for input to DSS for statistical assessment of differential methylation (1-based coordinates):
+
+```
+chr     pos     N       X
+chr1    10468   3       3
+chr1    10470   3       3
+chr1    10483   6       5
+chr1    10488   6       5
+chr1    10492   6       5
+chr1    10496   6       5
+chr1    10524   6       6
+chr1    10541   8       7
+chr1    10562   8       8
+```
