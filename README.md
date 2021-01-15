@@ -18,7 +18,7 @@ Alignments stored in .bam format should be sorted and indexed and should use the
 
 ### Methylation Calls
 
-TMNT hs functions for loading methylation data can from nanopolish, megalodon, or basecalled guppy fast5s, using the appropriate function below.
+TMNT has functions for loading methylation data can from nanopolish, megalodon, or basecalled guppy fast5s, using the appropriate function below.
 
 Once coverted, the sqlite .db file can be input to TMNT functions (e.g. `segplot`, `locus`, etc).
 
