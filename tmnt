@@ -1298,15 +1298,17 @@ def locus(args):
     fn_prefix = '.'.join(args.data.split('.')[:-1]) + '.' + '_'.join(args.interval.split(':')[:2])
 
     if args.genes is not None:
-        fn_prefix = '_'.join(args.genes.split(',')) + fn_prefix
+        fn_prefix = '_'.join(args.genes.split(',')) + '.' + fn_prefix
 
 
     fig.set_size_inches(16, 8)
     if args.svg:
         plt.savefig('%s.multi.meth.svg' % fn_prefix, bbox_inches='tight')
+        logger.info('plot saved to %s.meth.svg' % fn_prefix)
 
     else:
         plt.savefig('%s.multi.meth.png' % fn_prefix, bbox_inches='tight')
+        logger.info('plot saved to %s.meth.png' % fn_prefix)
 
 
 def haplocus(args):
@@ -1608,10 +1610,10 @@ def haplocus(args):
 
     if args.ignore_tags:
         plt.savefig('%s.unphased.meth.%s' % (fn_prefix, imgtype), bbox_inches='tight')
+        logger.info('plot saved to %s.unphased.meth.%s' % (fn_prefix, imgtype))
     else:
         plt.savefig('%s.phased.meth.%s' % (fn_prefix, imgtype), bbox_inches='tight')
-
-
+        logger.info('plot saved to %s.phased.meth.%s' % (fn_prefix, imgtype))
 
 
 def composite(args):
