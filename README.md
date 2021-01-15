@@ -129,7 +129,9 @@ Generates smoothed methylation profiles across specific loci with many configura
 
 Sample input file `-d/--data` has the following whitespace-delimited fields (one sample per line): BAM file, Methylation DB (generated with e.g. `db-nanopolish`)
 
-Plot of the infamous TTC28 L1 in hg38, highlighting the L1 (body = blue, 5'UTR = orangered), and including the TTC28 5' exon (large trough in methylation on the right side of the plot)
+Example:
+
+Plot of the TTC28 L1 locus in hg38, highlighting the L1 (body = blue, 5'UTR = orangered), and including the TTC28 5' exon (large trough in methylation on the right side of the plot)
 ```
 tmnt locus -d MCF7_data.txt -i chr22:28643284-28689315 -l 28664284-28669315,28663284-28664284 --topspacing 25 --gtf Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes TTC28`
 ```
@@ -142,6 +144,17 @@ From top to bottom, the plot shows the genome coordinates, gene models (optional
 ### haplocus
 
 Generates smoothed haplotype-aware methylation profiles across specific loci for one sample. Requires haplotypes to be tagged with whatshap.
+
+Example:
+
+Plot of the PEG3 imprinted region on chromosome 19, hg38.
+
+```
+tmnt haplocus -b MCF7_Euro.haplotag.bam -m MCF7_Euro.nanopolish.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --topspacing 25 -i chr19:56810076-56870725 -l 56835076-56841076
+```
+
+![locus plot](https://github.com/adamewing/tmnt/blob/main/docs/locus_example.png?raw=true)
+
 
 ### composite
 
