@@ -74,7 +74,7 @@ chr1    30493390        30499556        L1PA4   +
 chr1    33671998        33678118        L1PA4   +
 ```
 
-Output (`)L1_FL.MCF7_data.excl_ambig.segmeth.tsv`), first 10 lines:
+Output in `L1_FL.MCF7_data.excl_ambig.segmeth.tsv` (first 10 lines):
 
 ```
 seg_id  seg_chrom       seg_start       seg_end seg_name        seg_strand      MCF7_ATCC.haplotag_meth_calls   MCF7_ATCC.haplotag_unmeth_calls MCF7_ATCC.haplotag_no_calls     MCF7_ATCC.haplotag_methfrac     MCF7_Euro.haplotag_meth_calls     MCF7_Euro.haplotag_unmeth_calls MCF7_Euro.haplotag_no_calls     MCF7_Euro.haplotag_methfrac
