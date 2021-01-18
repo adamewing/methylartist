@@ -44,7 +44,9 @@ Inputs can be uncompressed or .gzipped.
 
 Load megalodon methylation into sqlite db.
 
-The input file is the output of `megalodon_extras per_read_text modified_bases /path/to/megalodon_output`, which needs to be run prior to this script. The default filename (`/path/to/megalodon_output/per_read_modified_base_calls.txt`) is the same for all megalodon runs, so the `--db` option is recommended to make the output database more identifiable for downstream analysis.
+The input file is the output of `megalodon_extras per_read_text modified_bases /path/to/megalodon_output`, which needs to be run prior to this script.
+
+The default filename (`/path/to/megalodon_output/per_read_modified_base_calls.txt`) is the same for all megalodon runs, so the `--db` option is recommended to make the output database more identifiable for downstream analysis.
 
 Example:
 
