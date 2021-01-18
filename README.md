@@ -26,7 +26,7 @@ Once coverted, the sqlite .db file can be input to TMNT functions (e.g. `segplot
 
 ### db-nanopolish
 
-Load nanopolish methylation into sqlite db. Needs to be done before running methylation parsing or plotting commands.
+Load nanopolish methylation into sqlite db.
 
 Example:
 
@@ -38,10 +38,23 @@ Appending additional results to the above database:
 
 `tmnt db-nanopolish -m MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -a`
 
-Inputs cat be uncompressed or .gzipped.
+Inputs can be uncompressed or .gzipped.
 
 ### db-megalodon
-(work in progress)
+
+Load megalodon methylation into sqlite db.
+
+The input file is the output of `megalodon_extras per_read_text modified_bases /path/to/megalodon_output`, which needs to be run prior to this script. The default filename (`/path/to/megalodon_output/per_read_modified_base_calls.txt`) is the same for all megalodon runs, so the `--db` option is recommended to make the output database more identifiable for downstream analysis.
+
+Example:
+
+`tmnt db-megalodon -m MCF7_ATCC_REP1/per_read_modified_base_calls.txt --db MCF7_ATCC_REP1.db`
+
+Appending additional results to the above database:
+
+`tmnt db-megalodon -m MCF7_ATCC_REP2/per_read_modified_base_calls.txt --db MCF7_ATCC_REP2.db`
+
+Input files can be uncompressed or .gzipped.
 
 ### db-guppy
 (work in progress)
