@@ -122,6 +122,211 @@ class Gene:
         self.exons = new_exons
 
 
+RC = {'A':'T', 'T':'A', 'C':'G', 'G':'C', 'N':'N'}
+
+class Motif:
+    def __init__(self, motif):
+
+        self.motif = motif
+
+        self.left_bases  = ''
+        self.right_bases = ''
+        self.key_base    = ''
+        self.full_seq    = ''
+
+        assert len(motif.split('[')) == 2, 'bad motif syntax: %s' % motif
+        assert len(motif.split(']')) == 2, 'bad motif syntax: %s' % motif
+
+        self.left_base   = motif.split('[')[0]
+        self.right_bases = motif.split(']')[1]
+        self.key_base    = motif.split('[')[1].split(']')[0]
+        self.full_seq    = self.left_bases + self.key_base + self.right_bases
+        
+        assert self.key_base in 'ATCG', 'bad motif syntax: %s' % motif
+
+
+    def match_seq(self, seq):
+        ''' returns 0-based coords of key base for matches in seq '''
+
+        sites = dd(list) 
+
+        seq = list(seq.upper())
+
+
+        for i in range(len(seq)-len(self.full_seq)):
+            nmer = ''.join(seq[i:i+len(self.full_seq)])
+            if nmer == self.full_seq:
+                sites[i + len(self.left_bases)].append(self.motif)
+
+        return sites
+        
+
+class Mod:
+    def __init__(self, read_id, read_pos, read_base, sites, mods):
+        self.read_id     = read_id
+        self.read_pos    = read_pos
+        self.read_base   = read_base
+        self.sites       = sites
+        self.mods        = mods
+        self.chrom       = None
+        self.genome_pos  = None
+        self.genome_base = None
+        self.aln_strand  = None
+
+    def __str__(self):
+        return '\t'.join((self.read_id, self.chrom, str(self.genome_pos), self.genome_base, self.aln_strand, str(self.read_pos), self.read_base, ','.join(self.sites), '\t'.join(map(str, self.mods))))
+
+
+def base_field(mod_metadata):
+    long_names = mod_metadata['modified_base_long_names'].split()
+
+    bases = []
+
+    i = 0
+    alpha_field_name = None
+
+    if 'output_alphabet' in mod_metadata:
+        alpha_field_name = 'output_alphabet'
+
+    elif 'modified_base_alphabet' in mod_metadata:
+        alpha_field_name = 'modified_base_alphabet'
+
+    for base in list(mod_metadata[alpha_field_name]):
+        if base not in 'ACTG':
+            bases.append(long_names[i])
+            i += 1
+        else:
+            bases.append(base)
+
+    return bases
+
+
+def pandas_df(out, mod_base, can_base):
+    data = dd(dict)
+
+    header = []
+
+    for i, line in enumerate(out):
+        if i == 0:
+            header = line.strip().split()
+            continue
+
+        for j, val in enumerate(line.strip().split('\t')):
+            data[i][header[j]] = val
+
+    data = pd.DataFrame.from_dict(data).T
+    data = plot_data = pd.DataFrame(data.to_dict())
+
+    data['can_log_prob'] = np.log((pd.to_numeric(data[can_base])+1)/256)
+    data['mod_log_prob'] = np.log((pd.to_numeric(data[mod_base])+1)/256)
+    data['llr'] = data['mod_log_prob'] - data['can_log_prob']
+
+    return data
+
+
+def guppy_f5_fetch(fast5, bam_db, args):
+    bam = pysam.AlignmentFile(args.bam)
+    ref = pysam.Fastafile(args.ref)
+
+    bases = []
+    modbases = dd(list)
+
+    m = Motif(args.motif)
+
+    out = []
+
+    with get_fast5_file(args.fast5 + '/' + fast5, mode="r") as f5:
+        for read_id in f5.get_read_ids():
+            read = f5.get_read(read_id)
+            latest_basecall = read.get_latest_analysis('Basecall_1D')
+
+            mod_base_table = read.get_analysis_dataset(latest_basecall, 'BaseCalled_template/ModBaseProbs')
+            called_base_table = read.get_analysis_dataset(latest_basecall, 'BaseCalled_template/Fastq')
+
+            mod_table_path = '{}/BaseCalled_template/ModBaseProbs'.format(latest_basecall)
+            called_table_path = '{}/BaseCalled_template/Fastq'.format(latest_basecall)
+
+            mod_metadata = read.get_analysis_attributes(mod_table_path)
+            called_metadata = read.get_analysis_attributes(called_table_path)
+
+            if None in (mod_metadata, called_metadata):
+                logger.error('fast5 %s does not seem to contain basecalling information' % fast5)
+                return None
+
+            if len(bases) == 0:
+                bases = base_field(mod_metadata)
+
+                mod_names = [b for b in bases if b not in ('ATCG')]
+
+                if args.modname not in mod_names:
+                    logger.error('mod "%s" not found in metadata. Available mod names: %s' % (args.modname, ','.join(mod_names)))
+                    return None
+
+                header = "readname\tchrom\tpos\tgenome_base\tstrand\tread_pos\tread_base\tmotif\t" + '\t'.join(bases) + "\n"
+
+            seq = called_base_table.split('\n')[1]
+
+            assert len(seq) == len(mod_base_table)
+
+            sites = m.match_seq(seq)
+
+            for i, mods in enumerate(mod_base_table):
+                if i in sites:
+                    modbases[read_id].append(Mod(read_id, i, seq[i], sites[i], mods))
+
+    logger.info('processed %d reads from %s' % (len(modbases), fast5))
+
+    logger.info('parsing alignments from %s' % bam_db)
+
+
+    out.append(header)
+
+    conn = sqlite3.connect(bam_db)
+    c = conn.cursor()
+
+    for readname in modbases:
+        for row in c.execute("SELECT sam FROM bam WHERE readname='%s'" % readname):
+            read = pysam.AlignedSegment.fromstring(row[0], bam.header)
+
+            pos_lookup = {}
+            for ap in read.get_aligned_pairs():
+                if None not in ap:
+                    pos_lookup[ap[0]] = ap[1]
+
+            for modbase in modbases[read.query_name]:
+                modbase.aln_strand = '+'
+                aligned_read_pos = modbase.read_pos
+
+                if read.is_reverse:
+                    modbase.aln_strand = '-'
+                    aligned_read_pos = (len(read.seq) - modbase.read_pos)-1 # SAM format stores read on + strand
+
+                if aligned_read_pos in pos_lookup:
+                    modbase.chrom = read.reference_name
+                    modbase.genome_pos = pos_lookup[aligned_read_pos]
+                    modbase.genome_base = ref.fetch(modbase.chrom, modbase.genome_pos, modbase.genome_pos+1)
+
+                    modbase.genome_base = modbase.genome_base.upper()
+
+                    if args.include_unmatched:
+                        out.append(str(modbase) + '\n')
+                        
+                    else:
+                        if modbase.aln_strand == '+' and modbase.genome_base == modbase.read_base:
+                            out.append(str(modbase) + '\n')
+
+                        if modbase.aln_strand == '-' and RC[modbase.genome_base] == modbase.read_base:
+                            out.append(str(modbase) + '\n')
+
+    
+    data = pandas_df(out, args.modname, m.key_base)
+    out_fn = args.fast5 + '/' + '.'.join(fast5.split('.')[:-1]) + '.gupmod.tsv'
+    logger.info('writing output from %s to %s' % (fast5, out_fn))
+    data.to_csv(out_fn, sep='\t', index=False)
+
+    return out_fn
+
+
 def exclude_ambiguous_reads(fn, chrom, start, end, min_mapq=10):
     reads = []
 
@@ -752,7 +957,122 @@ def build_genes(gtf, chrom, start, end):
 ## tools
 
 def db_guppy(args):
-    pass
+    assert os.path.exists(args.fast5), 'path not found: %s' % args.fast5
+
+    bam_db = args.samplename + '.bamcache.db'
+
+    if os.path.exists(bam_db):
+        logger.info('using existing bam cache db %s' % bam_db)
+
+
+    else:
+        conn = sqlite3.connect(bam_db)
+        c = conn.cursor()
+
+        logger.info('caching %s to %s' % (args.bam, bam_db))
+        c.execute('''CREATE TABLE bam (readname text, sam text)''')
+        c.execute('''CREATE INDEX read_index ON bam(readname)''')
+
+        for bam_fn in args.bam.split(','):
+            bam = pysam.AlignmentFile(bam_fn)
+
+            commit_interval = 100000
+
+            for i, read in enumerate(bam.fetch(), 1):
+                if read.is_secondary or read.is_supplementary or read.is_duplicate:
+                    continue
+
+                read.query_qualities = None
+
+                read_data = (read.query_name, read.to_string())
+                c.execute("INSERT INTO bam VALUES ('%s', '%s')" % read_data)
+
+                if i % commit_interval == 0:
+                    logger.info('commiting %d records to %s...' % (commit_interval, bam_db))
+                    conn.commit()
+
+            logger.info('commiting remaining records to %s...' % bam_db)
+
+        conn.commit()
+        conn.close()
+
+    fast5s = []
+
+    for fn in os.listdir(args.fast5):
+        if fn.endswith('.fast5'):
+            fast5s.append(fn)
+
+    logger.info('found %d fast5 files in %s' % (len(fast5s), args.fast5))
+
+    logger.info('fetching base modifications...')
+
+    pool = mp.Pool(processes=int(args.procs))
+
+    results = []
+
+    for fast5 in fast5s:
+        res = pool.apply_async(guppy_f5_fetch, [fast5, bam_db, args])
+        results.append(res)
+
+
+    outfiles = []
+
+    for res in results:
+        outfiles.append(res.get())
+
+    db_fn = args.samplename + '.guppy.db'
+
+    conn = sqlite3.connect(db_fn)
+    c = conn.cursor()
+
+    if not args.append:
+        c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer)''')
+        c.execute('''CREATE INDEX read_index ON methdata(readname)''')
+
+    else:
+        logger.info('appending records to %s' % db_fn)
+
+    m = Motif(args.motif)
+
+    for fn in outfiles:
+        with open(fn) as tsv:
+            logger.info('loading %s into %s' % (fn, db_fn))
+            csv_reader = csv.DictReader(tsv, delimiter='\t')
+
+            for row in csv_reader:
+                readname = row['readname']
+                chrom    = row['chrom']
+                pos      = int(row['pos'])
+                strand   = row['strand']
+
+                mod_prob = float(row['mod_log_prob'])
+                can_prob = float(row['can_log_prob'])
+                minprob = float(args.minprob)
+
+                llr = float(row['mod_log_prob']) - float(row['can_log_prob'])
+
+                # adjust position of - strand calls to match nanopolish scheme
+                if strand == '-':
+                    pos -= 1
+
+                methcall = 0
+
+                if mod_prob >= minprob:
+                    methcall = 1
+
+                if can_prob >= minprob:
+                    methcall = -1
+
+                assert (mod_prob + can_prob) < 1.01 # allow for some rounding error
+
+                ins_data = (chrom, pos, strand, readname, llr, methcall)
+                c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d)" % ins_data)
+
+            logger.info('commiting records from %s to %s' % (fn, db_fn))
+            conn.commit()
+
+    conn.close()        
+    logger.info('finished.')
 
 
 def db_megalodon(args):
@@ -2078,7 +2398,16 @@ if __name__ == '__main__':
     parser_megalodon.add_argument('--mod_base', default='m', help='modified base (char in mod_base column in megalodon per-base output), default = "m"')
 
     # options for guppy db
-    # TODO
+    parser_guppy.add_argument('-s', '--samplename', required=True, help='name for sample')
+    parser_guppy.add_argument('-f', '--fast5', required=True, help='fast5 with called bases')
+    parser_guppy.add_argument('-p', '--procs', default=1, help='multiprocessing')
+    parser_guppy.add_argument('-m', '--motif', required=True, help='motif e.g. G[A]TC or [C]G')
+    parser_guppy.add_argument('-n', '--modname', required=True, help='mod name in guppy fast5 modified base alphabet (5mC, 6mA, etc)')
+    parser_guppy.add_argument('-b', '--bam', required=True, help='.bam file containing alignments of reads from fast5')
+    parser_guppy.add_argument('-r', '--ref', required=True, help='reference genome fasta (samtools faidx indexed)')
+    parser_guppy.add_argument('--minprob', default=0.8, help='probability threshold for calling modified or unmodified base (default = 0.8)')
+    parser_guppy.add_argument('-a', '--append', default=False, action='store_true', help='append to database')
+    parser_guppy.add_argument('--include_unmatched', action='store_true', default=False, help='include sites where read base does not match genome base')
 
     # options for nanopolish db
     parser_nanopolish.add_argument('-m', '--methdata', required=True, help='whole genome nanopolish methylation output, can be comma-delimited')
