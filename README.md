@@ -32,11 +32,15 @@ Example:
 
 Loading results from `nanopolish call-methylation` to a database:
 
-`tmnt db-nanopolish -m MCF7_ATCC_REP1.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db`
+```
+tmnt db-nanopolish -m MCF7_ATCC_REP1.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db
+```
 
 Appending additional results to the above database:
 
-`tmnt db-nanopolish -m MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -a`
+```
+tmnt db-nanopolish -m MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -a
+```
 
 Inputs can be uncompressed or .gzipped.
 
@@ -51,11 +55,15 @@ The default filename (`/path/to/megalodon_output/per_read_modified_base_calls.tx
 
 Example:
 
-`tmnt db-megalodon -m MCF7_ATCC_REP1/per_read_modified_base_calls.txt --db MCF7_ATCC_REP1.db`
+```
+tmnt db-megalodon -m MCF7_ATCC_REP1/per_read_modified_base_calls.txt --db MCF7_ATCC_REP1.db
+```
 
 Appending additional results to the above database:
 
-`tmnt db-megalodon -m MCF7_ATCC_REP2/per_read_modified_base_calls.txt --db MCF7_ATCC_REP2.db`
+```
+tmnt db-megalodon -m MCF7_ATCC_REP2/per_read_modified_base_calls.txt --db MCF7_ATCC_REP2.db
+```
 
 Input files can be uncompressed or .gzipped.
 
@@ -66,11 +74,15 @@ Parses methylation call data from fast5 files where basecalling information has 
 
 Example:
 
-`tmnt db-guppy -s MCF7_ATCC -f MCF7_ATCC_REP1/fast5 -p 32 -m [C]G -n 5mC -b MCF7_ATCC.bam -r Homo_sapiens_assembly38.fasta`
+```
+tmnt db-guppy -s MCF7_ATCC -f MCF7_ATCC_REP1/fast5 -p 32 -m [C]G -n 5mC -b MCF7_ATCC.bam -r Homo_sapiens_assembly38.fasta
+```
 
 Appending additional results:
 
-`tmnt db-guppy -s MCF7_ATCC -f MCF7_ATCC_REP2/fast5 -p 32 -m [C]G -n 5mC -b MCF7_ATCC.bam -r Homo_sapiens_assembly38.fasta -a`
+```
+tmnt db-guppy -s MCF7_ATCC -f MCF7_ATCC_REP2/fast5 -p 32 -m [C]G -n 5mC -b MCF7_ATCC.bam -r Homo_sapiens_assembly38.fasta -a
+```
 
 Notes:
 
@@ -99,7 +111,9 @@ Example:
 
 Aggregate methylation calls over full length L1 elements (RepeatMasker, hg38), exclude reads which map entirely within L1s:
 
-`tmnt segmeth -d MCF7_data.txt -i L1_FL.bed -p 32 --excl_ambig`
+```
+tmnt segmeth -d MCF7_data.txt -i L1_FL.bed -p 32 --excl_ambig
+```
 
 Contents of `MCF7_data.txt`:
 
@@ -147,13 +161,17 @@ Examples:
 
 Strip plot of L1HS, L1PA2, L1PA4, and L1PA6 elements across two samples:
 
-`tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_Euro.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10`
+```
+tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_Euro.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10
+```
 
 ![strip plot](https://github.com/adamewing/tmnt/blob/main/docs/segplot_example_strip.png?raw=true)
 
 As above, but use violin plots:
 
-`tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_Euro.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10 --violin`
+```
+tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_Euro.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10 --violin
+```
 
 ![violin plot](https://github.com/adamewing/tmnt/blob/main/docs/segplot_example_violin.png?raw=true)
 
