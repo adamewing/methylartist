@@ -40,6 +40,7 @@ Appending additional results to the above database:
 
 Inputs can be uncompressed or .gzipped.
 
+
 ### db-megalodon
 
 Load megalodon methylation into sqlite db.
@@ -58,8 +59,29 @@ Appending additional results to the above database:
 
 Input files can be uncompressed or .gzipped.
 
+
 ### db-guppy
-(work in progress)
+
+Parses methylation call data from fast5 files where basecalling information has been added by running guppy. Calls are anchored to the reference genome via a user-supplied .bam file aligning the reads derived from the same .fast5 files to a referene genome.
+
+Example:
+
+`tmnt db-guppy -s MCF7_ATCC -f MCF7_ATCC_REP1/fast5 -p 32 -m [C]G -n 5mC -b MCF7_ATCC.bam -r Homo_sapiens_assembly38.fasta`
+
+Appending additional results:
+
+`tmnt db-guppy -s MCF7_ATCC -f MCF7_ATCC_REP2/fast5 -p 32 -m [C]G -n 5mC -b MCF7_ATCC.bam -r Homo_sapiens_assembly38.fasta -a`
+
+Notes:
+
+The `-f/--fast5` option should point at a folder that contains .fast5 files. Proccessing the fast5 files can be done in parallel with the `-p`/`--procs` option.
+
+Motifs (`-m`/`--motif`) are expressed by putting square brackets around the methylated base e.g. `[C]G` for 5mC and `G[A]TC` for dam-methylated 6mA.
+
+The `-n`/`--modname` option expects the 'long name' stored in the guppy metadata e.g. `5mC` or `6mA`.
+
+Read caching yields a large .db file ending with .bamcache.db. This can be deleted if you to not intend to append additional results to the methylation database (.guppy.db).
+
 
 ### segmeth
 
