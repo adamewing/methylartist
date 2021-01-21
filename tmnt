@@ -1699,12 +1699,12 @@ def locus(args):
 
     fig.set_size_inches(16, 8)
     if args.svg:
-        plt.savefig('%s.multi.meth.svg' % fn_prefix, bbox_inches='tight')
-        logger.info('plot saved to %s.meth.svg' % fn_prefix)
+        plt.savefig('%s.locus.meth.svg' % fn_prefix, bbox_inches='tight')
+        logger.info('plot saved to %s.locus.meth.svg' % fn_prefix)
 
     else:
-        plt.savefig('%s.multi.meth.png' % fn_prefix, bbox_inches='tight')
-        logger.info('plot saved to %s.meth.png' % fn_prefix)
+        plt.savefig('%s.locus.meth.png' % fn_prefix, bbox_inches='tight')
+        logger.info('plot saved to %s.locus.meth.png' % fn_prefix)
 
 
 def haplocus(args):
