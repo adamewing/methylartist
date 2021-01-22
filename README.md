@@ -188,12 +188,12 @@ Example:
 
 Plot of the TTC28 L1 locus in hg38, highlighting the L1 (body = blue, 5'UTR = orangered), and including the TTC28 5' exon (large trough in methylation on the right side of the plot)
 ```
-tmnt locus -d MCF7_data.txt -i chr22:28643284-28689315 -l 28664284-28669315,28663284-28664284 --topspacing 25 --gtf Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes TTC28`
+tmnt locus -d MCF7_data.txt -i chr22:28643284-28689315 -l 28664284-28669315,28663284-28664284 --cpgspace 50 --gtf Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes TTC28`
 ```
 
 ![locus plot](https://github.com/adamewing/tmnt/blob/main/docs/locus_example.png?raw=true)
 
-From top to bottom, the plot shows the genome coordinates, gene models (optional if `--gtf` is supplied), translation from genome to CpG-only coordinate space, raw log-likelihood ratios, and smoothed methylated fraction plot.
+From top to bottom, the plot shows the genome coordinates, gene models (optional if `--gtf` is supplied), read mappings with modified bases as closed (modified) or open (unmodified) circles, translation from genome to CpG-only coordinate space, raw log-likelihood ratios, and smoothed methylated fraction plot.
 
 
 ### haplocus
@@ -205,7 +205,7 @@ Example:
 Plot of the PEG3 imprinted region on chromosome 19, hg38.
 
 ```
-tmnt haplocus -b MCF7_Euro.haplotag.bam -m MCF7_Euro.nanopolish.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --topspacing 25 -i chr19:56810076-56870725 -l 56835076-56841076
+tmnt haplocus -b MCF7_Euro.haplotag.bam -m MCF7_Euro.nanopolish.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --cpgspace 25 -i chr19:56810076-56870725 -l 56835076-56841076
 ```
 
 ![haplocus plot](https://github.com/adamewing/tmnt/blob/main/docs/haplocus_example.png?raw=true)
