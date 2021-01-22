@@ -2084,7 +2084,7 @@ def haplocus(args):
 
                 for call_pos, call in read.meth_calls.items():
                     if call == -1:
-                        ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[phase], mfc='white', markersize=2, zorder=2)
+                        ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=phase_color[phase], mfc='white', markersize=2, zorder=2)
 
                     if call == 1:
                         ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=2)
