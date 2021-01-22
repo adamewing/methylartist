@@ -1743,7 +1743,7 @@ def locus(args):
         ax3.add_artist(con)
 
     ax0.set_xlim(ax2.get_xlim()) # sync axes between orig coords and gtf plot
-    ax1.set_xlim(ax3.get_xlim())
+    ax0.set_xlim(ax3.get_xlim())
     ax3.set_xticks([])
 
     xt_labels = [str(int(t+elt_start)) for t in list(ax0.get_xticks())]
