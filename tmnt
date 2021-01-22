@@ -1477,8 +1477,10 @@ def locus(args):
     h_end = []
     h_cpg_start = []
     h_cpg_end = []
+    h_colors = []
 
-    h_colors = ['#3080ff','#ff4500']
+    if args.highlight:
+        h_colors = sns.color_palette("Blues", n_colors=len(args.highlight.split(',')))
 
     data = {}
 
