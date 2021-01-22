@@ -1694,7 +1694,7 @@ def locus(args):
                         ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=2)
 
 
-                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=1, color=sample_color[bamname], alpha=0.5))
+                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=1, color=sample_color[bamname], alpha=0.4))
 
 
     # plot correspondence between genome space and cpg space
