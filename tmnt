@@ -1744,8 +1744,8 @@ def locus(args):
         con = ConnectionPatch(xyA=link_end1, xyB=link_end2, coordsA="data", coordsB="data", axesA=ax2, axesB=ax3, color=l_col)
         ax3.add_artist(con)
 
-    ax0.set_xlim(ax2.get_xlim()) # sync axes between orig coords and gtf plot
-    ax0.set_xlim(ax3.get_xlim())
+    ax0.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
+    ax1.set_xlim(ax3.get_xlim())
     ax3.set_xticks([])
 
     xt_labels = [str(int(t+elt_start)) for t in list(ax0.get_xticks())]
@@ -1938,7 +1938,11 @@ def haplocus(args):
 
 
     fig = plt.figure()
-    gs = gridspec.GridSpec(4,1,height_ratios=[1,1,3,3])
+    gs = gridspec.GridSpec(5,1,height_ratios=[1,5,1,3,3])
+
+    phase_color = {}
+    for i, phase in enumerate(phase_order):
+        phase_color[phase] = sns.color_palette(n_colors=len(phase_order))[i]
 
     # plot genes
     ax0 = plt.subplot(gs[0])
@@ -1999,12 +2003,102 @@ def haplocus(args):
         ax0.add_line(tx)
 
 
-    # plot correspondence between genome space and cpg space
-    ax1 = plt.subplot(gs[1])
-    ax2 = ax1.twiny()
+    # per-read plot
 
-    ax1.set_ylim(0,10)
-    ax1.set_yticklabels([])
+    ax1 = plt.subplot(gs[1])
+    ax1.set_xticks([])
+    ax1.set_yticks([])
+
+    readstack = dd(list)
+
+    max_y  = 1
+    pack_y = 1
+
+    for phase in phase_order:
+        fetch_reads_bam = pysam.AlignmentFile(args.bam)
+        pos_cache = {}
+
+        for read in fetch_reads_bam.fetch(chrom, elt_start, elt_end):
+            if read.mapq < 10:
+                continue
+
+            if read.query_name not in pos_cache:
+                pos_cache[read.query_name] = ([read.reference_start], [read.reference_end])
+            else:
+                pos_cache[read.query_name][0].append(read.reference_start)
+                pos_cache[read.query_name][1].append(read.reference_end)
+
+        for readname, read in methreads.items():
+            if read.phase != phase:
+                continue
+
+            read.ypos = max_y
+            max_y += 1
+
+            read.starts, read.ends = pos_cache[readname]
+            readstack[phase].append(read)
+
+        fetch_reads_bam.close()
+
+    # read packing
+
+    for phase in phase_order:
+        reads = readstack[phase]
+
+        y = dd(list)
+
+        for read in readstack[phase]:
+            y[read.ypos].append(read)
+
+        for p in y:
+            for q in y:
+                if p == q:
+                    continue
+
+                for read_q in y[q]:
+                        move = True
+
+                        for read_p in y[p]:
+                            if read_q.overlap(read_p):
+                                move = False
+
+                        if move:
+                            y[p].append(read_q)
+                            y[q].remove(read_q)
+
+        for p in y:
+            if len(y[p]) > 0:
+                for read in sorted(y[p], key=lambda r: min(r.starts)):
+                    read.ypos = pack_y
+                pack_y += 1
+
+    ax1.set_ylim(0,pack_y+1)
+
+    readlines = []
+
+    for phase in phase_order:
+        for read in readstack[phase]:
+            for i in range(len(read.starts)):
+                readline_start = max(read.starts[i], elt_start) - elt_start
+                readline_end   = min(read.ends[i], elt_end) - elt_start
+
+                for call_pos, call in read.meth_calls.items():
+                    if call == -1:
+                        ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[phase], mfc='white', markersize=2, zorder=2)
+
+                    if call == 1:
+                        ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=2)
+
+
+                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=1, color=phase_color[phase], alpha=0.4))
+
+
+    # plot correspondence between genome space and cpg space
+    ax2 = plt.subplot(gs[2])
+    ax3 = ax2.twiny()
+
+    ax2.set_ylim(0,10)
+    ax2.set_yticklabels([])
 
     x1 = []
     x2 = []
@@ -2021,16 +2115,16 @@ def haplocus(args):
             x1.append(coord_to_cpg[x])
 
     
-    ax1.vlines(x1, 0, 1, color='#777777', zorder=1)
-    ax2.vlines(x2, 9, 10, color='#777777', zorder=1)
+    ax2.vlines(x1, 0, 1, color='#777777', zorder=1)
+    ax3.vlines(x2, 9, 10, color='#777777', zorder=1)
 
     if args.highlight:
         for i in range(len(h_start)):
             orig_highlight_box = matplotlib.patches.Rectangle((h_start[i],9), h_end[i]-h_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=2)
             cpg_highlight_box = matplotlib.patches.Rectangle((h_cpg_start[i],0), h_cpg_end[i]-h_cpg_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=3)
 
-            ax2.add_patch(orig_highlight_box)
-            ax1.add_patch(cpg_highlight_box)
+            ax3.add_patch(orig_highlight_box)
+            ax2.add_patch(cpg_highlight_box)
 
     for x1_x, x2_x in zip(x1, x2):
         link_end1 = (x1_x, 1)
@@ -2042,11 +2136,12 @@ def haplocus(args):
             if x2_x >= h_start[i] and x2_x <= h_end[i]:
                 l_col = h_colors[i]
 
-        con = ConnectionPatch(xyA=link_end1, xyB=link_end2, coordsA="data", coordsB="data", axesA=ax1, axesB=ax2, color=l_col)
-        ax2.add_artist(con)
+        con = ConnectionPatch(xyA=link_end1, xyB=link_end2, coordsA="data", coordsB="data", axesA=ax2, axesB=ax3, color=l_col)
+        ax3.add_artist(con)
 
-    ax0.set_xlim(ax2.get_xlim()) # sync axes between orig coords and gtf plot
-    ax2.set_xticks([])
+    ax0.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
+    ax1.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
+    ax3.set_xticks([])
 
     xt_labels = [str(int(t+elt_start)) for t in list(ax0.get_xticks())]
     ax0.set_xticks(ax0.get_xticks().tolist()) # workaround for matplotlib 3.3.1 warning    
@@ -2055,23 +2150,23 @@ def haplocus(args):
 
     # llr plot
 
-    ax3 = plt.subplot(gs[2])
+    ax4 = plt.subplot(gs[3])
 
-    ax3.axhline(y=2.5, c='k', linestyle='--',lw=1)
-    ax3.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
-    ax3.axhline(y=-2.5, c='k', linestyle='--',lw=1)
+    ax4.axhline(y=2.5, c='k', linestyle='--',lw=1)
+    ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
+    ax4.axhline(y=-2.5, c='k', linestyle='--',lw=1)
 
-    ax3 = sns.lineplot(x='loc', y='llr', hue='phase', data=meth_table)
+    ax4 = sns.lineplot(x='loc', y='llr', hue='phase', data=meth_table)
 
     phase_color = {}
     for i, phase in enumerate(phase_order):
         phase_color[phase] = sns.color_palette(n_colors=len(phase_order))[i]
 
-    ax3.set_xlim(ax1.get_xlim())
+    ax4.set_xlim(ax2.get_xlim())
 
     # sliding window plot
 
-    ax5 = plt.subplot(gs[3])
+    ax5 = plt.subplot(gs[4])
 
     order_stack = 1
 
@@ -2096,7 +2191,7 @@ def haplocus(args):
                 order_stack += 1
 
 
-    ax5.set_xlim(ax1.get_xlim())
+    ax5.set_xlim(ax2.get_xlim())
     ax5.set_ylim((-0.05,1.05))
 
     fig.set_size_inches(16, 8)
