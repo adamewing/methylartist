@@ -1138,7 +1138,7 @@ def db_megalodon(args):
 
             mod_prob = float(row['mod_log_prob'])
             can_prob = float(row['can_log_prob'])
-            minprob = float(args.minprob)
+            minprob  = float(args.minprob)
 
             llr = float(row['mod_log_prob']) - float(row['can_log_prob'])
 
@@ -1148,13 +1148,13 @@ def db_megalodon(args):
 
             methcall = 0
 
-            if mod_prob >= minprob:
+            if np.exp(mod_prob) >= minprob:
                 methcall = 1
 
-            if can_prob >= minprob:
+            if np.exp(can_prob) >= minprob:
                 methcall = -1
 
-            assert (mod_prob + can_prob) < 1.01 # allow for some rounding error
+            assert (mod_prob + can_prob) < 1.01 # allow for some rounding or floating point error
 
             ins_data = (chrom, pos, strand, readname, llr, methcall)
             c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d)" % ins_data)
