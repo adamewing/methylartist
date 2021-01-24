@@ -119,7 +119,7 @@ Contents of `MCF7_data.txt`:
 
 ```
 MCF7_ATCC.haplotag.bam MCF7_ATCC.nanopolish.db
-MCF7_Euro.haplotag.bam MCF7_Euro.nanopolish.db
+MCF7_ECACC.haplotag.bam MCF7_ECACC.nanopolish.db
 ```
 
 Contents of L1_FL.bed (first 10 lines):
@@ -140,7 +140,7 @@ chr1    33671998        33678118        L1PA4   +
 Output in `L1_FL.MCF7_data.excl_ambig.segmeth.tsv` (first 10 lines):
 
 ```
-seg_id  seg_chrom       seg_start       seg_end seg_name        seg_strand      MCF7_ATCC.haplotag_meth_calls   MCF7_ATCC.haplotag_unmeth_calls MCF7_ATCC.haplotag_no_calls     MCF7_ATCC.haplotag_methfrac     MCF7_Euro.haplotag_meth_calls     MCF7_Euro.haplotag_unmeth_calls MCF7_Euro.haplotag_no_calls     MCF7_Euro.haplotag_methfrac
+seg_id  seg_chrom       seg_start       seg_end seg_name        seg_strand      MCF7_ATCC.haplotag_meth_calls   MCF7_ATCC.haplotag_unmeth_calls MCF7_ATCC.haplotag_no_calls     MCF7_ATCC.haplotag_methfrac     MCF7_ECACC.haplotag_meth_calls     MCF7_ECACC.haplotag_unmeth_calls MCF7_ECACC.haplotag_no_calls     MCF7_ECACC.haplotag_methfrac
 chr1:440936-447357      chr1    440936  447357  L1PA7   +       0       0       0       NaN     0       0       0       NaN
 chr1:675912-682333      chr1    675912  682333  L1PA7   +       129     66      141     0.6615384615384615      222     55      133     0.8014440433212996
 chr1:7411758-7417922    chr1    7411758 7417922 L1PA4   -       491     410     867     0.5449500554938956      349     79      364     0.8154205607476636
@@ -162,7 +162,7 @@ Examples:
 Strip plot of L1HS, L1PA2, L1PA4, and L1PA6 elements across two samples:
 
 ```
-tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_Euro.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10
+tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_ECACC.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10
 ```
 
 ![strip plot](https://github.com/adamewing/tmnt/blob/main/docs/segplot_example_strip.png?raw=true)
@@ -170,7 +170,7 @@ tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF
 As above, but use violin plots:
 
 ```
-tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_Euro.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10 --violin
+tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_ECACC.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10 --violin
 ```
 
 ![violin plot](https://github.com/adamewing/tmnt/blob/main/docs/segplot_example_violin.png?raw=true)
@@ -205,7 +205,7 @@ Example:
 Plot of the PEG3 imprinted region on chromosome 19, hg38.
 
 ```
-tmnt haplocus -b MCF7_Euro.haplotag.bam -m MCF7_Euro.nanopolish.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --cpgspace 25 -i chr19:56810076-56870725 -l 56835076-56841076
+tmnt haplocus -b MCF7_ECACC.haplotag.bam -m MCF7_ECACC.nanopolish.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --cpgspace 25 -i chr19:56810076-56870725 -l 56835076-56841076
 ```
 
 ![haplocus plot](https://github.com/adamewing/tmnt/blob/main/docs/haplocus_example.png?raw=true)
@@ -242,7 +242,7 @@ chr1    104843834       104849864       L1HS    -
 Output file from `segmeth`, `L1HS.MCF7_data.excl_ambig.segmeth.tsv` (first 10 lines):
 
 ```
-seg_id  seg_chrom       seg_start       seg_end seg_name        seg_strand      MCF7_ATCC.haplotag_meth_calls   MCF7_ATCC.haplotag_unmeth_calls MCF7_ATCC.haplotag_no_calls     MCF7_ATCC.haplotag_methfrac     MCF7_Euro.haplotag_meth_calls     MCF7_Euro.haplotag_unmeth_calls MCF7_Euro.haplotag_no_calls     MCF7_Euro.haplotag_methfrac
+seg_id  seg_chrom       seg_start       seg_end seg_name        seg_strand      MCF7_ATCC.haplotag_meth_calls   MCF7_ATCC.haplotag_unmeth_calls MCF7_ATCC.haplotag_no_calls     MCF7_ATCC.haplotag_methfrac     MCF7_ECACC.haplotag_meth_calls     MCF7_ECACC.haplotag_unmeth_calls MCF7_ECACC.haplotag_no_calls     MCF7_ECACC.haplotag_methfrac
 chr1:34566056-34572105  chr1    34566056        34572105        L1HS    -       895     741     1123    0.5470660146699267      803     407     596     0.6636363636363637
 chr1:67078892-67084915  chr1    67078892        67084915        L1HS    -       1067    472     796     0.6933073424301495      976     356     779     0.7327327327327328
 chr1:71513699-71519742  chr1    71513699        71519742        L1HS    +       673     464     775     0.5919085312225154      679     329     633     0.6736111111111112
@@ -267,16 +267,16 @@ tmnt composite -b MCF7_ATCC.haplotag.bam -m MCF7_ATCC.nanopolish.db -s L1HS.MCF7
 
 Outputs genome-wide statistics on CpGs covered by at least one call. By default, `wgmeth` yields output in bedMethyl format (0-based coordinates):
 ```
-chr1    10467   10468   MCF7_Euro.nanopolish    3       .       10467   10468   0,0,0   3       1.0
-chr1    10469   10470   MCF7_Euro.nanopolish    3       .       10469   10470   0,0,0   3       1.0
-chr1    10482   10483   MCF7_Euro.nanopolish    7       .       10482   10483   0,0,0   7       0.7142857142857143
-chr1    10487   10488   MCF7_Euro.nanopolish    7       .       10487   10488   0,0,0   7       0.7142857142857143
-chr1    10491   10492   MCF7_Euro.nanopolish    7       .       10491   10492   0,0,0   7       0.7142857142857143
-chr1    10495   10496   MCF7_Euro.nanopolish    7       .       10495   10496   0,0,0   7       0.7142857142857143
-chr1    10523   10524   MCF7_Euro.nanopolish    8       .       10523   10524   0,0,0   8       0.875
-chr1    10540   10541   MCF7_Euro.nanopolish    11      .       10540   10541   0,0,0   11      0.9090909090909091
-chr1    10561   10562   MCF7_Euro.nanopolish    10      .       10561   10562   0,0,0   10      1.0
-chr1    10569   10570   MCF7_Euro.nanopolish    10      .       10569   10570   0,0,0   10      1.0
+chr1    10467   10468   MCF7_ECACC.nanopolish    3       .       10467   10468   0,0,0   3       1.0
+chr1    10469   10470   MCF7_ECACC.nanopolish    3       .       10469   10470   0,0,0   3       1.0
+chr1    10482   10483   MCF7_ECACC.nanopolish    7       .       10482   10483   0,0,0   7       0.7142857142857143
+chr1    10487   10488   MCF7_ECACC.nanopolish    7       .       10487   10488   0,0,0   7       0.7142857142857143
+chr1    10491   10492   MCF7_ECACC.nanopolish    7       .       10491   10492   0,0,0   7       0.7142857142857143
+chr1    10495   10496   MCF7_ECACC.nanopolish    7       .       10495   10496   0,0,0   7       0.7142857142857143
+chr1    10523   10524   MCF7_ECACC.nanopolish    8       .       10523   10524   0,0,0   8       0.875
+chr1    10540   10541   MCF7_ECACC.nanopolish    11      .       10540   10541   0,0,0   11      0.9090909090909091
+chr1    10561   10562   MCF7_ECACC.nanopolish    10      .       10561   10562   0,0,0   10      1.0
+chr1    10569   10570   MCF7_ECACC.nanopolish    10      .       10569   10570   0,0,0   10      1.0
 ```
 
 The `--dss` option yields genome-wide files suitable for input to DSS for statistical assessment of differential methylation (1-based coordinates):
