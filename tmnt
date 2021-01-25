@@ -1043,6 +1043,9 @@ def db_guppy(args):
     m = Motif(args.motif)
 
     for fn in outfiles:
+        if fn is None:
+            continue
+
         with open(fn) as tsv:
             logger.info('loading %s into %s' % (fn, db_fn))
             csv_reader = csv.DictReader(tsv, delimiter='\t')
