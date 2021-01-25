@@ -1094,7 +1094,7 @@ def db_megalodon(args):
     if basename == 'per_read_modified_base_calls' and not args.db:
         sys.exit('default megalodon filename (per_read_modified_base_calls) is not informative: please specify a database name with --db')    
 
-    db_fn = basename + '.db'
+    db_fn = basename + '.megalodon.db'
 
     if args.db:
         if args.db.endswith('.db'):
@@ -1177,7 +1177,7 @@ def db_nanopolish(args):
     if basename.endswith('.tsv'):
         basename = '.'.join(basename.split('.')[:-1])
 
-    db_fn = basename + '.db'
+    db_fn = basename + '.nanopolish.db'
 
     if args.db:
         if args.db.endswith('.db'):
