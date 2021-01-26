@@ -1216,7 +1216,9 @@ def db_nanopolish(args):
 
         csv_reader = csv.DictReader(methdata, delimiter='\t')
 
-        for row in csv_reader:
+        progress_interval = 500000
+
+        for i, row in enumerate(csv_reader, 1):
             r_start = int(row['start'])
             r_end   = int(row['end'])
             llr     = float(row['log_lik_ratio'])
@@ -1243,6 +1245,9 @@ def db_nanopolish(args):
 
                 ins_data = (row['chromosome'], cg_start, row['strand'], row['read_name'], llr, methcall)
                 c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d)" % ins_data)
+
+            if i % progress_interval == 0:
+                logger.info('processed %d records from %s' % (i, tsv))
 
         logger.info('commiting records from %s to %s' % (tsv, db_fn))
         conn.commit()
