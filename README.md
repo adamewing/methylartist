@@ -42,6 +42,12 @@ Appending additional results to the above database:
 tmnt db-nanopolish -m MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -a
 ```
 
+Loading results with the current recommended cutoffs for nanopolish (abs(llr) > 2.0, scale grouped CpGs):
+
+```
+tmnt db-nanopolish -m MCF7_ATCC_REP1.nanopolish.tsv.gz,MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -t 2.0 -s
+```
+
 Inputs can be uncompressed or .gzipped.
 
 
@@ -186,12 +192,12 @@ Sample input file `-d/--data` has the following whitespace-delimited fields (one
 
 Example:
 
-Plot of the TTC28 L1 locus in hg38, highlighting the L1 (body = blue, 5'UTR = orangered), and including the TTC28 5' exon (large trough in methylation on the right side of the plot)
+Plot of the TTC28 L1 locus in hg38, highlighting the L1 (5'UTR = darker blue, L1 body = lighter blue), and including the TTC28 5' exon (large trough in methylation on the right side of the plot)
 ```
-tmnt locus -d MCF7_data.txt -i chr22:28643284-28689315 -l 28664284-28669315,28663284-28664284 --cpgspace 50 --gtf Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes TTC28`
+tmnt locus -d MCF7_data_megalodon.txt -i chr22:28643284-28689315 -l 28664284-28669315,28663284-28664284 --cpgspace 10 --gtf Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes TTC28 --panelratios 1,5,1,3,3
 ```
 
-![locus plot](https://github.com/adamewing/tmnt/blob/main/docs/locus_example.png?raw=true)
+![locus plot](https://github.com/adamewing/tmnt/blob/main/docs/TTC28.MCF7_data_megalodon.chr22_28643284-28689315.locus.meth.png?raw=true)
 
 From top to bottom, the plot shows the genome coordinates, gene models (optional if `--gtf` is supplied), read mappings with modified bases as closed (modified) or open (unmodified) circles, translation from genome to CpG-only coordinate space, raw log-likelihood ratios, and smoothed methylated fraction plot.
 
@@ -200,7 +206,7 @@ From top to bottom, the plot shows the genome coordinates, gene models (optional
 
 Generates smoothed haplotype-aware methylation profiles across specific loci for one sample. Requires haplotypes to be tagged with whatshap.
 
-Example:
+Examples:
 
 Plot of the PEG3 imprinted region on chromosome 19, hg38.
 
