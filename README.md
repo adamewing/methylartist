@@ -1,4 +1,4 @@
-## tmnt: Transposon methylation nanopore tools
+## tmnt: transposon methylation nanopore tools
 
 Tools for parsing and plotting methylation data from Oxford Nanopore Technologies data in a way that is useful for transposable element applications.
 

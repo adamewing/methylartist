@@ -1030,6 +1030,9 @@ def db_guppy(args):
 
     db_fn = args.samplename + '.guppy.db'
 
+    if os.path.exists(db_fn) and not args.append:
+        sys.exit('database %s already exists' % db_fn)
+
     conn = sqlite3.connect(db_fn)
     c = conn.cursor()
 
@@ -1043,6 +1046,9 @@ def db_guppy(args):
     m = Motif(args.motif)
 
     for fn in outfiles:
+        if fn is None:
+            continue
+
         with open(fn) as tsv:
             logger.info('loading %s into %s' % (fn, db_fn))
             csv_reader = csv.DictReader(tsv, delimiter='\t')
@@ -1088,7 +1094,7 @@ def db_megalodon(args):
     if basename == 'per_read_modified_base_calls' and not args.db:
         sys.exit('default megalodon filename (per_read_modified_base_calls) is not informative: please specify a database name with --db')    
 
-    db_fn = basename + '.db'
+    db_fn = basename + '.megalodon.db'
 
     if args.db:
         if args.db.endswith('.db'):
@@ -1127,7 +1133,9 @@ def db_megalodon(args):
 
         csv_reader = csv.DictReader(methdata, delimiter='\t')
 
-        for row in csv_reader:
+        progress_interval = 500000
+
+        for i, row in enumerate(csv_reader):
             if row['mod_base'] != args.mod_base:
                 continue
 
@@ -1159,6 +1167,9 @@ def db_megalodon(args):
             ins_data = (chrom, pos, strand, readname, llr, methcall)
             c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d)" % ins_data)
 
+            if i % progress_interval == 0:
+                logger.info('processed %d records from %s' % (i, tsv))
+
         logger.info('commiting records from %s to %s' % (tsv, db_fn))
         conn.commit()
 
@@ -1171,7 +1182,7 @@ def db_nanopolish(args):
     if basename.endswith('.tsv'):
         basename = '.'.join(basename.split('.')[:-1])
 
-    db_fn = basename + '.db'
+    db_fn = basename + '.nanopolish.db'
 
     if args.db:
         if args.db.endswith('.db'):
@@ -1210,7 +1221,9 @@ def db_nanopolish(args):
 
         csv_reader = csv.DictReader(methdata, delimiter='\t')
 
-        for row in csv_reader:
+        progress_interval = 500000
+
+        for i, row in enumerate(csv_reader, 1):
             r_start = int(row['start'])
             r_end   = int(row['end'])
             llr     = float(row['log_lik_ratio'])
@@ -1237,6 +1250,9 @@ def db_nanopolish(args):
 
                 ins_data = (row['chromosome'], cg_start, row['strand'], row['read_name'], llr, methcall)
                 c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d)" % ins_data)
+
+            if i % progress_interval == 0:
+                logger.info('processed %d records from %s' % (i, tsv))
 
         logger.info('commiting records from %s to %s' % (tsv, db_fn))
         conn.commit()
@@ -1480,7 +1496,7 @@ def locus(args):
     h_colors = []
 
     if args.highlight:
-        h_colors = sns.color_palette("Blues", n_colors=len(args.highlight.split(',')))
+        h_colors = sns.color_palette(args.highlightpalette, n_colors=len(args.highlight.split(',')))
 
     data = {}
 
@@ -1545,9 +1561,13 @@ def locus(args):
     fig = plt.figure()
     gs = gridspec.GridSpec(5,1,height_ratios=[1,5,1,3,3])
 
+    if args.panelratios:
+        p_ratios = list(map(int, args.panelratios.split(',')))
+        gs = gridspec.GridSpec(5,1,height_ratios=p_ratios)
+
     sample_color = {}
     for i, sample in enumerate(sample_order):
-        sample_color[sample] = sns.color_palette(n_colors=len(sample_order))[i]
+        sample_color[sample] = sns.color_palette(args.samplepalette, n_colors=len(sample_order))[i]
 
     # plot genes
 
@@ -1761,7 +1781,7 @@ def locus(args):
     ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
     ax4.axhline(y=-2.5, c='k', linestyle='--',lw=1)
 
-    ax4 = sns.lineplot(x='loc', y='llr', hue='sample', data=meth_table)
+    ax4 = sns.lineplot(x='loc', y='llr', hue='sample', data=meth_table, palette=args.samplepalette)
     ax4.set_xlim(ax2.get_xlim())
 
     # meth frac plot
@@ -1832,7 +1852,7 @@ def haplocus(args):
     h_colors = []
 
     if args.highlight:
-        h_colors = sns.color_palette("Blues", n_colors=len(args.highlight.split(',')))
+        h_colors = sns.color_palette(args.highlightpalette, n_colors=len(args.highlight.split(',')))
 
     conn = sqlite3.connect(args.methdata)
     c = conn.cursor()
@@ -1940,9 +1960,13 @@ def haplocus(args):
     fig = plt.figure()
     gs = gridspec.GridSpec(5,1,height_ratios=[1,5,1,3,3])
 
+    if args.panelratios:
+        p_ratios = list(map(int, args.panelratios.split(',')))
+        gs = gridspec.GridSpec(5,1,height_ratios=p_ratios)
+
     phase_color = {}
     for i, phase in enumerate(phase_order):
-        phase_color[phase] = sns.color_palette(n_colors=len(phase_order))[i]
+        phase_color[phase] = sns.color_palette(args.phasepalette, n_colors=len(phase_order))[i]
 
     # plot genes
     ax0 = plt.subplot(gs[0])
@@ -2156,11 +2180,7 @@ def haplocus(args):
     ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
     ax4.axhline(y=-2.5, c='k', linestyle='--',lw=1)
 
-    ax4 = sns.lineplot(x='loc', y='llr', hue='phase', data=meth_table)
-
-    phase_color = {}
-    for i, phase in enumerate(phase_order):
-        phase_color[phase] = sns.color_palette(n_colors=len(phase_order))[i]
+    ax4 = sns.lineplot(x='loc', y='llr', hue='phase', data=meth_table, palette=args.phasepalette)
 
     ax4.set_xlim(ax2.get_xlim())
 
@@ -2520,6 +2540,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('-l', '--highlight', default=None, help='format: start-end')
     parser_locus.add_argument('-s', '--slidingwindowsize', default=20, help='size of sliding window for meth frac (default=20)')
     parser_locus.add_argument('-t', '--slidingwindowstep', default=2, help='step size for meth frac (default=2)')
+    parser_locus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
     parser_locus.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default=8)')
     parser_locus.add_argument('--maskcutoff', default=20, help='windowed read count masking cutoff (default=20)')
     parser_locus.add_argument('--cpgspace', default=10, help='spacing between links in top panel (default=10)')
@@ -2527,6 +2548,8 @@ if __name__ == '__main__':
     parser_locus.add_argument('--methcall_ymax', default=None)
     parser_locus.add_argument('--methcall_xmin', default=None)
     parser_locus.add_argument('--methcall_xmax', default=None)
+    parser_locus.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
+    parser_locus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")') 
     parser_locus.add_argument('--excl_ambig', action='store_true', default=False)
     parser_locus.add_argument('--unambig_highlight', action='store_true', default=False)
     parser_locus.add_argument('--svg', action='store_true')    
@@ -2539,11 +2562,14 @@ if __name__ == '__main__':
     parser_haplocus.add_argument('-l', '--highlight', default=None, help='format: start-end')
     parser_haplocus.add_argument('-s', '--slidingwindowsize', default=20, help='size of sliding window for smoothed plot (default=20)')
     parser_haplocus.add_argument('-t', '--slidingwindowstep', default=2, help='size of sliding window for smoothed plot (default=2)')
+    parser_haplocus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
     parser_haplocus.add_argument('--methcall_ymax', default=None)
     parser_haplocus.add_argument('--cpgspace', default=10, help='spacing between links in top panel (default=10)')
     parser_haplocus.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default=8)')
     parser_haplocus.add_argument('--maskcutoff', default=20, help='windowed read count masking cutoff (default=20)')
     parser_haplocus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
+    parser_haplocus.add_argument('--phasepalette', default="tab10", help='palette for phases (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
+    parser_haplocus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")') 
     parser_haplocus.add_argument('--excl_ambig', action='store_true', default=False)
     parser_haplocus.add_argument('--unambig_highlight', action='store_true', default=False)
     parser_haplocus.add_argument('--ignore_tags', action='store_true', default=False)
