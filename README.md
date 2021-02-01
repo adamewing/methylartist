@@ -211,10 +211,10 @@ Examples:
 Plot of the PEG3 imprinted region on chromosome 19, hg38.
 
 ```
-tmnt haplocus -b MCF7_ECACC.haplotag.bam -m MCF7_ECACC.nanopolish.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --cpgspace 25 -i chr19:56810076-56870725 -l 56835076-56841076
+tmnt haplocus -b MCF7_ECACC.haplotag.bam -m MCF7_ECACC.megalodon.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --cpgspace 25 -i chr19:56810076-56870725 -l 56835076-56841076 --phasepalette viridis
 ```
 
-![haplocus plot](https://github.com/adamewing/tmnt/blob/main/docs/haplocus_example.png?raw=true)
+![haplocus plot](https://github.com/adamewing/tmnt/blob/main/docs/MCF7_ECACC.haplotag.chr19_56810076-56870725.phased.meth.png?raw=true)
 
 
 ### composite
