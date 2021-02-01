@@ -2322,7 +2322,6 @@ def composite(args):
                 box = matplotlib.patches.Rectangle([b_start, 0], b_end-b_start, 1.0, edgecolor='#555555', facecolor=b_col, zorder=2)
                 ax0.add_patch(box)
 
-
     cpg_locs = []
 
     for i in range(len(te_ref_seq)-1):
