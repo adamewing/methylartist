@@ -46,23 +46,25 @@ logger.setLevel(logging.INFO)
 
 
 class Read:
-    def __init__(self, read_name, cpg_loc, stat, methcall, phase=None):
-        self.read_name = read_name
-        self.llrs = {}
+    def __init__(self, read_name, cpg_loc, stat, methcall, modname, phase=None):
+        self.read_name  = read_name
+        self.llrs       = {}
         self.meth_calls = {}
-        self.phase = phase
+        self.phase      = phase
+        self.mod_names  = {}
 
         # used for locus per-read plot
-        self.ypos    = None
-        self.starts  = []
-        self.ends    = []
+        self.ypos   = None
+        self.starts = []
+        self.ends   = []
 
-        self.add_cpg(cpg_loc, stat, methcall)
+        self.add_mod(cpg_loc, stat, methcall, modname)
 
-    def add_cpg(self, cpg_loc, stat, methcall):
+    def add_mod(self, cpg_loc, stat, methcall, modname):
         assert methcall in (-1,0,1)
-        self.llrs[cpg_loc] = stat
+        self.llrs[cpg_loc]       = stat
         self.meth_calls[cpg_loc] = methcall
+        self.mod_names[cpg_loc]  = modname
 
     def overlap(self, other):
         return min(max(self.ends), max(other.ends)) - max(min(self.starts), min(other.starts)) > 0
@@ -450,7 +452,19 @@ def rc(dna):
     return dna.translate(complements)[::-1]
 
 
-def get_segmeth_calls(bam_fn, meth_db, chrom, seg_start, seg_end, seg_name, seg_strand):
+def get_modnames(meth_db):
+    conn = sqlite3.connect(meth_db)
+    c = conn.cursor()
+
+    mod_names = []
+
+    for row in c.execute("SELECT DISTINCT modname FROM methdata"):
+        mod_names.append(row[0])
+
+    return mod_names
+
+
+def get_segmeth_calls(bam_fn, mod_names, meth_db, chrom, seg_start, seg_end, seg_name, seg_strand):
     conn = sqlite3.connect(meth_db)
     c = conn.cursor()
 
@@ -465,9 +479,9 @@ def get_segmeth_calls(bam_fn, meth_db, chrom, seg_start, seg_end, seg_name, seg_
     seg_reads = {}
 
     for index in reads:
-        for row in c.execute("SELECT chrom, pos, stat, methstate FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+        for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-            cg_chrom, cg_start, stat, methstate = row
+            cg_chrom, cg_start, stat, methstate, modname = row
 
             if chrom != cg_chrom:
                 continue
@@ -478,19 +492,25 @@ def get_segmeth_calls(bam_fn, meth_db, chrom, seg_start, seg_end, seg_name, seg_
             cg_seg_start = cg_start - seg_start
 
             if index not in seg_reads:
-                seg_reads[index] = Read(index, cg_seg_start, stat, methstate)
+                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
             else:
-                seg_reads[index].add_cpg(cg_seg_start, stat, methstate)
+                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
 
-    seg_meth_calls = dd(int)
+    seg_result = {}
 
-    for name, read in seg_reads.items():
-        for loc, call in read.meth_calls.items():
-            seg_meth_calls[call] += 1
+    for modname in mod_names:
+        seg_meth_calls = dd(int)
+
+        for name, read in seg_reads.items():
+            for loc, call in read.meth_calls.items():
+                if read.mod_names[loc] == modname:
+                    seg_meth_calls[call] += 1
+
+        seg_result[modname] = seg_meth_calls
 
 
-    return seg_meth_calls, (chrom, seg_start, seg_end, seg_name, seg_strand)
+    return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand)
 
 
 
@@ -542,9 +562,9 @@ def get_meth_locus(args, bam, meth_db):
     seg_reads = {}
 
     for index in reads:
-        for row in c.execute("SELECT chrom, pos, stat, methstate FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+        for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-            cg_chrom, cg_start, stat, methstate = row
+            cg_chrom, cg_start, stat, methstate, modname = row
 
             if chrom != cg_chrom:
                 continue
@@ -555,9 +575,9 @@ def get_meth_locus(args, bam, meth_db):
             cg_seg_start = cg_start - elt_start
 
             if index not in seg_reads:
-                seg_reads[index] = Read(index, cg_seg_start, stat, methstate)
+                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
             else:
-                seg_reads[index].add_cpg(cg_seg_start, stat, methstate)
+                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
     return seg_reads
 
@@ -582,9 +602,9 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
     seg_reads = {}
 
     for index in reads:
-        for row in c.execute("SELECT chrom, pos, stat, methstate FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+        for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-            cg_chrom, cg_start, stat, methstate = row
+            cg_chrom, cg_start, stat, methstate, modname = row
 
             if seg_chrom != cg_chrom:
                 continue
@@ -595,9 +615,9 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
             cg_seg_start = cg_start - seg_start
 
             if index not in seg_reads:
-                seg_reads[index] = Read(index, cg_seg_start, stat, methstate)
+                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
             else:
-                seg_reads[index].add_cpg(cg_seg_start, stat, methstate)
+                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
     meth_table = dd(dict)
     sample = '.'.join(args.bam.split('.')[:-1])
@@ -730,9 +750,9 @@ def get_meth_calls_wg(bam_fn, meth_fn, chrom, seg_start, seg_end, phased):
     seg_methreads = {}
 
     for index in reads:
-        for row in c.execute("SELECT chrom, pos, stat, methstate FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+        for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-            cg_chrom, cg_start, stat, methstate = row
+            cg_chrom, cg_start, stat, methstate, modname = row
 
             if chrom != cg_chrom:
                 continue
@@ -743,9 +763,9 @@ def get_meth_calls_wg(bam_fn, meth_fn, chrom, seg_start, seg_end, phased):
             cg_seg_start = cg_start - seg_start
 
             if index not in seg_methreads:
-                seg_methreads[index] = Read(index, cg_seg_start, stat, methstate, phase=reads[index])
+                seg_methreads[index] = Read(index, cg_seg_start, stat, methstate, modname, phase=reads[index])
             else:
-                seg_methreads[index].add_cpg(cg_seg_start, stat, methstate)
+                seg_methreads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
 
     meth_data = {}
@@ -1272,12 +1292,21 @@ def segmeth(args):
     'methfrac'
     ]
 
+    mod_names = []
+
     data = {}
 
     with open(args.data) as _:
         for line in _:
             bam, meth = line.strip().split()
             data[bam] = meth
+
+            for m in get_modnames(meth):
+                mod_names.append(m)
+
+    mod_names = list(set(mod_names))
+
+    logger.info('found mod names: %s' % ','.join(mod_names))
 
     base_names = ['.'.join(bam.split('.')[:-1]) for bam in data]
 
@@ -1292,14 +1321,6 @@ def segmeth(args):
     out = open(outfn, 'w')
 
     logger.info('segmeth output filename: %s' % outfn)
-
-    header = ['seg_id', 'seg_chrom', 'seg_start', 'seg_end', 'seg_name', 'seg_strand']
-
-    for bn in base_names:
-        for s in stats:
-            header.append('%s_%s' % (os.path.basename(bn), s))
-
-    out.write('\t'.join(header) + '\n')
 
     pool = mp.Pool(processes=int(args.procs))
 
@@ -1325,7 +1346,7 @@ def segmeth(args):
                 seg_start = int(seg_start)
                 seg_end = int(seg_end)
 
-                res = pool.apply_async(get_segmeth_calls, [bam_fn, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand])
+                res = pool.apply_async(get_segmeth_calls, [bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand])
 
                 results.append((res, base_name))
 
@@ -1333,44 +1354,54 @@ def segmeth(args):
     meth_segs = dd(dict)
 
     for res, base_name in results:
-        meth_data, seg = res.get()
+        meth_result, seg = res.get()
 
-        if meth_data is None:
+        if meth_result is None:
             continue
 
         seg_id = '%s:%d-%d' % seg[:3]
 
         seg_chrom, seg_start, seg_end, seg_name, seg_strand = map(str, seg)
 
-        no_calls = 0
-        meth_calls = 0
-        unmeth_calls = 0
-
-        if -1 in meth_data:
-            unmeth_calls = meth_data[-1]
-
-        if 0 in meth_data:
-            no_calls = meth_data[0]
-
-        if 1 in meth_data:
-            meth_calls = meth_data[1]
-
-        meth_segs[seg_id]['seg_id'] = seg_id
-        meth_segs[seg_id]['seg_chrom'] = seg_chrom
-        meth_segs[seg_id]['seg_start'] = seg_start
-        meth_segs[seg_id]['seg_end'] = seg_end
-        meth_segs[seg_id]['seg_name'] = seg_name
+        meth_segs[seg_id]['seg_id']     = seg_id
+        meth_segs[seg_id]['seg_chrom']  = seg_chrom
+        meth_segs[seg_id]['seg_start']  = seg_start
+        meth_segs[seg_id]['seg_end']    = seg_end
+        meth_segs[seg_id]['seg_name']   = seg_name
         meth_segs[seg_id]['seg_strand'] = seg_strand
 
-        meth_segs[seg_id][os.path.basename(base_name) + '_meth_calls'] = meth_calls
-        meth_segs[seg_id][os.path.basename(base_name) + '_unmeth_calls'] = unmeth_calls
-        meth_segs[seg_id][os.path.basename(base_name) + '_no_calls'] = no_calls
+        for modname, meth_data in meth_result.items():
+            no_calls = 0
+            meth_calls = 0
+            unmeth_calls = 0
 
-        if meth_calls+unmeth_calls == 0:
-             meth_segs[seg_id][os.path.basename(base_name) + '_methfrac'] = 'NaN'
-        else:
-            meth_segs[seg_id][os.path.basename(base_name) + '_methfrac'] = meth_calls/float(meth_calls+unmeth_calls)
+            if -1 in meth_data:
+                unmeth_calls = meth_data[-1]
 
+            if 0 in meth_data:
+                no_calls = meth_data[0]
+
+            if 1 in meth_data:
+                meth_calls = meth_data[1]
+
+            meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_meth_calls'] = meth_calls
+            meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_unmeth_calls'] = unmeth_calls
+            meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_no_calls'] = no_calls
+
+            if meth_calls+unmeth_calls == 0:
+                 meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_methfrac'] = 'NaN'
+            else:
+                meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_methfrac'] = meth_calls/float(meth_calls+unmeth_calls)
+
+
+    header = ['seg_id', 'seg_chrom', 'seg_start', 'seg_end', 'seg_name', 'seg_strand']
+
+    for bn in base_names:
+        for m in mod_names:
+            for s in stats:
+                header.append('%s_%s_%s' % (os.path.basename(bn), m, s))
+
+    out.write('\t'.join(header) + '\n')
 
     for mseg in meth_segs:
         output = [] 
@@ -1890,9 +1921,9 @@ def haplocus(args):
     methreads = {}
 
     for index in readnames:
-        for row in c.execute("SELECT chrom, pos, stat, methstate FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+        for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-            cg_chrom, cg_start, stat, methstate = row
+            cg_chrom, cg_start, stat, methstate, modname = row
 
             if chrom != cg_chrom:
                 continue
@@ -1903,9 +1934,9 @@ def haplocus(args):
             cg_seg_start = cg_start - elt_start
 
             if index not in methreads:
-                methreads[index] = Read(index, cg_seg_start, stat, methstate, phase=reads[index])
+                methreads[index] = Read(index, cg_seg_start, stat, methstate, modname, phase=reads[index])
             else:
-                methreads[index].add_cpg(cg_seg_start, stat, methstate)
+                methreads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
 
     # table for plotting
