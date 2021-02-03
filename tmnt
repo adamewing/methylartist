@@ -1037,7 +1037,7 @@ def db_guppy(args):
     c = conn.cursor()
 
     if not args.append:
-        c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer)''')
+        c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer, modname text)''')
         c.execute('''CREATE INDEX read_index ON methdata(readname)''')
 
     else:
@@ -1061,7 +1061,8 @@ def db_guppy(args):
 
                 mod_prob = float(row['mod_log_prob'])
                 can_prob = float(row['can_log_prob'])
-                minprob = float(args.minprob)
+                minprob  = float(args.minprob)
+                mod_base = args.modname
 
                 llr = float(row['mod_log_prob']) - float(row['can_log_prob'])
 
@@ -1079,8 +1080,8 @@ def db_guppy(args):
 
                 assert (mod_prob + can_prob) < 1.01 # allow for some rounding error
 
-                ins_data = (chrom, pos, strand, readname, llr, methcall)
-                c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d)" % ins_data)
+                ins_data = (chrom, pos, strand, readname, llr, methcall, mod_base)
+                c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d, '%s')" % ins_data)
 
             logger.info('commiting records from %s to %s' % (fn, db_fn))
             conn.commit()
@@ -1115,7 +1116,7 @@ def db_megalodon(args):
     c = conn.cursor()
 
     if not args.append:
-        c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer)''')
+        c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer, modname text)''')
         c.execute('''CREATE INDEX read_index ON methdata(readname)''')
 
     else:
@@ -1136,9 +1137,6 @@ def db_megalodon(args):
         progress_interval = 500000
 
         for i, row in enumerate(csv_reader):
-            if row['mod_base'] != args.mod_base:
-                continue
-
             readname = row['read_id']
             chrom    = row['chrm']
             pos      = int(row['pos'])
@@ -1147,6 +1145,7 @@ def db_megalodon(args):
             mod_prob = float(row['mod_log_prob'])
             can_prob = float(row['can_log_prob'])
             minprob  = float(args.minprob)
+            mod_base = row['mod_base']
 
             llr = float(row['mod_log_prob']) - float(row['can_log_prob'])
 
@@ -1164,8 +1163,8 @@ def db_megalodon(args):
 
             assert (mod_prob + can_prob) < 1.01 # allow for some rounding or floating point error
 
-            ins_data = (chrom, pos, strand, readname, llr, methcall)
-            c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d)" % ins_data)
+            ins_data = (chrom, pos, strand, readname, llr, methcall, mod_base)
+            c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d, '%s')" % ins_data)
 
             if i % progress_interval == 0:
                 logger.info('processed %d records from %s' % (i, tsv))
@@ -1203,7 +1202,7 @@ def db_nanopolish(args):
     c = conn.cursor()
 
     if not args.append:
-        c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer)''')
+        c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer, modname text)''')
         c.execute('''CREATE INDEX read_index ON methdata(readname)''')
 
     else:
@@ -1224,10 +1223,11 @@ def db_nanopolish(args):
         progress_interval = 500000
 
         for i, row in enumerate(csv_reader, 1):
-            r_start = int(row['start'])
-            r_end   = int(row['end'])
-            llr     = float(row['log_lik_ratio'])
-            seq     = row['sequence']
+            r_start  = int(row['start'])
+            r_end    = int(row['end'])
+            llr      = float(row['log_lik_ratio'])
+            seq      = row['sequence']
+            mod_base = args.modname
 
             if args.scalegroup:
                 llr = llr/float(row['num_motifs'])
@@ -1248,8 +1248,8 @@ def db_nanopolish(args):
                 cg_start = r_start + cg_pos - first_cg_pos
                 cg_pos = seq.find("CG", cg_pos + 1)
 
-                ins_data = (row['chromosome'], cg_start, row['strand'], row['read_name'], llr, methcall)
-                c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d)" % ins_data)
+                ins_data = (row['chromosome'], cg_start, row['strand'], row['read_name'], llr, methcall, mod_base)
+                c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d, '%s')" % ins_data)
 
             if i % progress_interval == 0:
                 logger.info('processed %d records from %s' % (i, tsv))
@@ -2617,7 +2617,6 @@ if __name__ == '__main__':
     parser_megalodon.add_argument('-d', '--db', default=None, help='database name (default: auto-infer)')
     parser_megalodon.add_argument('-p', '--minprob', default=0.8, help='probability threshold for calling modified or unmodified base (default = 0.8)')
     parser_megalodon.add_argument('-a', '--append', default=False, action='store_true', help='append to database')
-    parser_megalodon.add_argument('--mod_base', default='m', help='modified base (char in mod_base column in megalodon per-base output), default = "m"')
 
     # options for guppy db
     parser_guppy.add_argument('-s', '--samplename', required=True, help='name for sample')
@@ -2637,6 +2636,7 @@ if __name__ == '__main__':
     parser_nanopolish.add_argument('-t', '--thresh', default=2.5, help='llr threshold (default = 2.5; if using --scalegroup the suggested setting is 2.0)')
     parser_nanopolish.add_argument('-a', '--append', default=False, action='store_true', help='append to database')
     parser_nanopolish.add_argument('-s', '--scalegroup', default=False, action='store_true', help='scale threshold by number of CpGs in a group')
+    parser_nanopolish.add_argument('-n', '--modname', default='CpG', help='modification type (tag if combining multiple mods, default = "CpG")')
 
     args = parser.parse_args()
     main(args)
