@@ -514,17 +514,16 @@ def get_segmeth_calls(bam_fn, mod_names, meth_db, chrom, seg_start, seg_end, seg
 
 
 
-def get_meth_locus(args, bam, meth_db):
+def get_meth_locus(args, bam, meth_db, mod):
     # used for locus plots
     # set up
+    logger.info('fetching reads from %s with for mod %s' % (bam, mod))
+
     assert ':' in args.interval
     assert '-' in args.interval
 
     chrom, pos = args.interval.split(':')
     elt_start, elt_end = map(int, pos.split('-'))
-
-    bamname = '.'.join(os.path.basename(bam).split('.')[:-1])
-    fn_prefix = os.path.basename(bamname) + '.' + '_'.join(args.interval.split(':')[:2])
 
     conn = sqlite3.connect(meth_db)
     c = conn.cursor()
@@ -565,6 +564,9 @@ def get_meth_locus(args, bam, meth_db):
         for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
             cg_chrom, cg_start, stat, methstate, modname = row
+
+            if modname != mod:
+                continue
 
             if chrom != cg_chrom:
                 continue
@@ -1551,22 +1553,35 @@ def locus(args):
     reads = {}
     orig_bam = {}
 
+    use_mods = None
+    if args.mods:
+        use_mods = args.mods.split(',')
+
     for bam, meth_db in data.items():
-        bamname = '.'.join(os.path.basename(bam).split('.')[:-1])
-        orig_bam[bamname] = bam
-        reads[bamname] = get_meth_locus(args, bam, meth_db)
+        mods = sorted(get_modnames(meth_db))
+        logger.info('found mods: %s in db %s' % (','.join(mods), meth_db))
 
-        for name, read in reads[bamname].items():
-            for loc in read.llrs.keys():
-                uuid = str(uuid4())
-                meth_table[uuid]['loc'] = loc
-                meth_table[uuid]['llr'] = read.llrs[loc]
-                meth_table[uuid]['read'] = name
-                meth_table[uuid]['sample'] = bamname
-                meth_table[uuid]['call'] = read.meth_calls[loc]
+        for mod in mods:
+            if use_mods:
+                if mod not in use_mods:
+                    logger.info('skipping %s, not specified in -m/--mods %s' % (mod, args.mods))
+                    continue
 
-                if bamname not in sample_order:
-                    sample_order.append(bamname)
+            bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + mod
+            orig_bam[bamname] = bam
+            reads[bamname] = get_meth_locus(args, bam, meth_db, mod)
+
+            for name, read in reads[bamname].items():
+                for loc in read.llrs.keys():
+                    uuid = str(uuid4())
+                    meth_table[uuid]['loc'] = loc
+                    meth_table[uuid]['llr'] = read.llrs[loc]
+                    meth_table[uuid]['read'] = name
+                    meth_table[uuid]['sample'] = bamname
+                    meth_table[uuid]['call'] = read.meth_calls[loc]
+
+                    if bamname not in sample_order:
+                        sample_order.append(bamname)
 
     meth_table = pd.DataFrame.from_dict(meth_table).T
     meth_table['loc'] = pd.to_numeric(meth_table['loc'])
@@ -2574,6 +2589,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('-i', '--interval', required=True, help='chr:start-end')
     parser_locus.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
     parser_locus.add_argument('-l', '--highlight', default=None, help='format: start-end')
+    parser_locus.add_argument('-m', '--mods', default=None, help='mods, comma-delimited for >1 (default to all available mods)')
     parser_locus.add_argument('-s', '--slidingwindowsize', default=20, help='size of sliding window for meth frac (default=20)')
     parser_locus.add_argument('-t', '--slidingwindowstep', default=2, help='step size for meth frac (default=2)')
     parser_locus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
@@ -2588,7 +2604,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")') 
     parser_locus.add_argument('--excl_ambig', action='store_true', default=False)
     parser_locus.add_argument('--unambig_highlight', action='store_true', default=False)
-    parser_locus.add_argument('--svg', action='store_true')    
+    parser_locus.add_argument('--svg', action='store_true')
 
     # options for haplotype locus plots
     parser_haplocus.add_argument('-b', '--bam', required=True, help='bam used for methylation calling')
