@@ -1370,6 +1370,12 @@ def segmeth(args):
         meth_segs[seg_id]['seg_name']   = seg_name
         meth_segs[seg_id]['seg_strand'] = seg_strand
 
+        if seg_name == 'NA':
+            meth_segs[seg_id]['seg_name'] = 'NoName'
+
+        if seg_strand == 'NA':
+            meth_segs[seg_id]['seg_strand'] = '.'
+
         for modname, meth_data in meth_result.items():
             no_calls = 0
             meth_calls = 0
