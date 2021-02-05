@@ -36,6 +36,7 @@ from collections import defaultdict as dd
 from collections import Counter
 from itertools import product
 from operator import itemgetter
+from copy import deepcopy
 
 from ont_fast5_api.fast5_interface import get_fast5_file
 
@@ -1964,22 +1965,31 @@ def haplocus(args):
     meth_table = dd(dict)
 
     phase_order = []
+    orig_phase = {}
 
     for name, read in methreads.items():
         if read.phase is None:
             continue
 
         for loc in read.llrs.keys():
+            if args.mods:
+                if read.mod_names[loc] not in args.mods.split(','):
+                    continue
+
+            phase_mod = read.phase + '.' + read.mod_names[loc]
+            orig_phase[phase_mod] = read.phase
+
             uuid = str(uuid4())
             meth_table[uuid]['loc'] = loc
             meth_table[uuid]['llr'] = read.llrs[loc]
             meth_table[uuid]['read'] = name
-            meth_table[uuid]['phase'] = read.phase
+            meth_table[uuid]['phase'] = phase_mod
             meth_table[uuid]['call'] = read.meth_calls[loc]
 
-            if read.phase not in phase_order:
-                phase_order.append(read.phase)
+            if phase_mod not in phase_order:
+                phase_order.append(phase_mod)
 
+    logger.info('phase + mod combinations: %s' % ','.join(phase_order))
 
     meth_table = pd.DataFrame.from_dict(meth_table).T
     meth_table['loc'] = pd.to_numeric(meth_table['loc'])
@@ -2078,7 +2088,6 @@ def haplocus(args):
     for tx in tx_lines:
         ax0.add_line(tx)
 
-
     # per-read plot
 
     ax1 = plt.subplot(gs[1])
@@ -2105,14 +2114,14 @@ def haplocus(args):
                 pos_cache[read.query_name][1].append(read.reference_end)
 
         for readname, read in methreads.items():
-            if read.phase != phase:
+            if read.phase != orig_phase[phase]:
                 continue
 
             read.ypos = max_y
             max_y += 1
 
             read.starts, read.ends = pos_cache[readname]
-            readstack[phase].append(read)
+            readstack[phase].append(deepcopy(read)) # append deep copy to avoid reassigning ypos
 
         fetch_reads_bam.close()
 
@@ -2609,9 +2618,10 @@ if __name__ == '__main__':
     # options for haplotype locus plots
     parser_haplocus.add_argument('-b', '--bam', required=True, help='bam used for methylation calling')
     parser_haplocus.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
-    parser_haplocus.add_argument('-m', '--methdata', required=True, help='methylation database')
+    parser_haplocus.add_argument('-d', '--methdata', required=True, help='methylation database (.db file)')
     parser_haplocus.add_argument('-i', '--interval', required=True, help='chr:start-end')
     parser_haplocus.add_argument('-l', '--highlight', default=None, help='format: start-end')
+    parser_haplocus.add_argument('-m', '--mods', default=None, help='mods, comma-delimited for >1 (default to all available mods)')
     parser_haplocus.add_argument('-s', '--slidingwindowsize', default=20, help='size of sliding window for smoothed plot (default=20)')
     parser_haplocus.add_argument('-t', '--slidingwindowstep', default=2, help='size of sliding window for smoothed plot (default=2)')
     parser_haplocus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
