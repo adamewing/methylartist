@@ -1653,6 +1653,7 @@ def locus(args):
     genes = [] 
 
     if args.gtf is not None:
+        logger.info('building genes plot...')
         gtf = pysam.Tabixfile(args.gtf)
         genes = build_genes(gtf, chrom, elt_start, elt_end)
 
@@ -1703,6 +1704,7 @@ def locus(args):
 
     # per-read plot
 
+    logger.info('building read alignment plot...')
     ax1 = plt.subplot(gs[1])
     ax1.set_xticks([])
     ax1.set_yticks([])
@@ -1790,6 +1792,7 @@ def locus(args):
 
     # plot correspondence between genome space and cpg space
 
+    logger.info('building mod-space plot...')
     ax2 = plt.subplot(gs[2])
     ax3 = ax2.twiny()
 
@@ -1846,6 +1849,7 @@ def locus(args):
 
     # llr plot
 
+    logger.info('building llr plot...')
     ax4 = plt.subplot(gs[3])
 
     ax4.axhline(y=2.5, c='k', linestyle='--',lw=1)
@@ -1857,6 +1861,7 @@ def locus(args):
 
     # meth frac plot
 
+    logger.info('building meth frac plot...')
     ax5 = plt.subplot(gs[4])
 
     order_stack = 1
@@ -2584,9 +2589,9 @@ def wgmeth(args):
         outfn = None
 
         if args.dss:
-            outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.DSS.txt'
+            outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '%s.DSS.txt' % str(args.mod)
         else:
-            outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.methyl.bed'
+            outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '%s.methyl.bed' % str(args.mod)
         
 
         logger.info('writing %s' % outfn)
