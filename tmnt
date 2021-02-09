@@ -459,7 +459,7 @@ def get_modnames(meth_db):
 
     mod_names = []
 
-    for row in c.execute("SELECT DISTINCT modname FROM modnames"):
+    for row in c.execute("SELECT DISTINCT mod FROM modnames"):
         mod_names.append(row[0])
 
     return mod_names
