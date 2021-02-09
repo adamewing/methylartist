@@ -1064,6 +1064,7 @@ def db_guppy(args):
 
     if not args.append:
         c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer, modname text)''')
+        c.execute('''CREATE TABLE modnames (mod text)''')
         c.execute('''CREATE INDEX read_index ON methdata(readname)''')
 
     else:
@@ -1109,6 +1110,8 @@ def db_guppy(args):
                 ins_data = (chrom, pos, strand, readname, llr, methcall, mod_base)
                 c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d, '%s')" % ins_data)
 
+            c.execute("INSERT INTO modnames VALUES ('%s')" % args.modname)
+
             logger.info('commiting records from %s to %s' % (fn, db_fn))
             conn.commit()
 
@@ -1143,6 +1146,7 @@ def db_megalodon(args):
 
     if not args.append:
         c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer, modname text)''')
+        c.execute('''CREATE TABLE modnames (mod text)''')
         c.execute('''CREATE INDEX read_index ON methdata(readname)''')
 
     else:
@@ -1162,6 +1166,8 @@ def db_megalodon(args):
 
         progress_interval = 500000
 
+        modnames = {}
+
         for i, row in enumerate(csv_reader):
             readname = row['read_id']
             chrom    = row['chrm']
@@ -1172,6 +1178,8 @@ def db_megalodon(args):
             can_prob = float(row['can_log_prob'])
             minprob  = float(args.minprob)
             mod_base = row['mod_base']
+
+            modnames[mod_base] = True
 
             llr = float(row['mod_log_prob']) - float(row['can_log_prob'])
 
@@ -1194,6 +1202,9 @@ def db_megalodon(args):
 
             if i % progress_interval == 0:
                 logger.info('processed %d records from %s' % (i, tsv))
+
+        for mod in modnames:
+            c.execute("INSERT INTO modnames VALUES ('%s')" % mod)
 
         logger.info('commiting records from %s to %s' % (tsv, db_fn))
         conn.commit()
@@ -1229,6 +1240,7 @@ def db_nanopolish(args):
 
     if not args.append:
         c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer, modname text)''')
+        c.execute('''CREATE TABLE modnames (mod text)''')
         c.execute('''CREATE INDEX read_index ON methdata(readname)''')
 
     else:
@@ -1255,6 +1267,8 @@ def db_nanopolish(args):
             seq      = row['sequence']
             mod_base = args.modname
 
+            modnames[mod_base] = True
+
             if args.scalegroup:
                 llr = llr/float(row['num_motifs'])
 
@@ -1280,7 +1294,10 @@ def db_nanopolish(args):
             if i % progress_interval == 0:
                 logger.info('processed %d records from %s' % (i, tsv))
 
+        c.execute("INSERT INTO modnames VALUES ('%s')" % args.modname)
+
         logger.info('commiting records from %s to %s' % (tsv, db_fn))
+
         conn.commit()
 
     conn.close()
