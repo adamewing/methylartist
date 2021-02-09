@@ -1267,8 +1267,6 @@ def db_nanopolish(args):
             seq      = row['sequence']
             mod_base = args.modname
 
-            modnames[mod_base] = True
-
             if args.scalegroup:
                 llr = llr/float(row['num_motifs'])
 
