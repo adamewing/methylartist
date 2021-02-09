@@ -2481,6 +2481,16 @@ def wgmeth(args):
     pool = mp.Pool(processes=int(args.procs))
     bin_size = int(args.binsize)
 
+    mods = sorted(get_modnames(args.methdata))
+
+    if args.mod not in mods:
+        logger.warning('mod %s not in known mods for db: %s' % (args.mod, ','.join(mods)))
+        sys.exit()
+
+    if len(mods) > 1 and args.mod is None:
+        logger.warning('more than one mod exists, need to pick one with -m/--mod: %s' % ','.join(mods))
+        sys.exit()
+
     results = []
 
     with open(args.fai) as fai:
