@@ -2590,6 +2590,7 @@ def wgmeth(args):
             meth_table[0].to_csv(outfn, columns=['chr','start','end','name', 'score', 'strand', 'start', 'end', 'colour', 'N', 'pct'], header=False, index=False, sep='\t')
 
 def main(args):
+    logger.info('starting tmnt with command: %s' % ' '.join(sys.argv))
     args.func(args)
 
 
