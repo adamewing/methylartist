@@ -98,7 +98,9 @@ class Gene:
 
     def add_cds(self, block):
         assert len(block) == 2
-        assert block[0] < block[1]
+        if block[0] > block[1]:
+            logger.warning('CDS block start > end in gene %s' % self.ensg)
+            return None
 
         if self.cds_start is None or self.cds_start > block[0]:
             self.cds_start = block[0]
@@ -1842,10 +1844,13 @@ def locus(args):
     ax1.set_xlim(ax3.get_xlim())
     ax3.set_xticks([])
 
-    xt_labels = [str(int(t+elt_start)) for t in list(ax0.get_xticks())]
-    ax0.set_xticks(ax0.get_xticks().tolist()) # workaround for matplotlib 3.3.1 warning
-    ax0.set_xticklabels(xt_labels)
+    n_ticks = 10
+    tick_interval = (elt_end-elt_start)/n_ticks
+    tick_list = list(range(int(ax0.get_xlim()[0]), int(ax0.get_xlim()[1]), int(tick_interval)))
 
+    xt_labels = [str(int(t+elt_start)) for t in tick_list]
+    ax0.set_xticks(tick_list) 
+    ax0.set_xticklabels(xt_labels)
 
     # llr plot
 
@@ -2247,14 +2252,18 @@ def haplocus(args):
         con = ConnectionPatch(xyA=link_end1, xyB=link_end2, coordsA="data", coordsB="data", axesA=ax2, axesB=ax3, color=l_col)
         ax3.add_artist(con)
 
+
     ax0.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
     ax1.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
     ax3.set_xticks([])
 
-    xt_labels = [str(int(t+elt_start)) for t in list(ax0.get_xticks())]
-    ax0.set_xticks(ax0.get_xticks().tolist()) # workaround for matplotlib 3.3.1 warning    
-    ax0.set_xticklabels(xt_labels)
+    n_ticks = 10
+    tick_interval = (elt_end-elt_start)/n_ticks
+    tick_list = list(range(int(ax0.get_xlim()[0]), int(ax0.get_xlim()[1]), int(tick_interval)))
 
+    xt_labels = [str(int(t+elt_start)) for t in tick_list]
+    ax0.set_xticks(tick_list) 
+    ax0.set_xticklabels(xt_labels)
 
     # llr plot
 
