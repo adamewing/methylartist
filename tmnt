@@ -438,7 +438,6 @@ def get_phased_reads(fn, chrom, start, end, min_mapq=10, tag_untagged=False, ign
 
 def single_seq_fa(fn):
     with open(fn, 'r') as fa:
-        seqid = ''
         seq   = ''
         for line in fa:
             if line.startswith('>'):
@@ -749,8 +748,6 @@ def get_meth_calls_wg(bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod):
     c = conn.cursor()
 
     reads = get_phased_reads(bam_fn, chrom, seg_start, seg_end, tag_untagged=phased)
-    
-    readnames = list(set(reads.keys()))
 
     seg_methreads = {}
 
@@ -839,8 +836,6 @@ def slide_window(meth_table, sample, width=20, slide=2):
     midpt_min = min(meth_table['loc'])
     midpt_max = max(meth_table['loc'])
 
-    sample_table = meth_table.loc[meth_table['sample'] == sample]
-
     win_start = int(midpt_min - width/2)
     win_end = win_start + width
 
@@ -866,8 +861,6 @@ def slide_window(meth_table, sample, width=20, slide=2):
 def slide_window_phased(meth_table, phase, width=20, slide=2):
     midpt_min = min(meth_table['loc'])
     midpt_max = max(meth_table['loc'])
-
-    phase_table = meth_table.loc[meth_table['phase'] == phase]
 
     win_start = int(midpt_min - width/2)
     win_end = win_start + width
@@ -1072,8 +1065,6 @@ def db_guppy(args):
     else:
         logger.info('appending records to %s' % db_fn)
 
-    m = Motif(args.motif)
-
     for fn in outfiles:
         if fn is None:
             continue
@@ -1132,7 +1123,7 @@ def db_megalodon(args):
         if args.db.endswith('.db'):
             db_fn = args.db
         else:
-            dn_fn = args.db + '.db'
+            db_fn = args.db + '.db'
 
     logger.info('database output name: ' + db_fn)
 
@@ -1226,7 +1217,7 @@ def db_nanopolish(args):
         if args.db.endswith('.db'):
             db_fn = args.db
         else:
-            dn_fn = args.db + '.db'
+            db_fn = args.db + '.db'
 
     logger.info('database output name: ' + db_fn)
 
@@ -1264,7 +1255,6 @@ def db_nanopolish(args):
 
         for i, row in enumerate(csv_reader, 1):
             r_start  = int(row['start'])
-            r_end    = int(row['end'])
             llr      = float(row['log_lik_ratio'])
             seq      = row['sequence']
             mod_base = args.modname
@@ -1531,8 +1521,10 @@ def segplot(args):
 
     if args.svg:
         fig.savefig(basename+'.segplot.svg', bbox_inches='tight')
+        logger.info('plot saved to %s.segplot.svg' % basename)
     else:
         fig.savefig(basename+'.segplot.png', bbox_inches='tight')
+        logger.info('plot saved to %s.segplot.png' % basename)
 
 
 def locus(args):
@@ -1772,8 +1764,6 @@ def locus(args):
                 pack_y += 1
 
     ax1.set_ylim(0,pack_y+1)
-
-    readlines = []
 
     for bamname in readstack:
         for read in readstack[bamname]:
@@ -2187,8 +2177,6 @@ def haplocus(args):
 
     ax1.set_ylim(0,pack_y+1)
 
-    readlines = []
-
     for phase in phase_order:
         for read in readstack[phase]:
             for i in range(len(read.starts)):
@@ -2336,7 +2324,7 @@ def region(args):
     assert start < end
 
     if end-start < 100000:
-        logger.warning('locus smaller than 100kbp. "tmnt region" might work, but also have a look at "tmnt locus"')
+        logger.warning('locus smaller than 100kbp. "tmnt region" might work, but also have a look at "tmnt locus" for more detailed output')
 
     w_size = int((end-start)/int(args.windows))
     w_starts = int(range(start, end, w_size))
