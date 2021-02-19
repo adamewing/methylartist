@@ -1540,17 +1540,6 @@ def locus(args):
     chrom, pos= args.interval.split(':')
     elt_start, elt_end = map(int, pos.split('-'))
     
-    # highlights
-
-    h_start = []
-    h_end = []
-    h_cpg_start = []
-    h_cpg_end = []
-    h_colors = []
-
-    if args.highlight:
-        h_colors = sns.color_palette(args.highlightpalette, n_colors=len(args.highlight.split(',')))
-
     data = {}
 
     with open(args.data) as _:
@@ -1580,6 +1569,8 @@ def locus(args):
                 if mod not in use_mods:
                     logger.info('skipping %s, not specified in -m/--mods %s' % (mod, args.mods))
                     continue
+            else:
+                use_mods = mods
 
             bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + mod
             orig_bam[bamname] = bam
@@ -1608,21 +1599,62 @@ def locus(args):
     for orig_loc, new_loc in zip(meth_table['orig_loc'], meth_table['loc']):
         coord_to_cpg[orig_loc] = new_loc
 
+    # highlights
+
+    h_start = []
+    h_end = []
+    h_cpg_start = []
+    h_cpg_end = []
+    h_colors = []
+
+    if args.highlight:
+        h_colors = sns.color_palette(args.highlightpalette, n_colors=len(args.highlight.split(',')))
+
     if args.highlight:
         for h in args.highlight.split(','):
             if ':' in h:
                 h = h.split(':')[-1]
                 
             h_s, h_e = map(int, h.split('-'))
-            h_start.append(h_s)
-            h_end.append(h_e)
-
-            h_start[-1] -= elt_start
-            h_end[-1] -= elt_start
+            h_start.append(h_s - elt_start)
+            h_end.append(h_e - elt_start)
 
             h_cpg_start.append(coord_to_cpg[min(meth_table['orig_loc'], key=lambda x:abs(x-h_start[-1]))])
             h_cpg_end.append(coord_to_cpg[min(meth_table['orig_loc'], key=lambda x:abs(x-h_end[-1]))])
 
+    if args.highlight_bed:
+        need_colour = 0
+
+        with open(args.highlight_bed) as h_bed:
+            for line in h_bed:
+                c = line.strip().split()
+                assert len(c) >= 3, 'malformed line in --highlight_bed: %s' % line.strip()
+                assert c[0] == chrom, 'all entries in --highlight_bed must be on the same chromosome as -i/--interval'
+
+                h_s, h_e = map(int, c[1:3])
+
+                colour = None
+
+                if len(c) > 3:
+                    colour = c[3]
+                else:
+                    need_colour += 1
+                
+                h_start.append(h_s - elt_start)
+                h_end.append(h_e - elt_start)
+
+                h_cpg_start.append(coord_to_cpg[min(meth_table['orig_loc'], key=lambda x:abs(x-h_start[-1]))])
+                h_cpg_end.append(coord_to_cpg[min(meth_table['orig_loc'], key=lambda x:abs(x-h_end[-1]))])
+
+                h_colors.append(colour)
+
+        more_colours = sns.color_palette(args.highlightpalette, n_colors=need_colour)
+
+        for i, c in enumerate(h_colors):
+            if c is None:
+                h_colors[i] = more_colours.pop()
+
+    # set up plot
 
     fig = plt.figure()
     gs = gridspec.GridSpec(5,1,height_ratios=[1,5,1,3,3])
@@ -1810,7 +1842,7 @@ def locus(args):
     ax2.vlines(x1, 0, 1, color='#777777', zorder=1)
     ax3.vlines(x2, 9, 10, color='#777777', zorder=1)
 
-    if args.highlight:
+    if args.highlight or args.highlight_bed:
         for i in range(len(h_start)):
             orig_highlight_box = matplotlib.patches.Rectangle((h_start[i],9), h_end[i]-h_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=2)
             cpg_highlight_box = matplotlib.patches.Rectangle((h_cpg_start[i],0), h_cpg_end[i]-h_cpg_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=3)
@@ -2338,14 +2370,33 @@ def region(args):
 
         ref = pysam.FastaFile(args.ref)
         motif = args.norm_motif.upper()
-        region_seq = ref.fetch(chrom, start, end)
+        region_seq = ref.fetch(chrom, start, end).upper()
         motif_count = region_seq.count(motif)
-        motifs_per_window = motif_count / int(args.windows)
+        motifs_per_window = int(motif_count / int(args.windows))
 
-        w_starts = []
+        w_starts = [start]
         w_ends = []
 
-        
+        i = 0
+        motif_count = 0
+
+        while i < len(region_seq) - len(motif):
+            site_fwd = region_seq[i:i+len(motif)]
+            site_rev = rc(site_fwd)
+
+            if motif in (site_fwd, site_rev):
+                motif_count += 1
+
+            i += len(motif)
+
+            if motif_count == motifs_per_window:
+                w_starts.append(start+i)
+                w_ends.append(start+i)
+                motif_count = 0
+
+        w_ends.append(end)
+
+        assert len(w_starts) == len(w_ends)
 
     else:
         logger.info('using %d windows of %d bp' % (len(w_starts), w_size))
@@ -2439,11 +2490,15 @@ def region(args):
                 meth_segs[seg_id][sample_name + '_frac'] = meth_calls/float(meth_calls+unmeth_calls)
 
     meth_segs = pd.DataFrame.from_dict(meth_segs).T
+
+    if 'seg_start' not in meth_segs:
+        logger.warning('no methylation calls.')
+        sys.exit()
+
     meth_segs['seg_start'] = pd.to_numeric(meth_segs['seg_start'])
 
     meth_segs.sort_values('seg_start', inplace=True)
     meth_segs['pos'] = np.arange(len(meth_segs.index))
-    
 
     for sample in sample_names:
         meth_segs[sample] = smooth(np.asarray(meth_segs[sample + '_frac']), window_len=int(args.smoothwindowsize))
@@ -3029,6 +3084,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('-i', '--interval', required=True, help='chr:start-end')
     parser_locus.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
     parser_locus.add_argument('-l', '--highlight', default=None, help='format: start-end, can comma-delimit multiple highlights')
+    parser_locus.add_argument('-b', '--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_locus.add_argument('-m', '--mods', default=None, help='mods, comma-delimited for >1 (default to all available mods)')
     parser_locus.add_argument('-s', '--slidingwindowsize', default=20, help='size of sliding window for meth frac (default=20)')
     parser_locus.add_argument('-t', '--slidingwindowstep', default=2, help='step size for meth frac (default=2)')
