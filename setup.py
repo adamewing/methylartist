@@ -9,8 +9,8 @@ setup(
     author_email='adam.ewing@gmail.com',
     description=("Tools for parsing and plotting nanopore methylation data"),
     license='MIT',
-    url='https://github.com/adamewing/tmnt',
-    scripts=['tmnt'],
+    url='https://github.com/adamewing/methylartist',
+    scripts=['methylartist'],
     packages=find_packages(),
     install_requires = [
         'cython',
