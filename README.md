@@ -1,12 +1,12 @@
-## tmnt: transposon methylation nanopore tools
+## methylartist: transposon methylation nanopore tools
 
-Tools for parsing and plotting methylation data from Oxford Nanopore Technologies data in a way that is useful for transposable element applications.
+Tools for parsing and plotting methylation data from nanopore data
 
 ## Installation
 
-`git clone https://github.com/adamewing/tmnt.git` or download a .zip file from GitHub.
+`git clone https://github.com/adamewing/methylartist.git` or download a .zip file from GitHub.
 
-install tmnt and dependencies via:
+install methylartist and dependencies via:
 
 `python setup.py install`
 
@@ -18,9 +18,9 @@ Alignments stored in .bam format should be sorted and indexed and should use the
 
 ### Methylation Calls
 
-TMNT has functions for loading methylation data can from nanopolish, megalodon, or basecalled guppy fast5s, using the appropriate function below.
+MethylArtist has functions for loading methylation data can from nanopolish, megalodon, or basecalled guppy fast5s, using the appropriate function below.
 
-Once coverted, the sqlite .db file can be input to TMNT functions (e.g. `segplot`, `locus`, etc).
+Once coverted, the sqlite .db file can be input to MethylArtist functions (e.g. `segplot`, `locus`, etc).
 
 ## Commands:
 
@@ -33,19 +33,19 @@ Example:
 Loading results from `nanopolish call-methylation` to a database:
 
 ```
-tmnt db-nanopolish -m MCF7_ATCC_REP1.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db
+methylartist db-nanopolish -m MCF7_ATCC_REP1.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db
 ```
 
 Appending additional results to the above database:
 
 ```
-tmnt db-nanopolish -m MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -a
+methylartist db-nanopolish -m MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -a
 ```
 
 Loading results with the current recommended cutoffs for nanopolish (abs(llr) > 2.0, scale grouped CpGs):
 
 ```
-tmnt db-nanopolish -m MCF7_ATCC_REP1.nanopolish.tsv.gz,MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -t 2.0 -s
+methylartist db-nanopolish -m MCF7_ATCC_REP1.nanopolish.tsv.gz,MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -t 2.0 -s
 ```
 
 Inputs can be uncompressed or .gzipped.
@@ -62,13 +62,13 @@ The default filename (`/path/to/megalodon_output/per_read_modified_base_calls.tx
 Example:
 
 ```
-tmnt db-megalodon -m MCF7_ATCC_REP1/per_read_modified_base_calls.txt --db MCF7_ATCC_REP1.db
+methylartist db-megalodon -m MCF7_ATCC_REP1/per_read_modified_base_calls.txt --db MCF7_ATCC_REP1.db
 ```
 
 Appending additional results to the above database:
 
 ```
-tmnt db-megalodon -m MCF7_ATCC_REP2/per_read_modified_base_calls.txt --db MCF7_ATCC_REP2.db
+methylartist db-megalodon -m MCF7_ATCC_REP2/per_read_modified_base_calls.txt --db MCF7_ATCC_REP2.db
 ```
 
 Input files can be uncompressed or .gzipped.
@@ -81,13 +81,13 @@ Parses methylation call data from fast5 files where basecalling information has 
 Example:
 
 ```
-tmnt db-guppy -s MCF7_ATCC -f MCF7_ATCC_REP1/fast5 -p 32 -m [C]G -n 5mC -b MCF7_ATCC.bam -r Homo_sapiens_assembly38.fasta
+methylartist db-guppy -s MCF7_ATCC -f MCF7_ATCC_REP1/fast5 -p 32 -m [C]G -n 5mC -b MCF7_ATCC.bam -r Homo_sapiens_assembly38.fasta
 ```
 
 Appending additional results:
 
 ```
-tmnt db-guppy -s MCF7_ATCC -f MCF7_ATCC_REP2/fast5 -p 32 -m [C]G -n 5mC -b MCF7_ATCC.bam -r Homo_sapiens_assembly38.fasta -a
+methylartist db-guppy -s MCF7_ATCC -f MCF7_ATCC_REP2/fast5 -p 32 -m [C]G -n 5mC -b MCF7_ATCC.bam -r Homo_sapiens_assembly38.fasta -a
 ```
 
 Notes:
@@ -118,7 +118,7 @@ Example:
 Aggregate methylation calls over full length L1 elements (RepeatMasker, hg38), exclude reads which map entirely within L1s:
 
 ```
-tmnt segmeth -d MCF7_data.txt -i L1_FL.bed -p 32 --excl_ambig
+methylartist segmeth -d MCF7_data.txt -i L1_FL.bed -p 32 --excl_ambig
 ```
 
 Contents of `MCF7_data.txt`:
@@ -168,18 +168,18 @@ Examples:
 Strip plot of L1HS, L1PA2, L1PA4, and L1PA6 elements across two samples:
 
 ```
-tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_ECACC.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10
+methylartist segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_ECACC.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10
 ```
 
-![strip plot](https://github.com/adamewing/tmnt/blob/main/docs/segplot_example_strip.png?raw=true)
+![strip plot](https://github.com/adamewing/methylartist/blob/main/docs/segplot_example_strip.png?raw=true)
 
 As above, but use violin plots:
 
 ```
-tmnt segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_ECACC.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10 --violin
+methylartist segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_ECACC.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10 --violin
 ```
 
-![violin plot](https://github.com/adamewing/tmnt/blob/main/docs/segplot_example_violin.png?raw=true)
+![violin plot](https://github.com/adamewing/methylartist/blob/main/docs/segplot_example_violin.png?raw=true)
 
 Note that default output is in .png format. For .svg vector output suitable for editing in inkscape or illustrator add the `--svg` option. Note that for strip plots, this is often inadvisable due to the large number of points.
 
@@ -194,10 +194,10 @@ Example:
 
 Plot of the TTC28 L1 locus in hg38, highlighting the L1 (5'UTR = darker blue, L1 body = lighter blue), and including the TTC28 5' exon (large trough in methylation on the right side of the plot)
 ```
-tmnt locus -d MCF7_data_megalodon.txt -i chr22:28643284-28689315 -l 28664284-28669315,28663284-28664284 --cpgspace 10 --gtf Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes TTC28 --panelratios 1,5,1,3,3
+methylartist locus -d MCF7_data_megalodon.txt -i chr22:28643284-28689315 -l 28664284-28669315,28663284-28664284 --cpgspace 10 --gtf Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes TTC28 --panelratios 1,5,1,3,3
 ```
 
-![locus plot](https://github.com/adamewing/tmnt/blob/main/docs/TTC28.MCF7_data_megalodon.chr22_28643284-28689315.locus.meth.png?raw=true)
+![locus plot](https://github.com/adamewing/methylartist/blob/main/docs/TTC28.MCF7_data_megalodon.chr22_28643284-28689315.locus.meth.png?raw=true)
 
 From top to bottom, the plot shows the genome coordinates, gene models (optional if `--gtf` is supplied), read mappings with modified bases as closed (modified) or open (unmodified) circles, translation from genome to CpG-only coordinate space, raw log-likelihood ratios, and smoothed methylated fraction plot.
 
@@ -211,10 +211,10 @@ Examples:
 Plot of the PEG3 imprinted region on chromosome 19, hg38.
 
 ```
-tmnt haplocus -b MCF7_ECACC.haplotag.bam -m MCF7_ECACC.megalodon.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --cpgspace 25 -i chr19:56810076-56870725 -l 56835076-56841076 --phasepalette viridis
+methylartist haplocus -b MCF7_ECACC.haplotag.bam -m MCF7_ECACC.megalodon.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --cpgspace 25 -i chr19:56810076-56870725 -l 56835076-56841076 --phasepalette viridis
 ```
 
-![haplocus plot](https://github.com/adamewing/tmnt/blob/main/docs/MCF7_ECACC.haplotag.chr19_56810076-56870725.phased.meth.png?raw=true)
+![haplocus plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_ECACC.haplotag.chr19_56810076-56870725.phased.meth.png?raw=true)
 
 
 ### composite
@@ -225,7 +225,7 @@ Example:
 
 First aggregate methylation counts over intervals corresponding to the TE family of interest:
 ```
-tmnt segmeth -d MCF7_data.txt -i L1HS.bed -p 32 --excl_ambig
+methylartist segmeth -d MCF7_data.txt -i L1HS.bed -p 32 --excl_ambig
 ```
 
 The consensus sequence for establishing a common coordinate system is in `L1Ta.fa` (fasta formatted with one sequence)
@@ -260,13 +260,13 @@ chr1:86679081-86685111  chr1    86679081        86685111        L1HS    -       
 chr1:104770248-104776278        chr1    104770248       104776278       L1HS    -       447     403     612     0.5258823529411765      714     538     673     0.570287539936102
 ```
 
-Command to `tmnt composite` (note the parsing of individual profiles can be parallelised via `-p`):
+Command to `methylartist composite` (note the parsing of individual profiles can be parallelised via `-p`):
 
 ```
-tmnt composite -b MCF7_ATCC.haplotag.bam -m MCF7_ATCC.nanopolish.db -s L1HS.MCF7_data.excl_ambig.segmeth.tsv -f L1HS -r Homo_sapiens_assembly38.fasta -t L1Ta.fa -p 32
+methylartist composite -b MCF7_ATCC.haplotag.bam -m MCF7_ATCC.nanopolish.db -s L1HS.MCF7_data.excl_ambig.segmeth.tsv -f L1HS -r Homo_sapiens_assembly38.fasta -t L1Ta.fa -p 32
 ```
 
-![composite plot](https://github.com/adamewing/tmnt/blob/main/docs/composite_example.png?raw=true)
+![composite plot](https://github.com/adamewing/methylartist/blob/main/docs/composite_example.png?raw=true)
 
 
 ### wgmeth

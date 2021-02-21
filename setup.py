@@ -3,11 +3,11 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='tmnt',
-    version='1.0',
+    name='methylartist',
+    version='0.1',
     author='Adam Ewing',
     author_email='adam.ewing@gmail.com',
-    description=("Tools for parsing and plotting nanopore methylation data aimed at TEs"),
+    description=("Tools for parsing and plotting nanopore methylation data"),
     license='MIT',
     url='https://github.com/adamewing/tmnt',
     scripts=['tmnt'],
