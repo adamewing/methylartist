@@ -2358,7 +2358,7 @@ def region(args):
     assert start < end
 
     if end-start < 100000:
-        logger.warning('locus smaller than 100kbp. "tmnt region" might work, but also have a look at "tmnt locus" for more detailed output')
+        logger.warning('locus smaller than 100kbp. "methylartist region" might work, but also have a look at "methylartist locus" for more detailed output')
 
     w_size = int((end-start)/int(args.windows))
     w_starts = list(range(start, end, w_size))
@@ -3028,7 +3028,7 @@ def wgmeth(args):
             meth_table[0].to_csv(outfn, columns=['chr','start','end','name', 'score', 'strand', 'start', 'end', 'colour', 'N', 'pct'], header=False, index=False, sep='\t')
 
 def main(args):
-    logger.info('starting tmnt with command: %s' % ' '.join(sys.argv))
+    logger.info('starting methylartist with command: %s' % ' '.join(sys.argv))
     args.func(args)
 
 
