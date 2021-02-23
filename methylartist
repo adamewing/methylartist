@@ -1507,10 +1507,10 @@ def segplot(args):
         order = args.categories.split(',')
 
     if args.violin:
-        sns_plot = sns.violinplot(x='group', y='mCpG', data=plot_data, hue='sample', dodge=True, jitter=True, order=order, hue_order=samples)
+        sns_plot = sns.violinplot(x='group', y='mCpG', data=plot_data, hue='sample', dodge=True, jitter=True, order=order, hue_order=samples, palette=args.palette)
 
     else:
-        sns_plot = sns.stripplot(x='group', y='mCpG', data=plot_data, hue='sample', dodge=True, jitter=True, size=pt_sz, order=order, hue_order=samples)
+        sns_plot = sns.stripplot(x='group', y='mCpG', data=plot_data, hue='sample', dodge=True, jitter=True, size=pt_sz, order=order, hue_order=samples, palette=args.palette)
 
     if args.tiltlabel:
         sns_plot.set_xticklabels(sns_plot.get_xticklabels(), rotation=45)
@@ -1518,7 +1518,7 @@ def segplot(args):
     sns_plot.set_ylim(float(args.ymin),float(args.ymax))
 
     fig = sns_plot.figure
-    fig.set_size_inches(int(args.width), int(args.height))
+    fig.set_size_inches(float(args.width), float(args.height))
 
     if args.svg:
         fig.savefig(basename+'.segplot.svg', bbox_inches='tight')
@@ -1947,7 +1947,6 @@ def haplocus(args):
 
     bamname = '.'.join(os.path.basename(args.bam).split('.')[:-1])
     fn_prefix = os.path.basename(bamname) + '.' + '_'.join(args.interval.split(':')[:2])
-    fn_prefix += '.' + ''.join(args.mods.split(','))
 
     # highlight
     h_start = []
@@ -2012,12 +2011,13 @@ def haplocus(args):
             else:
                 methreads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
-
     # table for plotting
     meth_table = dd(dict)
 
     phase_order = []
     orig_phase = {}
+
+    used_mods = {}
 
     for name, read in methreads.items():
         if read.phase is None:
@@ -2030,6 +2030,7 @@ def haplocus(args):
 
             phase_mod = read.phase + '.' + read.mod_names[loc]
             orig_phase[phase_mod] = read.phase
+            used_mods[read.mod_names[loc]] = True
 
             uuid = str(uuid4())
             meth_table[uuid]['loc'] = loc
@@ -2055,6 +2056,8 @@ def haplocus(args):
     for orig_loc, new_loc in zip(meth_table['orig_loc'], meth_table['loc']):
         coord_to_cpg[orig_loc] = new_loc
 
+    # set up highlights
+
     if args.highlight:
         for h in args.highlight.split(','):
             if ':' in h:
@@ -2070,6 +2073,39 @@ def haplocus(args):
             h_cpg_start.append(coord_to_cpg[min(meth_table['orig_loc'], key=lambda x:abs(x-h_start[-1]))])
             h_cpg_end.append(coord_to_cpg[min(meth_table['orig_loc'], key=lambda x:abs(x-h_end[-1]))])
 
+    if args.highlight_bed:
+        need_colour = 0
+
+        with open(args.highlight_bed) as h_bed:
+            for line in h_bed:
+                c = line.strip().split()
+                assert len(c) >= 3, 'malformed line in --highlight_bed: %s' % line.strip()
+                assert c[0] == chrom, 'all entries in --highlight_bed must be on the same chromosome as -i/--interval'
+
+                h_s, h_e = map(int, c[1:3])
+
+                colour = None
+
+                if len(c) > 3:
+                    colour = c[3]
+                else:
+                    need_colour += 1
+                
+                h_start.append(h_s - elt_start)
+                h_end.append(h_e - elt_start)
+
+                h_cpg_start.append(coord_to_cpg[min(meth_table['orig_loc'], key=lambda x:abs(x-h_start[-1]))])
+                h_cpg_end.append(coord_to_cpg[min(meth_table['orig_loc'], key=lambda x:abs(x-h_end[-1]))])
+
+                h_colors.append(colour)
+
+        more_colours = sns.color_palette(args.highlightpalette, n_colors=need_colour)
+
+        for i, c in enumerate(h_colors):
+            if c is None:
+                h_colors[i] = more_colours.pop()
+
+    # set up plot
 
     fig = plt.figure()
     gs = gridspec.GridSpec(5,1,height_ratios=[1,5,1,3,3])
@@ -2253,7 +2289,7 @@ def haplocus(args):
     ax2.vlines(x1, 0, 1, color='#777777', zorder=1)
     ax3.vlines(x2, 9, 10, color='#777777', zorder=1)
 
-    if args.highlight:
+    if args.highlight or args.highlight_bed:
         for i in range(len(h_start)):
             orig_highlight_box = matplotlib.patches.Rectangle((h_start[i],9), h_end[i]-h_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=2)
             cpg_highlight_box = matplotlib.patches.Rectangle((h_cpg_start[i],0), h_cpg_end[i]-h_cpg_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=3)
@@ -2330,6 +2366,11 @@ def haplocus(args):
     ax5.set_ylim((-0.05,1.05))
 
     fig.set_size_inches(16, 8)
+
+    fn_prefix += '.' + ''.join(used_mods)
+
+    if args.genes is not None:
+        fn_prefix = '_'.join(args.genes.split(',')) + '.' + fn_prefix
 
     imgtype = 'png'
 
@@ -2777,13 +2818,10 @@ def composite(args):
 
     segdata = pd.read_csv(args.segdata, sep='\t', header=0, index_col=0)
 
-    sample = '.'.join(os.path.basename(args.bam).split('.')[:-1])
+    sample = args.sample
 
-    if args.sample is not None:
-        sample = args.sample
-
-    assert sample+'_meth_calls' in segdata
-    assert sample+'_unmeth_calls' in segdata
+    assert sample+'_meth_calls' in segdata, 'sample %s not found, look at header in %s' % (args.sample, args.meth)
+    assert sample+'_unmeth_calls' in segdata, 'sample %s not found, look at header in %s' % (args.sample, args.meth)
 
     useable = []
 
@@ -3077,6 +3115,7 @@ if __name__ == '__main__':
     parser_segplot.add_argument('--ymin', default=-0.15, help='ymin (default = -0.15)')
     parser_segplot.add_argument('--ymax', default=1.15, help='ymax (default = 1.15)')
     parser_segplot.add_argument('--tiltlabel', default=False, action='store_true')
+    parser_segplot.add_argument('--palette', default="tab10", help='palette for phases (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_segplot.add_argument('--svg', default=False, action='store_true')
 
     # options for locus-specific plots
@@ -3108,6 +3147,7 @@ if __name__ == '__main__':
     parser_haplocus.add_argument('-d', '--methdata', required=True, help='methylation database (.db file)')
     parser_haplocus.add_argument('-i', '--interval', required=True, help='chr:start-end')
     parser_haplocus.add_argument('-l', '--highlight', default=None, help='format: start-end, can comma-delimit multiple highlights')
+    parser_haplocus.add_argument('-e', '--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_haplocus.add_argument('-m', '--mods', default=None, help='mods, comma-delimited for >1 (default to all available mods)')
     parser_haplocus.add_argument('-s', '--slidingwindowsize', default=20, help='size of sliding window for smoothed plot (default=20)')
     parser_haplocus.add_argument('-t', '--slidingwindowstep', default=2, help='size of sliding window for smoothed plot (default=2)')
@@ -3160,7 +3200,7 @@ if __name__ == '__main__':
     parser_composite.add_argument('--blocks', default=None, help='blocks to highlight (txt file with start, end, name, hex colour)')
     parser_composite.add_argument('--start', default=None, help='start plotting at this base (default None)')
     parser_composite.add_argument('--end', default=None, help='end plotting at this base (default None)')
-    parser_composite.add_argument('--sample', default=None, help='specify sample name (default = infer from .bam)')
+    parser_composite.add_argument('--sample', required=True, help='specify sample name (default = infer from .bam)')
     parser_composite.add_argument('--mincalls', default=100, help='minimum call count to include elt (default = 100)')
     parser_composite.add_argument('--maxelts', default=300, help='maximum elements, if > max random.sample() (default = 300)')
     parser_composite.add_argument('--outelts', default=100, help='maximum output elements, if > max random.sample() (default = 300)')
