@@ -53,6 +53,7 @@ class Read:
         self.meth_calls = {}
         self.phase      = phase
         self.mod_names  = {}
+        self.call_count = 0
 
         # used for locus per-read plot
         self.ypos   = None
@@ -66,6 +67,9 @@ class Read:
         self.llrs[cpg_loc]       = stat
         self.meth_calls[cpg_loc] = methcall
         self.mod_names[cpg_loc]  = modname
+
+        if methcall != 0:
+            self.call_count += 1
 
     def overlap(self, other):
         return min(max(self.ends), max(other.ends)) - max(min(self.starts), min(other.starts)) > 0
@@ -1698,11 +1702,13 @@ def locus(args):
             if genes[ensg].name not in genes_of_interest:
                 continue
 
+        logger.info('gene in region: %s' % genes[ensg].name)
+
         if genes[ensg].has_tx():
 
             tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [0.4+i, 0.4+i], zorder=1))
 
-            print('transcript: %d-%d %s' % (genes[ensg].tx_start, genes[ensg].tx_end, genes[ensg].name))
+            #print('transcript: %d-%d %s' % (genes[ensg].tx_start, genes[ensg].tx_end, genes[ensg].name))
 
         genes[ensg].merge_exons()
         for exon_start, exon_end in genes[ensg].exons:
@@ -1710,9 +1716,8 @@ def locus(args):
 
             exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, i], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=2))
 
-
-        blocks_str = ','.join(['%d-%d' % (s,e) for s, e in genes[ensg].exons])
-        print('%s exons: %s' % (genes[ensg].name, blocks_str))
+        #blocks_str = ','.join(['%d-%d' % (s,e) for s, e in genes[ensg].exons])
+        #print('%s exons: %s' % (genes[ensg].name, blocks_str))
 
         i += 1
 
@@ -1756,6 +1761,13 @@ def locus(args):
                 pos_cache[read.query_name][1].append(read.reference_end)
 
         for readname, read in reads[bamname].items():
+            if readname not in pos_cache:
+                logger.warning('read %s not found in %s (skipped)' % (readname, bamname))
+                continue
+
+            if read.call_count == 0:
+                continue
+
             read.ypos = max_y
             max_y += 1
 
@@ -2146,11 +2158,13 @@ def haplocus(args):
             if genes[ensg].name not in genes_of_interest:
                 continue
 
+        logger.info('gene in region: %s' % genes[ensg].name)
+
         if genes[ensg].has_tx():
 
             tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [0.4+i, 0.4+i], zorder=1))
 
-            print('transcript: %d-%d %s' % (genes[ensg].tx_start, genes[ensg].tx_end, genes[ensg].name))
+            #print('transcript: %d-%d %s' % (genes[ensg].tx_start, genes[ensg].tx_end, genes[ensg].name))
 
         genes[ensg].merge_exons()
         for exon_start, exon_end in genes[ensg].exons:
@@ -2158,9 +2172,8 @@ def haplocus(args):
 
             exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, i], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=2))
 
-
-        blocks_str = ','.join(['%d-%d' % (s,e) for s, e in genes[ensg].exons])
-        print('%s exons: %s' % (genes[ensg].name, blocks_str))
+        #blocks_str = ','.join(['%d-%d' % (s,e) for s, e in genes[ensg].exons])
+        #print('%s exons: %s' % (genes[ensg].name, blocks_str))
 
         i += 1
 
@@ -2203,6 +2216,13 @@ def haplocus(args):
 
         for readname, read in methreads.items():
             if read.phase != orig_phase[phase]:
+                continue
+
+            if readname not in pos_cache:
+                logger.warning('read %s not found in %s (skipped)' % (readname, bamname))
+                continue
+
+            if read.call_count == 0:
                 continue
 
             read.ypos = max_y
@@ -2489,6 +2509,9 @@ def region(args):
 
     logger.info('parsing segments...')
 
+    shallow_windows = dd(list)
+    min_window_calls = int(args.min_window_calls)
+
     for res in results:
         meth_result, seg = res.get()
         if meth_result is None:
@@ -2519,6 +2542,9 @@ def region(args):
             if 1 in meth_data:
                 meth_calls = meth_data[1]
 
+            if meth_calls + unmeth_calls < min_window_calls:
+                shallow_windows[modname].append(seg_id)
+
             sample_name = seg_name + '.' + modname
             sample_names[sample_name] = True
 
@@ -2529,6 +2555,19 @@ def region(args):
                  meth_segs[seg_id][sample_name + '_frac'] = 0 # changed from NaN
             else:
                 meth_segs[seg_id][sample_name + '_frac'] = meth_calls/float(meth_calls+unmeth_calls)
+
+    for mod in mods:
+        shallow_frac = len(shallow_windows[mod])/len(w_starts)*100.0
+        logger.info('%.2f percent of windows for mod %s had less than %d calls' % (shallow_frac, mod, min_window_calls))
+
+    deleted_segs = 0
+    for mod in mods:
+        for seg_id in shallow_windows[mod]:
+            if seg_id in meth_segs:
+                del meth_segs[seg_id]
+                deleted_segs += 1
+
+    logger.info('removed %d segs with less than %d calls in at least one mod' % (deleted_segs, min_window_calls))
 
     meth_segs = pd.DataFrame.from_dict(meth_segs).T
 
@@ -2550,6 +2589,63 @@ def region(args):
     coord_to_pos = {}
     for orig_loc, new_loc in zip(meth_segs['seg_start'], meth_segs['pos']):
         coord_to_pos[orig_loc] = new_loc
+
+    # highlights
+
+    h_start = []
+    h_end = []
+    h_cpg_start = []
+    h_cpg_end = []
+    h_colors = []
+
+    if args.highlight:
+        h_colors = sns.color_palette(args.highlightpalette, n_colors=len(args.highlight.split(',')))
+
+    if args.highlight:
+        for h in args.highlight.split(','):
+            if ':' in h:
+                h = h.split(':')[-1]
+                
+            h_s, h_e = map(int, h.split('-'))
+            h_start.append(h_s)
+            h_end.append(h_e)
+
+            h_cpg_start.append(coord_to_pos[min(meth_segs['seg_start'], key=lambda x:abs(x-h_start[-1]))])
+            h_cpg_end.append(coord_to_pos[min(meth_segs['seg_start'], key=lambda x:abs(x-h_end[-1]))])
+
+    if args.highlight_bed:
+        need_colour = 0
+
+        with open(args.highlight_bed) as h_bed:
+            for line in h_bed:
+                c = line.strip().split()
+                assert len(c) >= 3, 'malformed line in --highlight_bed: %s' % line.strip()
+                assert c[0] == chrom, 'all entries in --highlight_bed must be on the same chromosome as -i/--interval'
+
+                h_s, h_e = map(int, c[1:3])
+
+                colour = None
+
+                if len(c) > 3:
+                    colour = c[3]
+                else:
+                    need_colour += 1
+                
+                h_start.append(h_s)
+                h_end.append(h_e)
+
+                h_cpg_start.append(coord_to_pos[min(meth_segs['seg_start'], key=lambda x:abs(x-h_start[-1]))])
+                h_cpg_end.append(coord_to_pos[min(meth_segs['seg_start'], key=lambda x:abs(x-h_end[-1]))])
+
+                h_colors.append(colour)
+
+        more_colours = sns.color_palette(args.highlightpalette, n_colors=need_colour)
+
+        for i, c in enumerate(h_colors):
+            if c is None:
+                h_colors[i] = more_colours.pop()
+
+    # set up plot
 
     fig = plt.figure()
     gs = gridspec.GridSpec(4,1,height_ratios=[1,5,1,3])
@@ -2597,11 +2693,13 @@ def region(args):
             if genes[ensg].name not in genes_of_interest:
                 continue
 
+        logger.info('gene in region: %s' % genes[ensg].name)
+
         if genes[ensg].has_tx():
 
             tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start, genes[ensg].tx_end], [0.4+i, 0.4+i], zorder=1))
 
-            print('transcript: %d-%d %s' % (genes[ensg].tx_start, genes[ensg].tx_end, genes[ensg].name))
+            #print('transcript: %d-%d %s' % (genes[ensg].tx_start, genes[ensg].tx_end, genes[ensg].name))
 
         genes[ensg].merge_exons()
         for exon_start, exon_end in genes[ensg].exons:
@@ -2609,9 +2707,8 @@ def region(args):
 
             exon_patches.append(matplotlib.patches.Rectangle([exon_start, i], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=2))
 
-
-        blocks_str = ','.join(['%d-%d' % (s,e) for s, e in genes[ensg].exons])
-        print('%s exons: %s' % (genes[ensg].name, blocks_str))
+        #blocks_str = ','.join(['%d-%d' % (s,e) for s, e in genes[ensg].exons])
+        #print('%s exons: %s' % (genes[ensg].name, blocks_str))
 
         i += 1
 
@@ -2657,6 +2754,13 @@ def region(args):
                 pos_cache[read.query_name][1].append(read.reference_end)
 
         for readname, read in reads[bamname].items():
+            if readname not in pos_cache:
+                logger.warning('read %s not found in %s (skipped)' % (readname, bamname))
+                continue
+
+            if read.call_count == 0:
+                continue
+
             read.ypos = max_y
             max_y += 1
 
@@ -2744,13 +2848,13 @@ def region(args):
     ax2.vlines(x1, 0, 1, color='#777777', zorder=1)
     ax3.vlines(x2, 9, 10, color='#777777', zorder=1)
 
-    # if args.highlight:
-    #     for i in range(len(h_start)):
-    #         orig_highlight_box = matplotlib.patches.Rectangle((h_start[i],9), h_end[i]-h_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=2)
-    #         cpg_highlight_box = matplotlib.patches.Rectangle((h_cpg_start[i],0), h_cpg_end[i]-h_cpg_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=3)
+    if args.highlight or args.highlight_bed:
+        for i in range(len(h_start)):
+            orig_highlight_box = matplotlib.patches.Rectangle((h_start[i],9), h_end[i]-h_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=2)
+            cpg_highlight_box = matplotlib.patches.Rectangle((h_cpg_start[i],0), h_cpg_end[i]-h_cpg_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=3)
 
-    #         ax3.add_patch(orig_highlight_box)
-    #         ax2.add_patch(cpg_highlight_box)
+            ax3.add_patch(orig_highlight_box)
+            ax2.add_patch(cpg_highlight_box)
 
     for x1_x, x2_x in zip(x1, x2):
         link_end1 = (x1_x, 1)
@@ -2758,9 +2862,9 @@ def region(args):
 
         l_col = '#777777'
 
-        # for i in range(len(h_start)):
-        #     if x2_x >= h_start[i] and x2_x <= h_end[i]:
-        #         l_col = h_colors[i]
+        for i in range(len(h_start)):
+            if x2_x >= h_start[i] and x2_x <= h_end[i]:
+                l_col = h_colors[i]
 
         con = ConnectionPatch(xyA=link_end1, xyB=link_end2, coordsA="data", coordsB="data", axesA=ax2, axesB=ax3, color=l_col)
         ax3.add_artist(con)
@@ -2796,12 +2900,12 @@ def region(args):
 
     fig.set_size_inches(16, 8)
     if args.svg:
-        plt.savefig('%s.locus.meth.svg' % fn_prefix, bbox_inches='tight')
-        logger.info('plot saved to %s.locus.meth.svg' % fn_prefix)
+        plt.savefig('%s.region.meth.svg' % fn_prefix, bbox_inches='tight')
+        logger.info('plot saved to %s.region.meth.svg' % fn_prefix)
 
     else:
-        plt.savefig('%s.locus.meth.png' % fn_prefix, bbox_inches='tight')
-        logger.info('plot saved to %s.locus.meth.png' % fn_prefix)
+        plt.savefig('%s.region.meth.png' % fn_prefix, bbox_inches='tight')
+        logger.info('plot saved to %s.region.meth.png' % fn_prefix)
 
 
 def composite(args):
@@ -3172,12 +3276,14 @@ if __name__ == '__main__':
     parser_region.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
     parser_region.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
     parser_region.add_argument('-l', '--highlight', default=None, help='format: start-end, can comma-delimit multiple highlights')
-    parser_region.add_argument('-c', '--cpgspace', default=10, help='increase to increase spacing between links in top panel (default=10)')
+    parser_region.add_argument('-b', '--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
+    parser_region.add_argument('-c', '--cpgspace', default=4, help='increase to increase spacing between links in top panel (default=10)')
     parser_region.add_argument('-w', '--windows', default=1000, help='set window count, default=1000')
     parser_region.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_region.add_argument('-m', '--mods', default=None, help='mods to consider (comma-delimited, default = all available)')
     parser_region.add_argument('-n', '--norm_motif', default=None, help='normalise window sizes to motif occurance')
     parser_region.add_argument('-r', '--ref', default=None, help='ref genome fasta, required if normalising windows with -n/--norm_motif')
+    parser_region.add_argument('--min_window_calls', default=1, help='minimum reads per window to include in plot (default = 1)')
     parser_region.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default=8)')
     parser_region.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_region.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
