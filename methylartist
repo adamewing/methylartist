@@ -9,6 +9,7 @@ import logging
 import multiprocessing as mp
 import matplotlib
 import random
+import itertools
 import sqlite3
 
 # Force matplotlib to not use any Xwindows backend.
@@ -1448,23 +1449,46 @@ def segplot(args):
     data = pd.read_csv(args.segmeth, sep='\t', header=0, index_col=0)
 
     samples = []
+    mods = []
 
     for c in data.columns:
         if c.endswith('_meth_calls'):
-            samples.append(c.replace('_meth_calls', ''))
+            sample_mod = c.replace('_meth_calls', '')
+            sample = '_'.join(sample_mod.split('_')[:-1])
+            mod = sample_mod.split('_')[-1]            
+            samples.append(sample)
+            if mod not in mods:
+                mods.append(mod)
 
     logger.info('available samples: %s' % ','.join(samples))
+    logger.info('available mods: %s' % ','.join(mods))
 
     if args.samples:
         user_samples = []
         for s in args.samples.split(','):
-            assert s in samples, '%s not in sample list!' % s
+            if s not in samples:
+                sys.exit('%s not in sample list!' % s)
             user_samples.append(s)
 
         samples = user_samples
 
+    if args.mods:
+        user_mods = []
+        for m in args.mods.split(','):
+            if m not in mods:
+                sys.exit('%s not in mod list!' % m)
+            user_mods.append(m)
+
+        mods = user_mods
+
+    samples_mods = [s + '_' + m for s, m in itertools.product(samples, mods)]
+
+    logger.info('sample + mod permutations: %s' % ','.join(samples_mods))
+
     for s in samples:
-        data[s + '_methfrac'] = data[s+'_meth_calls']/(data[s+'_meth_calls']+data[s+'_unmeth_calls'])
+        for m in mods:
+            sm = s + '_' + m
+            data[sm + '_methfrac'] = data[sm + '_meth_calls']/(data[sm + '_meth_calls']+data[sm + '_unmeth_calls'])
 
     useable = []
 
@@ -1472,9 +1496,12 @@ def segplot(args):
         use_seg = True
 
         for s in samples:
-            if (data[s+'_meth_calls'].loc[seg] + data[s+'_unmeth_calls'].loc[seg]) < int(args.mincalls):
-                use_seg = False
-                continue
+            for m in mods:
+                sm = s + '_' + m
+
+                if (data[sm + '_meth_calls'].loc[seg] + data[sm + '_unmeth_calls'].loc[seg]) < int(args.mincalls):
+                    use_seg = False
+                    continue
 
         if use_seg:
             useable.append(seg)
@@ -1489,13 +1516,15 @@ def segplot(args):
 
     for seg in data.index:
         for s in samples:
-            uid = seg + ':' + s
-            plot_data[uid]['sample'] = s
-            plot_data[uid]['mCpG']   = data[s+'_methfrac'].loc[seg]
-            plot_data[uid]['group']  = data['seg_name'].loc[seg]
+            for m in mods:
+                sm = s + '_' + m
+                uid = seg + ':' + sm
+                plot_data[uid]['sample'] = sm
+                plot_data[uid]['mCpG']   = data[sm + '_methfrac'].loc[seg]
+                plot_data[uid]['group']  = data['seg_name'].loc[seg]
 
-            if plot_data[uid]['group'] not in order:
-                order.append(plot_data[uid]['group'])
+                if plot_data[uid]['group'] not in order:
+                    order.append(plot_data[uid]['group'])
 
     plot_data = pd.DataFrame.from_dict(plot_data).T
     plot_data = pd.DataFrame(plot_data.to_dict())
@@ -1511,10 +1540,10 @@ def segplot(args):
         order = args.categories.split(',')
 
     if args.violin:
-        sns_plot = sns.violinplot(x='group', y='mCpG', data=plot_data, hue='sample', dodge=True, jitter=True, order=order, hue_order=samples, palette=args.palette)
+        sns_plot = sns.violinplot(x='group', y='mCpG', data=plot_data, hue='sample', dodge=True, jitter=True, order=order, hue_order=samples_mods, palette=args.palette)
 
     else:
-        sns_plot = sns.stripplot(x='group', y='mCpG', data=plot_data, hue='sample', dodge=True, jitter=True, size=pt_sz, order=order, hue_order=samples, palette=args.palette)
+        sns_plot = sns.stripplot(x='group', y='mCpG', data=plot_data, hue='sample', dodge=True, jitter=True, size=pt_sz, order=order, hue_order=samples_mods, palette=args.palette)
 
     if args.tiltlabel:
         sns_plot.set_xticklabels(sns_plot.get_xticklabels(), rotation=45)
@@ -3210,6 +3239,7 @@ if __name__ == '__main__':
     # options for methylation strip / violin plots
     parser_segplot.add_argument('-s', '--segmeth', required=True, help='output from segmeth.py')
     parser_segplot.add_argument('-m', '--samples', default=None, help='samples, comma delimited')
+    parser_segplot.add_argument('-d', '--mods', default=None, help='mods, comma delimited')
     parser_segplot.add_argument('-c', '--categories', default=None, help='categories, comma delimited, need to match seg_name column from input')
     parser_segplot.add_argument('-v', '--violin', default=False, action='store_true')
     parser_segplot.add_argument('-n', '--mincalls', default=10, help='minimum number of calls to include site (methylated + unmethylated) (default=10)')
