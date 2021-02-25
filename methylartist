@@ -1783,6 +1783,9 @@ def locus(args):
             if read.mapq < 10:
                 continue
 
+            if read.is_supplementary or read.is_secondary or read.is_duplicate:
+                continue
+
             if read.query_name not in pos_cache:
                 pos_cache[read.query_name] = ([read.reference_start], [read.reference_end])
             else:
@@ -1791,7 +1794,7 @@ def locus(args):
 
         for readname, read in reads[bamname].items():
             if readname not in pos_cache:
-                logger.warning('read %s not found in %s (skipped)' % (readname, bamname))
+                logger.debug('read %s not found in %s (skipped)' % (readname, bamname))
                 continue
 
             if read.call_count == 0:
@@ -2236,6 +2239,9 @@ def haplocus(args):
             if read.mapq < 10:
                 continue
 
+            if read.is_supplementary or read.is_secondary or read.is_duplicate:
+                continue
+
             if read.query_name not in pos_cache:
                 pos_cache[read.query_name] = ([read.reference_start], [read.reference_end])
             else:
@@ -2247,7 +2253,7 @@ def haplocus(args):
                 continue
 
             if readname not in pos_cache:
-                logger.warning('read %s not found in %s (skipped)' % (readname, bamname))
+                logger.debug('read %s not found in %s (skipped)' % (readname, bamname))
                 continue
 
             if read.call_count == 0:
@@ -2464,6 +2470,8 @@ def region(args):
 
         if motifs_per_window == 0:
             motifs_per_window = 1
+
+        logger.info('motif count: %d, per window: %d' % (motif_count, motifs_per_window))
 
         w_starts = [start]
         w_ends = []
@@ -2776,8 +2784,8 @@ def region(args):
             if read.mapq < 10:
                 continue
 
-            # if read.is_supplementary or read.is_secondary or read.is_duplicate:
-            #     continue
+            if read.is_supplementary or read.is_secondary or read.is_duplicate:
+                continue
 
             if read.query_name not in pos_cache:
                 pos_cache[read.query_name] = ([read.reference_start], [read.reference_end])
