@@ -1841,17 +1841,16 @@ def locus(args):
 
     for bamname in readstack:
         for read in readstack[bamname]:
+            for call_pos, call in read.meth_calls.items():
+                if call == -1:
+                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=2, zorder=2)
+
+                if call == 1:
+                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=2)
+
             for i in range(len(read.starts)):
                 readline_start = max(read.starts[i], elt_start) - elt_start
                 readline_end   = min(read.ends[i], elt_end) - elt_start
-
-                for call_pos, call in read.meth_calls.items():
-                    if call == -1:
-                        ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=2, zorder=2)
-
-                    if call == 1:
-                        ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=2)
-
 
                 ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=1, color=sample_color[bamname], alpha=0.4))
 
@@ -2298,17 +2297,16 @@ def haplocus(args):
 
     for phase in phase_order:
         for read in readstack[phase]:
+            for call_pos, call in read.meth_calls.items():
+                if call == -1:
+                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=phase_color[phase], mfc='white', markersize=2, zorder=2)
+
+                if call == 1:
+                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=2)
+
             for i in range(len(read.starts)):
                 readline_start = max(read.starts[i], elt_start) - elt_start
                 readline_end   = min(read.ends[i], elt_end) - elt_start
-
-                for call_pos, call in read.meth_calls.items():
-                    if call == -1:
-                        ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=phase_color[phase], mfc='white', markersize=2, zorder=2)
-
-                    if call == 1:
-                        ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=2)
-
 
                 ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=1, color=phase_color[phase], alpha=0.4))
 
@@ -2448,7 +2446,7 @@ def region(args):
     assert start < end
 
     if end-start < 100000:
-        logger.warning('locus smaller than 100kbp. "methylartist region" might work, but also have a look at "methylartist locus" for more detailed output')
+        logger.warning('locus smaller than 100kbp, "methylartist locus" may yield better results')
 
     w_size = int((end-start)/int(args.windows))
     w_starts = list(range(start, end, w_size))
@@ -2461,8 +2459,11 @@ def region(args):
         ref = pysam.FastaFile(args.ref)
         motif = args.norm_motif.upper()
         region_seq = ref.fetch(chrom, start, end).upper()
-        motif_count = region_seq.count(motif)
+        motif_count = region_seq.count(motif) + region_seq.count(rc(motif))
         motifs_per_window = int(motif_count / int(args.windows))
+
+        if motifs_per_window == 0:
+            motifs_per_window = 1
 
         w_starts = [start]
         w_ends = []
@@ -2477,7 +2478,7 @@ def region(args):
             if motif in (site_fwd, site_rev):
                 motif_count += 1
 
-            i += len(motif)
+            i += 1
 
             if motif_count == motifs_per_window:
                 w_starts.append(start+i)
@@ -2487,6 +2488,7 @@ def region(args):
         w_ends.append(end)
 
         assert len(w_starts) == len(w_ends)
+        logger.info('using %d windows normalised for %s content' % (len(w_starts), args.norm_motif))
 
     else:
         logger.info('using %d windows of %d bp' % (len(w_starts), w_size))
@@ -2572,7 +2574,8 @@ def region(args):
                 meth_calls = meth_data[1]
 
             if meth_calls + unmeth_calls < min_window_calls:
-                shallow_windows[modname].append(seg_id)
+                if seg_id not in shallow_windows[modname]:
+                    shallow_windows[modname].append(seg_id)
 
             sample_name = seg_name + '.' + modname
             sample_names[sample_name] = True
@@ -2580,7 +2583,7 @@ def region(args):
             meth_segs[seg_id][sample_name + '_meth_calls'] = meth_calls
             meth_segs[seg_id][sample_name + '_unmeth_calls'] = unmeth_calls
 
-            if meth_calls+unmeth_calls == 0:
+            if meth_calls + unmeth_calls == 0:
                  meth_segs[seg_id][sample_name + '_frac'] = 0 # changed from NaN
             else:
                 meth_segs[seg_id][sample_name + '_frac'] = meth_calls/float(meth_calls+unmeth_calls)
@@ -2773,8 +2776,8 @@ def region(args):
             if read.mapq < 10:
                 continue
 
-            if read.is_supplementary or read.is_secondary or read.is_duplicate:
-                continue
+            # if read.is_supplementary or read.is_secondary or read.is_duplicate:
+            #     continue
 
             if read.query_name not in pos_cache:
                 pos_cache[read.query_name] = ([read.reference_start], [read.reference_end])
@@ -2784,7 +2787,7 @@ def region(args):
 
         for readname, read in reads[bamname].items():
             if readname not in pos_cache:
-                logger.warning('read %s not found in %s (skipped)' % (readname, bamname))
+                logger.debug('read %s not found in %s (skipped)' % (readname, bamname))
                 continue
 
             if read.call_count == 0:
@@ -2834,21 +2837,21 @@ def region(args):
 
     for bamname in readstack:
         for read in readstack[bamname]:
+            for call_pos, call in read.meth_calls.items():
+                #print(read.read_name, call_pos, max(read.ends)-min(read.starts))
+                call_pos += start
+
+                if call == -1:
+                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=2, zorder=2)
+
+                if call == 1:
+                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=2)
+
             for i in range(len(read.starts)):
                 readline_start = max(read.starts[i], start)
                 readline_end   = min(read.ends[i], end)
 
-                for call_pos, call in read.meth_calls.items():
-                    call_pos += read.starts[i]
-                    if call == -1:
-                        ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=2, zorder=2)
-
-                    if call == 1:
-                        ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=2)
-
-
                 ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=1, color=sample_color[bamname], alpha=0.4))
-
 
     # plot correspondence between genome space and cpg space
 
@@ -2906,7 +2909,7 @@ def region(args):
     tick_interval = (end-start)/n_ticks
     tick_list = list(range(int(ax0.get_xlim()[0]), int(ax0.get_xlim()[1]), int(tick_interval)))
 
-    xt_labels = [str(int(t+start)) for t in tick_list]
+    xt_labels = [str(int(t)) for t in tick_list]
     ax0.set_xticks(tick_list) 
     ax0.set_xticklabels(xt_labels)
 
