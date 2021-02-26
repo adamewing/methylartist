@@ -1687,6 +1687,17 @@ def locus(args):
             if c is None:
                 h_colors[i] = more_colours.pop()
 
+    # mask
+
+    readmask = []
+    if args.readmask:
+        for ivl in args.readmask.split(','):
+            if ':' in ivl:
+                ivl = ivl.split(':')[1]
+            assert '-' in ivl, 'malformed --readmask interval(s): %s' % args.readmask
+
+            readmask.append(list(map(int, ivl.split('-'))))
+
     # set up plot
 
     fig = plt.figure()
@@ -1725,7 +1736,7 @@ def locus(args):
     if args.genes is not None:
         genes_of_interest = args.genes.strip().split(',')
 
-    i = 0
+    i = 1
     for ensg in genes:
         if genes_of_interest:
             if genes[ensg].name not in genes_of_interest:
@@ -1735,7 +1746,7 @@ def locus(args):
 
         if genes[ensg].has_tx():
 
-            tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [0.4+i, 0.4+i], zorder=1))
+            tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [0.4+i, 0.4+i], zorder=2))
 
             #print('transcript: %d-%d %s' % (genes[ensg].tx_start, genes[ensg].tx_end, genes[ensg].name))
 
@@ -1743,7 +1754,7 @@ def locus(args):
         for exon_start, exon_end in genes[ensg].exons:
             exon_len = exon_end - exon_start
 
-            exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, i], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=2))
+            exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, i], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=3))
 
         #blocks_str = ','.join(['%d-%d' % (s,e) for s, e in genes[ensg].exons])
         #print('%s exons: %s' % (genes[ensg].name, blocks_str))
@@ -1753,8 +1764,21 @@ def locus(args):
     if i < 3:
         i = 3
 
+    highlight_patches = []
+
+    if args.highlight_panels:
+        a = float(args.highlight_panels)
+        if args.highlight or args.highlight_bed:
+            for h, h_s in enumerate(h_start):
+                h_e = h_end[h]
+                h_color = h_colors[h]
+                highlight_patches.append(matplotlib.patches.Rectangle([h_s, 0], h_e-h_s, i, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+    
     ax0.set_ylim(0,i)
     ax0.set_yticks([])
+
+    for h in highlight_patches:
+        ax0.add_patch(h)
 
     for p in exon_patches:
         ax0.add_patch(p)
@@ -1775,6 +1799,8 @@ def locus(args):
     max_y  = 1
     pack_y = 1
 
+    masked_count = 0
+
     for bamname in reads:
         fetch_reads_bam = pysam.AlignmentFile(orig_bam[bamname])
         pos_cache = {}
@@ -1784,6 +1810,17 @@ def locus(args):
                 continue
 
             if read.is_supplementary or read.is_secondary or read.is_duplicate:
+                continue
+
+            masked = False
+            if len(readmask) > 0:
+                for mask_start, mask_end in readmask:
+                    if read.reference_start >= mask_start and read.reference_end <= mask_end:
+                        logger.debug('masked read: %s' % read.query_name)
+                        masked_count += 1
+                        masked = True
+            
+            if masked:
                 continue
 
             if read.query_name not in pos_cache:
@@ -1807,6 +1844,9 @@ def locus(args):
             readstack[bamname].append(read)
 
         fetch_reads_bam.close()
+
+    if args.readmask:
+        logger.info('masked %d reads due to --readmask' % masked_count)
 
     # read packing
 
@@ -2147,6 +2187,16 @@ def haplocus(args):
         for i, c in enumerate(h_colors):
             if c is None:
                 h_colors[i] = more_colours.pop()
+    # mask
+
+    readmask = []
+    if args.readmask:
+        for ivl in args.readmask.split(','):
+            if ':' in ivl:
+                ivl = ivl.split(':')[1]
+            assert '-' in ivl, 'malformed --readmask interval(s): %s' % args.readmask
+
+            readmask.append(list(map(int, ivl.split('-'))))
 
     # set up plot
 
@@ -2231,6 +2281,8 @@ def haplocus(args):
     max_y  = 1
     pack_y = 1
 
+    masked_count = 0
+
     for phase in phase_order:
         fetch_reads_bam = pysam.AlignmentFile(args.bam)
         pos_cache = {}
@@ -2240,6 +2292,17 @@ def haplocus(args):
                 continue
 
             if read.is_supplementary or read.is_secondary or read.is_duplicate:
+                continue
+
+            masked = False
+            if len(readmask) > 0:
+                for mask_start, mask_end in readmask:
+                    if read.reference_start >= mask_start and read.reference_end <= mask_end:
+                        logger.debug('masked read: %s' % read.query_name)
+                        masked_count += 1
+                        masked = True
+            
+            if masked:
                 continue
 
             if read.query_name not in pos_cache:
@@ -2266,6 +2329,9 @@ def haplocus(args):
             readstack[phase].append(deepcopy(read)) # append deep copy to avoid reassigning ypos
 
         fetch_reads_bam.close()
+
+    if args.readmask:
+        logger.info('masked %d reads due to --readmask' % masked_count)
 
     # read packing
 
@@ -2685,6 +2751,17 @@ def region(args):
             if c is None:
                 h_colors[i] = more_colours.pop()
 
+    # mask
+
+    readmask = []
+    if args.readmask:
+        for ivl in args.readmask.split(','):
+            if ':' in ivl:
+                ivl = ivl.split(':')[1]
+            assert '-' in ivl, 'malformed --readmask interval(s): %s' % args.readmask
+
+            readmask.append(list(map(int, ivl.split('-'))))
+
     # set up plot
 
     fig = plt.figure()
@@ -2776,6 +2853,8 @@ def region(args):
     max_y  = 1
     pack_y = 1
 
+    masked_count = 0
+
     for bamname in reads:
         fetch_reads_bam = pysam.AlignmentFile(orig_bam[bamname])
         pos_cache = {}
@@ -2785,6 +2864,17 @@ def region(args):
                 continue
 
             if read.is_supplementary or read.is_secondary or read.is_duplicate:
+                continue
+
+            masked = False
+            if len(readmask) > 0:
+                for mask_start, mask_end in readmask:
+                    if read.reference_start >= mask_start and read.reference_end <= mask_end:
+                        logger.debug('masked read: %s' % read.query_name)
+                        masked_count += 1
+                        masked = True
+            
+            if masked:
                 continue
 
             if read.query_name not in pos_cache:
@@ -2808,6 +2898,9 @@ def region(args):
             readstack[bamname].append(read)
 
         fetch_reads_bam.close()
+
+    if args.readmask:
+        logger.info('masked %d reads due to --readmask' % masked_count)
 
     # read packing
 
@@ -3265,14 +3358,15 @@ if __name__ == '__main__':
 
     # options for locus-specific plots
     parser_locus.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line (whitespace-delimited)')
-    parser_locus.add_argument('-i', '--interval', required=True, help='chr:start-end')
+    parser_locus.add_argument('-i', '--interval', required=True, help='chrom:start-end')
     parser_locus.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
-    parser_locus.add_argument('-l', '--highlight', default=None, help='format: start-end, can comma-delimit multiple highlights')
+    parser_locus.add_argument('-l', '--highlight', default=None, help='format: start-end, (can be chrom:start-end but chrom is ignored) can comma-delimit multiple highlights')
     parser_locus.add_argument('-b', '--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_locus.add_argument('-m', '--mods', default=None, help='mods, comma-delimited for >1 (default to all available mods)')
     parser_locus.add_argument('-s', '--slidingwindowsize', default=20, help='size of sliding window for meth frac (default=20)')
     parser_locus.add_argument('-t', '--slidingwindowstep', default=2, help='step size for meth frac (default=2)')
     parser_locus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
+    parser_locus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_locus.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default=8)')
     parser_locus.add_argument('--maskcutoff', default=20, help='windowed read count masking cutoff (default=20)')
     parser_locus.add_argument('--cpgspace', default=10, help='spacing between links in top panel (default=10)')
@@ -3281,7 +3375,8 @@ if __name__ == '__main__':
     parser_locus.add_argument('--methcall_xmin', default=None)
     parser_locus.add_argument('--methcall_xmax', default=None)
     parser_locus.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
-    parser_locus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")') 
+    parser_locus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
+    parser_locus.add_argument('--highlight_panels', default=None, help='extend highlighting to panels (specify alpha level between 0 and 1 e.g. --highlight_panels 0.2)')
     parser_locus.add_argument('--excl_ambig', action='store_true', default=False)
     parser_locus.add_argument('--unambig_highlight', action='store_true', default=False)
     parser_locus.add_argument('--svg', action='store_true')
@@ -3290,20 +3385,22 @@ if __name__ == '__main__':
     parser_haplocus.add_argument('-b', '--bam', required=True, help='bam used for methylation calling')
     parser_haplocus.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
     parser_haplocus.add_argument('-d', '--methdata', required=True, help='methylation database (.db file)')
-    parser_haplocus.add_argument('-i', '--interval', required=True, help='chr:start-end')
-    parser_haplocus.add_argument('-l', '--highlight', default=None, help='format: start-end, can comma-delimit multiple highlights')
+    parser_haplocus.add_argument('-i', '--interval', required=True, help='chrom:start-end')
+    parser_haplocus.add_argument('-l', '--highlight', default=None, help='format: start-end, (can be chrom:start-end but chrom is ignored) can comma-delimit multiple highlights')
     parser_haplocus.add_argument('-e', '--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_haplocus.add_argument('-m', '--mods', default=None, help='mods, comma-delimited for >1 (default to all available mods)')
     parser_haplocus.add_argument('-s', '--slidingwindowsize', default=20, help='size of sliding window for smoothed plot (default=20)')
     parser_haplocus.add_argument('-t', '--slidingwindowstep', default=2, help='size of sliding window for smoothed plot (default=2)')
     parser_haplocus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
+    parser_haplocus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_haplocus.add_argument('--methcall_ymax', default=None)
     parser_haplocus.add_argument('--cpgspace', default=10, help='spacing between links in top panel (default=10)')
     parser_haplocus.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default=8)')
     parser_haplocus.add_argument('--maskcutoff', default=20, help='windowed read count masking cutoff (default=20)')
     parser_haplocus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_haplocus.add_argument('--phasepalette', default="tab10", help='palette for phases (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
-    parser_haplocus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")') 
+    parser_haplocus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
+    parser_haplocus.add_argument('--highlight_panels', default=None, help='extend highlighting to panels (specify alpha level between 0 and 1 e.g. --highlight_panels 0.2)')
     parser_haplocus.add_argument('--excl_ambig', action='store_true', default=False)
     parser_haplocus.add_argument('--unambig_highlight', action='store_true', default=False)
     parser_haplocus.add_argument('--ignore_tags', action='store_true', default=False)
@@ -3316,7 +3413,7 @@ if __name__ == '__main__':
     parser_region.add_argument('-i', '--interval', required=True, help='chrom:start-end')
     parser_region.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
     parser_region.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
-    parser_region.add_argument('-l', '--highlight', default=None, help='format: start-end, can comma-delimit multiple highlights')
+    parser_region.add_argument('-l', '--highlight', default=None, help='format: start-end, (can be chrom:start-end but chrom is ignored) can comma-delimit multiple highlights')
     parser_region.add_argument('-b', '--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_region.add_argument('-c', '--cpgspace', default=4, help='increase to increase spacing between links in top panel (default=10)')
     parser_region.add_argument('-w', '--windows', default=1000, help='set window count, default=1000')
@@ -3324,6 +3421,7 @@ if __name__ == '__main__':
     parser_region.add_argument('-m', '--mods', default=None, help='mods to consider (comma-delimited, default = all available)')
     parser_region.add_argument('-n', '--norm_motif', default=None, help='normalise window sizes to motif occurance')
     parser_region.add_argument('-r', '--ref', default=None, help='ref genome fasta, required if normalising windows with -n/--norm_motif')
+    parser_region.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_region.add_argument('--min_window_calls', default=1, help='minimum reads per window to include in plot (default = 1)')
     parser_region.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default=8)')
     parser_region.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
