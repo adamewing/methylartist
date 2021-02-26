@@ -46,7 +46,6 @@ logging.basicConfig(format=FORMAT)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-
 class Read:
     def __init__(self, read_name, cpg_loc, stat, methcall, modname, phase=None):
         self.read_name  = read_name
@@ -1701,11 +1700,11 @@ def locus(args):
     # set up plot
 
     fig = plt.figure()
-    gs = gridspec.GridSpec(5,1,height_ratios=[1,5,1,3,3])
+    gs = gridspec.GridSpec(5,1,height_ratios=[1,5,1,3,3], hspace=0)
 
     if args.panelratios:
         p_ratios = list(map(int, args.panelratios.split(',')))
-        gs = gridspec.GridSpec(5,1,height_ratios=p_ratios)
+        gs = gridspec.GridSpec(5,1,height_ratios=p_ratios, hspace=0)
 
     sample_color = {}
     for i, sample in enumerate(sample_order):
@@ -1764,6 +1763,9 @@ def locus(args):
     if i < 3:
         i = 3
 
+    ax0.set_ylim(0,i)
+    ax0.set_yticks([])
+
     highlight_patches = []
 
     if args.highlight_panels:
@@ -1772,10 +1774,9 @@ def locus(args):
             for h, h_s in enumerate(h_start):
                 h_e = h_end[h]
                 h_color = h_colors[h]
-                highlight_patches.append(matplotlib.patches.Rectangle([h_s, 0], h_e-h_s, i, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
-    
-    ax0.set_ylim(0,i)
-    ax0.set_yticks([])
+                ymin = min(ax0.get_ybound())
+                yheight = max(ax0.get_ybound())-ymin
+                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
 
     for h in highlight_patches:
         ax0.add_patch(h)
@@ -1785,7 +1786,6 @@ def locus(args):
 
     for tx in tx_lines:
         ax0.add_line(tx)
-
 
     # per-read plot
 
@@ -1886,17 +1886,31 @@ def locus(args):
         for read in readstack[bamname]:
             for call_pos, call in read.meth_calls.items():
                 if call == -1:
-                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=2, zorder=2)
+                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=2, zorder=3)
 
                 if call == 1:
-                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=2)
+                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=3)
 
             for i in range(len(read.starts)):
                 readline_start = max(read.starts[i], elt_start) - elt_start
                 readline_end   = min(read.ends[i], elt_end) - elt_start
 
-                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=1, color=sample_color[bamname], alpha=0.4))
+                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=2, color=sample_color[bamname], alpha=0.4))
 
+    highlight_patches = []
+
+    if args.highlight_panels:
+        a = float(args.highlight_panels)
+        if args.highlight or args.highlight_bed:
+            for h, h_s in enumerate(h_start):
+                h_e = h_end[h]
+                h_color = h_colors[h]
+                ymin = min(ax1.get_ybound())
+                yheight = max(ax1.get_ybound())-ymin
+                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+    for h in highlight_patches:
+        ax1.add_patch(h)
 
     # plot correspondence between genome space and cpg space
 
@@ -1948,6 +1962,7 @@ def locus(args):
 
     ax0.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
     ax1.set_xlim(ax3.get_xlim())
+    ax2.set_xticks([])
     ax3.set_xticks([])
 
     n_ticks = 10
@@ -1962,20 +1977,37 @@ def locus(args):
 
     logger.info('building llr plot...')
     ax4 = plt.subplot(gs[3])
+    ax4.set_xticks([])
+    ax4.yaxis.tick_right()
 
     ax4.axhline(y=2.5, c='k', linestyle='--',lw=1)
     ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
     ax4.axhline(y=-2.5, c='k', linestyle='--',lw=1)
 
-    ax4 = sns.lineplot(x='loc', y='llr', hue='sample', data=meth_table, palette=args.samplepalette)
+    ax4 = sns.lineplot(x='loc', y='llr', hue='sample', data=meth_table, palette=args.samplepalette, zorder=2)
     ax4.set_xlim(ax2.get_xlim())
+
+    highlight_patches = []
+
+    if args.highlight_panels:
+        a = float(args.highlight_panels)
+        if args.highlight or args.highlight_bed:
+            for h, h_s in enumerate(h_cpg_start):
+                h_e = h_cpg_end[h]
+                h_color = h_colors[h]
+                ymin = min(ax4.get_ybound())
+                yheight = max(ax4.get_ybound())-ymin
+                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+    for h in highlight_patches:
+        ax4.add_patch(h)
 
     # meth frac plot
 
     logger.info('building meth frac plot...')
     ax5 = plt.subplot(gs[4])
 
-    order_stack = 1
+    order_stack = 2
 
     for sample in sample_order:
         windowed_methfrac, meth_n = slide_window(meth_table, sample, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
@@ -1999,6 +2031,21 @@ def locus(args):
 
     ax5.set_xlim(ax2.get_xlim())
     ax5.set_ylim((-0.05,1.05))
+
+    highlight_patches = []
+
+    if args.highlight_panels:
+        a = float(args.highlight_panels)
+        if args.highlight or args.highlight_bed:
+            for h, h_s in enumerate(h_cpg_start):
+                h_e = h_cpg_end[h]
+                h_color = h_colors[h]
+                ymin = min(ax5.get_ybound())
+                yheight = max(ax5.get_ybound())-ymin
+                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+    for h in highlight_patches:
+        ax5.add_patch(h)
 
     fn_prefix = '.'.join(args.data.split('.')[:-1]) + '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(use_mods)
 
@@ -2201,11 +2248,11 @@ def haplocus(args):
     # set up plot
 
     fig = plt.figure()
-    gs = gridspec.GridSpec(5,1,height_ratios=[1,5,1,3,3])
+    gs = gridspec.GridSpec(5,1,height_ratios=[1,5,1,3,3], hspace=0)
 
     if args.panelratios:
         p_ratios = list(map(int, args.panelratios.split(',')))
-        gs = gridspec.GridSpec(5,1,height_ratios=p_ratios)
+        gs = gridspec.GridSpec(5,1,height_ratios=p_ratios, hspace=0)
 
     phase_color = {}
     for i, phase in enumerate(phase_order):
@@ -2233,7 +2280,7 @@ def haplocus(args):
     if args.genes is not None:
         genes_of_interest = args.genes.strip().split(',')
 
-    i = 0
+    i = 1
     for ensg in genes:
         if genes_of_interest:
             if genes[ensg].name not in genes_of_interest:
@@ -2243,7 +2290,7 @@ def haplocus(args):
 
         if genes[ensg].has_tx():
 
-            tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [0.4+i, 0.4+i], zorder=1))
+            tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [0.4+i, 0.4+i], zorder=2))
 
             #print('transcript: %d-%d %s' % (genes[ensg].tx_start, genes[ensg].tx_end, genes[ensg].name))
 
@@ -2251,7 +2298,7 @@ def haplocus(args):
         for exon_start, exon_end in genes[ensg].exons:
             exon_len = exon_end - exon_start
 
-            exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, i], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=2))
+            exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, i], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=3))
 
         #blocks_str = ','.join(['%d-%d' % (s,e) for s, e in genes[ensg].exons])
         #print('%s exons: %s' % (genes[ensg].name, blocks_str))
@@ -2263,6 +2310,21 @@ def haplocus(args):
 
     ax0.set_ylim(0,i)
     ax0.set_yticks([])
+
+    highlight_patches = []
+
+    if args.highlight_panels:
+        a = float(args.highlight_panels)
+        if args.highlight or args.highlight_bed:
+            for h, h_s in enumerate(h_start):
+                h_e = h_end[h]
+                h_color = h_colors[h]
+                ymin = min(ax0.get_ybound())
+                yheight = max(ax0.get_ybound())-ymin
+                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+    for h in highlight_patches:
+        ax0.add_patch(h)
 
     for p in exon_patches:
         ax0.add_patch(p)
@@ -2371,17 +2433,31 @@ def haplocus(args):
         for read in readstack[phase]:
             for call_pos, call in read.meth_calls.items():
                 if call == -1:
-                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=phase_color[phase], mfc='white', markersize=2, zorder=2)
+                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=phase_color[phase], mfc='white', markersize=2, zorder=3)
 
                 if call == 1:
-                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=2)
+                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=3)
 
             for i in range(len(read.starts)):
                 readline_start = max(read.starts[i], elt_start) - elt_start
                 readline_end   = min(read.ends[i], elt_end) - elt_start
 
-                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=1, color=phase_color[phase], alpha=0.4))
+                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=2, color=phase_color[phase], alpha=0.4))
 
+    highlight_patches = []
+
+    if args.highlight_panels:
+        a = float(args.highlight_panels)
+        if args.highlight or args.highlight_bed:
+            for h, h_s in enumerate(h_start):
+                h_e = h_end[h]
+                h_color = h_colors[h]
+                ymin = min(ax1.get_ybound())
+                yheight = max(ax1.get_ybound())-ymin
+                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+    for h in highlight_patches:
+        ax1.add_patch(h)
 
     # plot correspondence between genome space and cpg space
     ax2 = plt.subplot(gs[2])
@@ -2432,6 +2508,7 @@ def haplocus(args):
 
     ax0.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
     ax1.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
+    ax2.set_xticks([])
     ax3.set_xticks([])
 
     n_ticks = 10
@@ -2449,16 +2526,33 @@ def haplocus(args):
     ax4.axhline(y=2.5, c='k', linestyle='--',lw=1)
     ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
     ax4.axhline(y=-2.5, c='k', linestyle='--',lw=1)
+    ax4.set_xticks([])
+    ax4.yaxis.tick_right()
 
-    ax4 = sns.lineplot(x='loc', y='llr', hue='phase', data=meth_table, palette=args.phasepalette)
+    ax4 = sns.lineplot(x='loc', y='llr', hue='phase', data=meth_table, palette=args.phasepalette, zorder=2)
 
     ax4.set_xlim(ax2.get_xlim())
+
+    highlight_patches = []
+
+    if args.highlight_panels:
+        a = float(args.highlight_panels)
+        if args.highlight or args.highlight_bed:
+            for h, h_s in enumerate(h_cpg_start):
+                h_e = h_cpg_end[h]
+                h_color = h_colors[h]
+                ymin = min(ax4.get_ybound())
+                yheight = max(ax4.get_ybound())-ymin
+                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+    for h in highlight_patches:
+        ax4.add_patch(h)
 
     # sliding window plot
 
     ax5 = plt.subplot(gs[4])
 
-    order_stack = 1
+    order_stack = 2
 
     for phase in phase_order:
         windowed_methfrac, meth_n = slide_window_phased(meth_table, phase, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
@@ -2483,6 +2577,21 @@ def haplocus(args):
 
     ax5.set_xlim(ax2.get_xlim())
     ax5.set_ylim((-0.05,1.05))
+
+    highlight_patches = []
+
+    if args.highlight_panels:
+        a = float(args.highlight_panels)
+        if args.highlight or args.highlight_bed:
+            for h, h_s in enumerate(h_cpg_start):
+                h_e = h_cpg_end[h]
+                h_color = h_colors[h]
+                ymin = min(ax5.get_ybound())
+                yheight = max(ax5.get_ybound())-ymin
+                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+    for h in highlight_patches:
+        ax5.add_patch(h)
 
     fig.set_size_inches(16, 8)
 
@@ -2765,11 +2874,11 @@ def region(args):
     # set up plot
 
     fig = plt.figure()
-    gs = gridspec.GridSpec(4,1,height_ratios=[1,5,1,3])
+    gs = gridspec.GridSpec(4,1,height_ratios=[1,5,1,3], hspace=0)
 
     if args.panelratios:
         p_ratios = list(map(int, args.panelratios.split(',')))
-        gs = gridspec.GridSpec(4,1,height_ratios=p_ratios)
+        gs = gridspec.GridSpec(4,1,height_ratios=p_ratios, hspace=0)
 
     sample_order = sorted(sample_names.keys())
 
@@ -2804,7 +2913,7 @@ def region(args):
     if args.genes is not None:
         genes_of_interest = args.genes.strip().split(',')
 
-    i = 0
+    i = 1
     for ensg in genes:
         if genes_of_interest:
             if genes[ensg].name not in genes_of_interest:
@@ -2814,7 +2923,7 @@ def region(args):
 
         if genes[ensg].has_tx():
 
-            tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start, genes[ensg].tx_end], [0.4+i, 0.4+i], zorder=1))
+            tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start, genes[ensg].tx_end], [0.4+i, 0.4+i], zorder=2))
 
             #print('transcript: %d-%d %s' % (genes[ensg].tx_start, genes[ensg].tx_end, genes[ensg].name))
 
@@ -2822,7 +2931,7 @@ def region(args):
         for exon_start, exon_end in genes[ensg].exons:
             exon_len = exon_end - exon_start
 
-            exon_patches.append(matplotlib.patches.Rectangle([exon_start, i], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=2))
+            exon_patches.append(matplotlib.patches.Rectangle([exon_start, i], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=3))
 
         #blocks_str = ','.join(['%d-%d' % (s,e) for s, e in genes[ensg].exons])
         #print('%s exons: %s' % (genes[ensg].name, blocks_str))
@@ -2835,6 +2944,21 @@ def region(args):
     ax0.set_ylim(0,i)
     ax0.set_yticks([])
 
+    highlight_patches = []
+
+    if args.highlight_panels:
+        a = float(args.highlight_panels)
+        if args.highlight or args.highlight_bed:
+            for h, h_s in enumerate(h_start):
+                h_e = h_end[h]
+                h_color = h_colors[h]
+                ymin = min(ax0.get_ybound())
+                yheight = max(ax0.get_ybound())-ymin
+                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+    for h in highlight_patches:
+        ax0.add_patch(h)
+        
     for p in exon_patches:
         ax0.add_patch(p)
 
@@ -2943,16 +3067,31 @@ def region(args):
                 call_pos += start
 
                 if call == -1:
-                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=2, zorder=2)
+                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=2, zorder=3)
 
                 if call == 1:
-                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=2)
+                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=3)
 
             for i in range(len(read.starts)):
                 readline_start = max(read.starts[i], start)
                 readline_end   = min(read.ends[i], end)
 
-                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=1, color=sample_color[bamname], alpha=0.4))
+                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=2, color=sample_color[bamname], alpha=0.4))
+
+    highlight_patches = []
+
+    if args.highlight_panels:
+        a = float(args.highlight_panels)
+        if args.highlight or args.highlight_bed:
+            for h, h_s in enumerate(h_start):
+                h_e = h_end[h]
+                h_color = h_colors[h]
+                ymin = min(ax1.get_ybound())
+                yheight = max(ax1.get_ybound())-ymin
+                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+    for h in highlight_patches:
+        ax1.add_patch(h)
 
     # plot correspondence between genome space and cpg space
 
@@ -3004,6 +3143,7 @@ def region(args):
 
     ax0.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
     ax1.set_xlim(ax3.get_xlim())
+    ax2.set_xticks([])
     ax3.set_xticks([])
 
     n_ticks = 10
@@ -3020,10 +3160,26 @@ def region(args):
     ax4 = plt.subplot(gs[3])
 
     for sample in sample_order:
-        ax4.plot(meth_segs['pos'], meth_segs[sample], marker='', lw=4, color=sample_color[sample])
+        ax4.plot(meth_segs['pos'], meth_segs[sample], marker='', lw=4, color=sample_color[sample], zorder=2, label=sample)
 
+    ax4.legend()
     ax4.set_xlim(ax2.get_xlim())
     ax4.set_ylim((-0.05,1.05))
+
+    highlight_patches = []
+
+    if args.highlight_panels:
+        a = float(args.highlight_panels)
+        if args.highlight or args.highlight_bed:
+            for h, h_s in enumerate(h_cpg_start):
+                h_e = h_cpg_end[h]
+                h_color = h_colors[h]
+                ymin = min(ax4.get_ybound())
+                yheight = max(ax4.get_ybound())-ymin
+                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+    for h in highlight_patches:
+        ax4.add_patch(h)
 
     # output
     fn_prefix = '.'.join(args.data.split('.')[:-1]) + '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(mods)
@@ -3376,7 +3532,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--methcall_xmax', default=None)
     parser_locus.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_locus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
-    parser_locus.add_argument('--highlight_panels', default=None, help='extend highlighting to panels (specify alpha level between 0 and 1 e.g. --highlight_panels 0.2)')
+    parser_locus.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
     parser_locus.add_argument('--excl_ambig', action='store_true', default=False)
     parser_locus.add_argument('--unambig_highlight', action='store_true', default=False)
     parser_locus.add_argument('--svg', action='store_true')
@@ -3400,7 +3556,7 @@ if __name__ == '__main__':
     parser_haplocus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_haplocus.add_argument('--phasepalette', default="tab10", help='palette for phases (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_haplocus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
-    parser_haplocus.add_argument('--highlight_panels', default=None, help='extend highlighting to panels (specify alpha level between 0 and 1 e.g. --highlight_panels 0.2)')
+    parser_haplocus.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
     parser_haplocus.add_argument('--excl_ambig', action='store_true', default=False)
     parser_haplocus.add_argument('--unambig_highlight', action='store_true', default=False)
     parser_haplocus.add_argument('--ignore_tags', action='store_true', default=False)
@@ -3426,6 +3582,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default=8)')
     parser_region.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_region.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
+    parser_region.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
     parser_region.add_argument('--panelratios',  default=None, help='Alter panel ratios: needs to be 4 comma-seperated integers. Default: 1,5,3,3')
     parser_region.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_region.add_argument('--svg', action='store_true', default=False)
