@@ -192,12 +192,13 @@ Sample input file `-d/--data` has the following whitespace-delimited fields (one
 
 Example:
 
-Plot of the TTC28 L1 locus in hg38, highlighting the L1 (5'UTR = darker blue, L1 body = lighter blue), and including the TTC28 5' exon (large trough in methylation on the right side of the plot)
+Plot of the GPER1 locus in hg38, highlighting the GeneHancer promoter/enhancer annotation (`GH07J001085`).
+
 ```
-methylartist locus -d MCF7_data_megalodon.txt -i chr22:28643284-28689315 -l 28664284-28669315,28663284-28664284 --cpgspace 10 --gtf Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes TTC28 --panelratios 1,5,1,3,3
+methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes GPER1 -l 1085667-1089471 --cpgspace 30 -p 1,6,1,3,4
 ```
 
-![locus plot](https://github.com/adamewing/methylartist/blob/main/docs/TTC28.MCF7_data_megalodon.chr22_28643284-28689315.locus.meth.png?raw=true)
+![locus plot](https://github.com/adamewing/methylartist/blob/main/docs/GPER1.MCF7_data_megalodon.chr7_1072064-1101499.m.locus.meth.png?raw=true)
 
 From top to bottom, the plot shows the genome coordinates, gene models (optional if `--gtf` is supplied), read mappings with modified bases as closed (modified) or open (unmodified) circles, translation from genome to CpG-only coordinate space, raw log-likelihood ratios, and smoothed methylated fraction plot.
 
@@ -211,10 +212,25 @@ Examples:
 Plot of the PEG3 imprinted region on chromosome 19, hg38.
 
 ```
-methylartist haplocus -b MCF7_ECACC.haplotag.bam -m MCF7_ECACC.megalodon.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --cpgspace 25 -i chr19:56810076-56870725 -l 56835076-56841076 --phasepalette viridis
+methylartist haplocus -b MCF7_ECACC.haplotag.bam -d MCF7_ECACC.megalodon.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --cpgspace 25 -i chr19:56810076-56870725 -l 56835076-56841076 --phasepalette viridis
 ```
 
-![haplocus plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_ECACC.haplotag.chr19_56810076-56870725.phased.meth.png?raw=true)
+![haplocus plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_ECACC.haplotag.chr19_56810076-56870725.m.phased.meth.png?raw=true)
+
+
+### region
+
+More tractable than "locus" for larger regions using binned methylation.
+
+Example:
+
+Plot of the PGR (Progesterone Receptor) region on chr11 in MCF7 cells. Highlighed region corresponds to the GeneHancer annotation `GH11J101126`. Note use of `-n CG` (requires `-r/--ref` to be set) to normalised bins for content of CpG dinucleotides. Options `--samplepalette` and `--highlightpalette` are used to set colours and `-c 2` has the effect of drawing connectors between genome space and modified base space every 2 bins.
+
+```
+methylartist region -i chr11:100956822-101228191 -d MCF7_data_megalodon.txt -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz -p 32 -n CG -r /home/data/ref/hg38/Homo_sapiens_assembly38.fasta --samplepalette magma -l 101126888-101129371 --highlightpalette viridis -c 2
+```
+
+![region plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_data_megalodon.chr11_100956822-101228191.m.region.meth.png?raw=true)
 
 
 ### composite
