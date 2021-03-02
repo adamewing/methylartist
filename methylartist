@@ -3204,7 +3204,7 @@ def composite(args):
     '''
     plot composite methylation profiles relative to a consensus element
     '''
-    te_ref_seq = single_seq_fa(args.teref)
+    te_ref_seq = single_seq_fa(args.teref).upper()
 
     assert os.path.exists(args.ref + '.fai'), 'ref fasta must be indexed'
 
@@ -3216,8 +3216,10 @@ def composite(args):
 
     sample = args.sample
 
-    assert sample+'_meth_calls' in segdata, 'sample %s not found, look at header in %s' % (args.sample, args.meth)
-    assert sample+'_unmeth_calls' in segdata, 'sample %s not found, look at header in %s' % (args.sample, args.meth)
+    avail_samples = ['_'.join(col.split('_')[:-2]) for col in segdata if col.endswith('_meth_calls')]
+
+    if sample not in avail_samples:
+        sys.exit('%s not in available samples: %s' % (sample, ','.join(avail_samples)))
 
     useable = []
 

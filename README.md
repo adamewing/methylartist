@@ -241,12 +241,10 @@ Example:
 
 First aggregate methylation counts over intervals corresponding to the TE family of interest:
 ```
-methylartist segmeth -d MCF7_data.txt -i L1HS.bed -p 32 --excl_ambig
+methylartist segmeth -d MCF7_data_megalodon.txt -i L1HS.bed -p 32 --excl_ambig
 ```
 
-The consensus sequence for establishing a common coordinate system is in `L1Ta.fa` (fasta formatted with one sequence)
-
-The contents of `L1HS.bed` are formatted as follows (first 10 lines):
+The contents of `L1HS.bed` are formatted as follows (first 10 lines), derived from hg38 repeatmasker .out files:
 
 ```
 chr1    34566056        34572105        L1HS    -
@@ -261,28 +259,38 @@ chr1    104770248       104776278       L1HS    -
 chr1    104843834       104849864       L1HS    -
 ```
 
-Output file from `segmeth`, `L1HS.MCF7_data.excl_ambig.segmeth.tsv` (first 10 lines):
+(adjust number of processes used for computing individual profiles via `-p/--procs` to be appropriate for your system)
+
+The consensus sequence for establishing a common coordinate system is in `L1.3.fa` (fasta formatted with one sequence), available here: [L19088.1](https://www.ncbi.nlm.nih.gov/nuccore/L19088.1)
+
+The contents of `L1.3.highlights.bed` used for optional highlighting of regions (ORF1 and ORF2 in this case):
+```
+910 1926 ORF1 #bcbddc
+1990 5817 ORF2 #756bb1
+```
+
+Output file from `methylartist segmeth`, `L1HS.MCF7_data_megalodon.excl_ambig.segmeth.tsv` (first 10 lines):
 
 ```
-seg_id  seg_chrom       seg_start       seg_end seg_name        seg_strand      MCF7_ATCC.haplotag_meth_calls   MCF7_ATCC.haplotag_unmeth_calls MCF7_ATCC.haplotag_no_calls     MCF7_ATCC.haplotag_methfrac     MCF7_ECACC.haplotag_meth_calls     MCF7_ECACC.haplotag_unmeth_calls MCF7_ECACC.haplotag_no_calls     MCF7_ECACC.haplotag_methfrac
-chr1:34566056-34572105  chr1    34566056        34572105        L1HS    -       895     741     1123    0.5470660146699267      803     407     596     0.6636363636363637
-chr1:67078892-67084915  chr1    67078892        67084915        L1HS    -       1067    472     796     0.6933073424301495      976     356     779     0.7327327327327328
-chr1:71513699-71519742  chr1    71513699        71519742        L1HS    +       673     464     775     0.5919085312225154      679     329     633     0.6736111111111112
-chr1:80939204-80945257  chr1    80939204        80945257        L1HS    -       131     23      58      0.8506493506493507      607     104     538     0.8537271448663853
-chr1:84052390-84058406  chr1    84052390        84058406        L1HS    -       173     81      211     0.6811023622047244      0       0       0       NaN
-chr1:85748520-85754548  chr1    85748520        85754548        L1HS    +       717     268     714     0.7279187817258883      835     181     717     0.8218503937007874
-chr1:85927068-85933100  chr1    85927068        85933100        L1HS    +       1029    318     775     0.7639198218262806      301     154     323     0.6615384615384615
-chr1:86679081-86685111  chr1    86679081        86685111        L1HS    -       560     239     801     0.7008760951188986      619     260     368     0.7042093287827076
-chr1:104770248-104776278        chr1    104770248       104776278       L1HS    -       447     403     612     0.5258823529411765      714     538     673     0.570287539936102
+seg_id  seg_chrom       seg_start       seg_end seg_name        seg_strand      MCF7_ATCC.haplotag_m_meth_calls MCF7_ATCC.haplotag_m_unmeth_calls       MCF7_ATCC.haplotag_m_no_calls   MCF7_ATCC.haplotag_m_methfrac    MCF7_ECACC.haplotag_m_meth_calls        MCF7_ECACC.haplotag_m_unmeth_calls      MCF7_ECACC.haplotag_m_no_calls  MCF7_ECACC.haplotag_m_methfrac
+chr1:34566056-34572105  chr1    34566056        34572105        L1HS    -       1121    1182    399     0.4867564046895354      891     613     276     0.5924202127659575
+chr1:67078892-67084915  chr1    67078892        67084915        L1HS    -       1244    726     303     0.6314720812182741      1229    686     287     0.64177545691906
+chr1:71513699-71519742  chr1    71513699        71519742        L1HS    +       881     687     340     0.5618622448979592      760     509     248     0.598896769109535
+chr1:80939204-80945257  chr1    80939204        80945257        L1HS    -       87      19      13      0.8207547169811321      669     258     198     0.7216828478964401
+chr1:84052390-84058406  chr1    84052390        84058406        L1HS    -       223     103     46      0.6840490797546013      0       0       0       NaN
+chr1:85748520-85754548  chr1    85748520        85754548        L1HS    +       902     503     265     0.6419928825622776      861     482     212     0.6411020104244229
+chr1:85927068-85933100  chr1    85927068        85933100        L1HS    +       1407    630     265     0.6907216494845361      443     288     118     0.6060191518467852
+chr1:86679081-86685111  chr1    86679081        86685111        L1HS    -       717     468     223     0.6050632911392405      758     386     185     0.6625874125874126
+chr1:104770248-104776278        chr1    104770248       104776278       L1HS    -       546     664     248     0.4512396694214876      828     829     256     0.4996982498491249
 ```
 
 Command to `methylartist composite` (note the parsing of individual profiles can be parallelised via `-p`):
 
 ```
-methylartist composite -b MCF7_ATCC.haplotag.bam -m MCF7_ATCC.nanopolish.db -s L1HS.MCF7_data.excl_ambig.segmeth.tsv -f L1HS -r Homo_sapiens_assembly38.fasta -t L1Ta.fa -p 32
+methylartist composite -b MCF7_ATCC.haplotag.bam -m MCF7_ATCC.megalodon.db --sample MCF7_ATCC.haplotag_m -s L1HS.MCF7_data_megalodon.excl_ambig.segmeth.tsv -f L1HS -r Homo_sapiens_assembly38.fasta -t L1.3.fa -p 32 --blocks L1.3.highlights.bed
 ```
 
-![composite plot](https://github.com/adamewing/methylartist/blob/main/docs/composite_example.png?raw=true)
+![composite plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_ATCC.haplotag.L1HS.composite.png?raw=true)
 
 
 ### wgmeth
