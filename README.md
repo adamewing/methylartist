@@ -1,6 +1,6 @@
 ## methylartist: transposon methylation nanopore tools
 
-Tools for parsing and plotting methylation data from nanopore data
+Tools for parsing and plotting methylation patterns from nanopore data
 
 ## Installation
 
