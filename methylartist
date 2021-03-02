@@ -3263,23 +3263,23 @@ def composite(args):
     fig = plt.figure()
     gs = gridspec.GridSpec(2,1,height_ratios=[1,8])
 
-    # cpg
+    # mod
     ax0 = plt.subplot(gs[0])
 
-    cpg_start = 0
-    cpg_end = len(te_ref_seq)
+    mod_start = 0
+    mod_end = len(te_ref_seq)
 
     if args.start:
-        cpg_start = int(args.start)
+        mod_start = int(args.start)
 
     if args.end:
-        cpg_end = int(args.end)
+        mod_end = int(args.end)
 
-    assert cpg_start < cpg_end
+    assert mod_start < mod_end
 
-    ax0.set_xlim((cpg_start, cpg_end))
+    ax0.set_xlim((mod_start, mod_end))
 
-    box = matplotlib.patches.Rectangle([0, 0], cpg_end-cpg_start, 1.0, edgecolor='#555555', facecolor='#cfcfcf', zorder=1)
+    box = matplotlib.patches.Rectangle([0, 0], mod_end-mod_start, 1.0, edgecolor='#555555', facecolor='#cfcfcf', zorder=1)
     ax0.add_patch(box)
 
     if args.blocks:
@@ -3292,14 +3292,16 @@ def composite(args):
                 box = matplotlib.patches.Rectangle([b_start, 0], b_end-b_start, 1.0, edgecolor='#555555', facecolor=b_col, zorder=2)
                 ax0.add_patch(box)
 
-    cpg_locs = []
+    mod_locs = []
 
-    for i in range(len(te_ref_seq)-1):
-        if i >= cpg_start and i <= cpg_end:
-            if te_ref_seq[i] == 'C' and te_ref_seq[i+1] == 'G':
-                cpg_locs.append(i)
+    motif = args.motif
 
-    ax0.vlines(cpg_locs, 0, 1, lw=1, colors=('#FF4500'), zorder=3)
+    for i in range(len(te_ref_seq)-len(motif)):
+        if i >= mod_start and i <= mod_end:
+            if te_ref_seq[i:i+len(motif)] == motif:
+                mod_locs.append(i)
+
+    ax0.vlines(mod_locs, 0, 1, lw=1, colors=('#FF4500'), zorder=3)
 
     ax0.spines['bottom'].set_visible(False)
     ax0.spines['left'].set_visible(False)
@@ -3330,7 +3332,7 @@ def composite(args):
     ax1.set_xlim((0,len(te_ref_seq)))
     ax1.set_ylim((-0.05,1.05))
 
-    ax1.set_xlim((cpg_start, cpg_end))
+    ax1.set_xlim((mod_start, mod_end))
 
     fig.set_size_inches(16, 6)
 
@@ -3604,6 +3606,7 @@ if __name__ == '__main__':
     parser_composite.add_argument('-a', '--alpha', default=0.3, help='alpha (default: 0.3)')
     parser_composite.add_argument('-w', '--linewidth', default=1, help='line width (default: 1)')
     parser_composite.add_argument('-l', '--lenfrac', default=0.95, help='fraction of TE length that must align (default 0.95)')
+    parser_composite.add_argument('--motif', default='CG', help='modified motif to highlight (default = CG)')
     parser_composite.add_argument('--blocks', default=None, help='blocks to highlight (txt file with start, end, name, hex colour)')
     parser_composite.add_argument('--start', default=None, help='start plotting at this base (default None)')
     parser_composite.add_argument('--end', default=None, help='end plotting at this base (default None)')
