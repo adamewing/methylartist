@@ -1,4 +1,4 @@
-## methylartist: transposon methylation nanopore tools
+## methylartist
 
 Tools for parsing and plotting methylation patterns from nanopore data
 
@@ -18,9 +18,9 @@ Alignments stored in .bam format should be sorted and indexed and should use the
 
 ### Methylation Calls
 
-MethylArtist has functions for loading methylation data can from nanopolish, megalodon, or basecalled guppy fast5s, using the appropriate function below.
+methylartist has functions for loading methylation data can from nanopolish, megalodon, or basecalled guppy fast5s, using the appropriate function below.
 
-Once coverted, the sqlite .db file can be input to MethylArtist functions (e.g. `segplot`, `locus`, etc).
+Once coverted, the sqlite .db file can be input to methylartist functions (e.g. `segplot`, `locus`, etc).
 
 ## Commands:
 
