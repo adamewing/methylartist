@@ -105,7 +105,7 @@ Read caching yields a large .db file ending with .bamcache.db. This can be delet
 
 Outputs aggregate methylation / demethylation call counts over intervals. Required before generating strip / violin plots with `segplot`
 
-Requires whitespace-delimited list of segments in a BED-like format: chromosome, start, end, label, strand.
+Requires whitespace-delimited list of segments in a BED3+2 format: chromosome, start, end, label, strand.
 
 Sample input file `-d/--data` has the following whitespace-delimited fields (one sample per line): BAM file, Methylation DB (generated with e.g. `db-nanopolish`)
 
@@ -115,47 +115,47 @@ Can be used to generate genome-wide methylation stats aggregated over windows vi
 
 Example:
 
-Aggregate methylation calls over full length L1 elements (RepeatMasker, hg38), exclude reads which map entirely within L1s:
+Aggregate whole-genome CpG methylation in 10kbp bins, promoters (Eukaryotic Promoter Database, EPD), L1HS and SVA retrotransposons:
 
 ```
-methylartist segmeth -d MCF7_data.txt -i L1_FL.bed -p 32 --excl_ambig
+methylartist segmeth -d MCF7_data_megalodon.txt -i MCF7_megalogon_annotations.bed -p 32 --excl_ambig
 ```
 
-Contents of `MCF7_data.txt`:
+Contents of `MCF7_data_megalodon.txt`:
 
 ```
-MCF7_ATCC.haplotag.bam MCF7_ATCC.nanopolish.db
-MCF7_ECACC.haplotag.bam MCF7_ECACC.nanopolish.db
+MCF7_ATCC.haplotag.bam MCF7_ATCC.megalodon.db
+MCF7_ECACC.haplotag.bam MCF7_ECACC.megalodon.db
 ```
 
-Contents of L1_FL.bed (first 10 lines):
+Contents of MCF7_megalogon_annotations.bed (first 10 lines):
 
 ```
-chr1    440936  447357  L1PA7   +
-chr1    675912  682333  L1PA7   +
-chr1    7411758 7417922 L1PA4   -
-chr1    14355445        14361840        L1PA7   -
-chr1    14382319        14388341        L1PA3   -
-chr1    25506586        25512707        L1PA2   +
-chr1    30427133        30433546        L1MA4   +
-chr1    30453586        30459718        L1PA5   -
-chr1    30493390        30499556        L1PA4   +
-chr1    33671998        33678118        L1PA4   +
+chr1    0       10000   WG_10kbp
+chr1    10000   20000   WG_10kbp
+chr1    20000   30000   WG_10kbp
+chr1    30000   40000   WG_10kbp
+chr1    40000   50000   WG_10kbp
+chr1    50000   60000   WG_10kbp
+chr1    60000   70000   WG_10kbp
+chr1    70000   80000   WG_10kbp
+chr1    80000   90000   WG_10kbp
+chr1    90000   100000  WG_10kbp
 ```
 
-Output in `L1_FL.MCF7_data.excl_ambig.segmeth.tsv` (first 10 lines):
+Output in `` (first 10 lines):
 
 ```
-seg_id  seg_chrom       seg_start       seg_end seg_name        seg_strand      MCF7_ATCC.haplotag_meth_calls   MCF7_ATCC.haplotag_unmeth_calls MCF7_ATCC.haplotag_no_calls     MCF7_ATCC.haplotag_methfrac     MCF7_ECACC.haplotag_meth_calls     MCF7_ECACC.haplotag_unmeth_calls MCF7_ECACC.haplotag_no_calls     MCF7_ECACC.haplotag_methfrac
-chr1:440936-447357      chr1    440936  447357  L1PA7   +       0       0       0       NaN     0       0       0       NaN
-chr1:675912-682333      chr1    675912  682333  L1PA7   +       129     66      141     0.6615384615384615      222     55      133     0.8014440433212996
-chr1:7411758-7417922    chr1    7411758 7417922 L1PA4   -       491     410     867     0.5449500554938956      349     79      364     0.8154205607476636
-chr1:14355445-14361840  chr1    14355445        14361840        L1PA7   -       222     302     455     0.42366412213740456     293     168     406     0.6355748373101953
-chr1:14382319-14388341  chr1    14382319        14388341        L1PA3   -       484     364     557     0.5707547169811321      469     149     563     0.7588996763754046
-chr1:25506586-25512707  chr1    25506586        25512707        L1PA2   +       727     495     554     0.5949263502454992      239     276     205     0.4640776699029126
-chr1:30427133-30433546  chr1    30427133        30433546        L1MA4   +       35      48      78      0.42168674698795183     20      27      48      0.425531914893617
-chr1:30453586-30459718  chr1    30453586        30459718        L1PA5   -       309     297     516     0.5099009900990099      189     42      200     0.8181818181818182
-chr1:30493390-30499556  chr1    30493390        30499556        L1PA4   +       460     381     673     0.5469678953626635      328     86      505     0.7922705314009661
+seg_id  seg_chrom       seg_start       seg_end seg_name        seg_strand      MCF7_ATCC.haplotag_m_meth_calls MCF7_ATCC.haplotag_m_unmeth_calls       MCF7_ATCC.haplotag_m_no_calls   MCF7_ATCC.haplotag_m_methfrac    MCF7_ECACC.haplotag_m_meth_calls        MCF7_ECACC.haplotag_m_unmeth_calls      MCF7_ECACC.haplotag_m_no_calls  MCF7_ECACC.haplotag_m_methfrac
+chr1:0-10000    chr1    0       10000   WG_10kbp        .       0       0       0       NaN     0       0       0       NaN
+chr1:10000-20000        chr1    10000   20000   WG_10kbp        .       4836    1205    893     0.8005297136235723      5994    1629    1254    0.7863046044864227
+chr1:20000-30000        chr1    20000   30000   WG_10kbp        .       1923    2641    802     0.42134092900964065     2093    3216    1032    0.39423620267470333
+chr1:30000-40000        chr1    30000   40000   WG_10kbp        .       974     790     273     0.5521541950113379      1331    821     416     0.6184944237918215
+chr1:40000-50000        chr1    40000   50000   WG_10kbp        .       361     398     149     0.4756258234519104      579     664     255     0.4658085277554304
+chr1:50000-60000        chr1    50000   60000   WG_10kbp        .       631     300     133     0.677765843179377       1086    472     242     0.6970474967907574
+chr1:60000-70000        chr1    60000   70000   WG_10kbp        .       315     494     130     0.38936959208899874     571     671     255     0.45974235104669886
+chr1:70000-80000        chr1    70000   80000   WG_10kbp        .       196     150     31      0.5664739884393064      288     214     79      0.5737051792828686
+chr1:80000-90000        chr1    80000   90000   WG_10kbp        .       297     122     29      0.7088305489260143      127     57      16      0.6902173913043478
 ```
 
 
@@ -165,21 +165,21 @@ Generates strip plots or violin plots (`-v/--violin`) from `segmeth` output.
 
 Examples:
 
-Strip plot of L1HS, L1PA2, L1PA4, and L1PA6 elements across two samples:
+Strip plot of whole-genome CpG methylation in 10kbp bins, promoters (Eukaryotic Promoter Database, EPD), L1HS and SVA retrotransposons:
 
 ```
-methylartist segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_ECACC.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10
+methylartist segplot -s MCF7_megalogon_annotations.segmeth.tsv
 ```
 
-![strip plot](https://github.com/adamewing/methylartist/blob/main/docs/segplot_example_strip.png?raw=true)
+![strip plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_megalogon_annotations.segmeth.segplot.png?raw=true)
 
 As above, but use violin plots:
 
 ```
-methylartist segplot -s L1_FL.MCF7_data.excl_ambig.segmeth.tsv -m MCF7_ATCC.haplotag,MCF7_ECACC.haplotag -c L1HS,L1PA2,L1PA4,L1PA6 --width 10 --violin
+methylartist segplot -s MCF7_megalogon_annotations.segmeth.tsv -v
 ```
 
-![violin plot](https://github.com/adamewing/methylartist/blob/main/docs/segplot_example_violin.png?raw=true)
+![violin plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_megalogon_annotations.segmeth.violin.segplot.png?raw=true)
 
 Note that default output is in .png format. For .svg vector output suitable for editing in inkscape or illustrator add the `--svg` option. Note that for strip plots, this is often inadvisable due to the large number of points.
 
