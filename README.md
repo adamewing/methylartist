@@ -202,6 +202,29 @@ methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sa
 
 From top to bottom, the plot shows the genome coordinates, gene models (optional if `--gtf` is supplied), read mappings with modified bases as closed (modified) or open (unmodified) circles, translation from genome to CpG-only coordinate space, raw log-likelihood ratios, and smoothed methylated fraction plot.
 
+#### Custom sample and highlight colours
+
+Example:
+
+Plot of the ERBB2 (HER2) locus in hg38:
+```
+methylartist locus -d MCF7_data_megalodon.colours.txt -i chr17:39677914-39738361 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --cpgspace 20 --genes ERBB2 --highlight_bed erbb2.highlights.txt --highlightpalette viridis
+```
+
+Contents of `MCF7_data_megalodon.colours.txt`:
+```
+MCF7_ATCC.haplotag.bam MCF7_ATCC.megalodon.db #FC766A
+MCF7_ECACC.haplotag.bam MCF7_ECACC.megalodon.db #184A45
+```
+
+Contents of `erbb2.highlights.txt`:
+```
+chr17 39686731 39689728
+chr17 39698981 39707766
+```
+
+![locus plot 2](https://github.com/adamewing/methylartist/blob/main/docs/ERBB2.MCF7_data_megalodon.colours.chr17_39677914-39738361.m.locus.meth.png?raw=true)
+
 
 ### haplocus
 
