@@ -226,20 +226,21 @@ chr17 39698981 39707766
 ![locus plot 2](https://github.com/adamewing/methylartist/blob/main/docs/ERBB2.MCF7_data_megalodon.colours.chr17_39677914-39738361.m.locus.meth.png?raw=true)
 
 
-### haplocus
+#### phasing
 
-Generates smoothed haplotype-aware methylation profiles across specific loci for one sample. Requires haplotypes to be tagged with whatshap.
+Use the `--phased` flag to produce haplotype-aware methylation profiles. Requires haplotypes to be tagged with whatshap.
 
 Examples:
 
 Plot of the PEG3 imprinted region on chromosome 19, hg38.
 
 ```
-methylartist haplocus -b MCF7_ECACC.haplotag.bam -d MCF7_ECACC.megalodon.db -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --cpgspace 25 -i chr19:56810076-56870725 -l 56835076-56841076 --phasepalette viridis
+methylartist locus -d MCF7_data_megalodon.txt -i chr19:56810076-56870725 -l 56835076-56841076 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes PEG3 --smoothwindowsize 12 --slidingwindowsize 40 --samplepalette viridis --phased
 ```
 
-![haplocus plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_ECACC.haplotag.chr19_56810076-56870725.m.phased.meth.png?raw=true)
+![phased locus plot](https://github.com/adamewing/methylartist/blob/main/docs/PEG3.MCF7_data_megalodon.chr19_56810076-56870725.m.phased.locus.meth.png?raw=true)
 
+Note the apparent differential imprinting between the ATCC and ECACC MCF7 lines.
 
 ### region
 
