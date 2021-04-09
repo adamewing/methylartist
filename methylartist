@@ -1131,6 +1131,7 @@ def db_megalodon(args):
     if not args.append:
         c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer, modname text)''')
         c.execute('''CREATE TABLE modnames (mod text)''')
+        c.execute('''CREATE TABLE cutoffs (upper real, lower real)''')
         c.execute('''CREATE INDEX read_index ON methdata(readname)''')
 
     else:
@@ -1148,9 +1149,11 @@ def db_megalodon(args):
 
         csv_reader = csv.DictReader(methdata, delimiter='\t')
 
-        progress_interval = 500000
+        progress_interval = 1000000
 
         modnames = {}
+
+        ins_data = []
 
         for i, row in enumerate(csv_reader):
             readname = row['read_id']
@@ -1181,14 +1184,21 @@ def db_megalodon(args):
 
             assert (mod_prob + can_prob) < 1.01 # allow for some rounding or floating point error
 
-            ins_data = (chrom, pos, strand, readname, llr, methcall, mod_base)
-            c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d, '%s')" % ins_data)
+            ins_data.append((chrom, pos, strand, readname, llr, methcall, mod_base))
 
             if i % progress_interval == 0:
+                conn.executemany('INSERT INTO methdata VALUES (?,?,?,?,?,?,?)', ins_data)
+                ins_data = []
                 logger.info('processed %d records from %s' % (i, tsv))
 
         for mod in modnames:
             c.execute("INSERT INTO modnames VALUES ('%s')" % mod)
+
+        c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f')" % (float(args.minprob), -1*float(args.minprob)))
+
+        if len(ins_data) > 0:
+            conn.executemany('INSERT INTO methdata VALUES (?,?,?,?,?,?,?)', ins_data)
+            ins_data = []
 
         logger.info('commiting records from %s to %s' % (tsv, db_fn))
         conn.commit()
@@ -3116,7 +3126,7 @@ if __name__ == '__main__':
     parser_region.add_argument('-n', '--norm_motif', default=None, help='normalise window sizes to motif occurance')
     parser_region.add_argument('-r', '--ref', default=None, help='ref genome fasta, required if normalising windows with -n/--norm_motif')
     parser_region.add_argument('--maxuncovered', default=50.0, help='maximum percentage of uncovered windows tolerated (default = 50.0)')
-    parser_region.add_argument('--modspace', default=4, help='increase to increase spacing between links in top panel (default=4)')
+    parser_region.add_argument('--modspace', default=2, help='increase to increase spacing between links in top panel (default=2)')
     parser_region.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_region.add_argument('--min_window_calls', default=1, help='minimum reads per window to include in plot (default = 1)')
     parser_region.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default=8)')
