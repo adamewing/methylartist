@@ -46,6 +46,7 @@ logging.basicConfig(format=FORMAT)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 class Read:
     def __init__(self, read_name, cpg_loc, stat, methcall, modname, phase=None):
         self.read_name  = read_name
@@ -73,6 +74,18 @@ class Read:
 
     def overlap(self, other):
         return min(max(self.ends), max(other.ends)) - max(min(self.starts), min(other.starts)) > 0
+    
+    def mod_count(self):
+        return len([c for c in self.meth_calls.values() if c == 1])
+
+    def site_count(self):
+        return len(self.meth_calls)
+
+    def mod_frac(self):
+        if self.site_count() == 0:
+            return 0
+
+        return self.mod_count()/self.site_count()
 
 
 class Gene:
@@ -442,7 +455,23 @@ def get_modnames(meth_db):
     return mod_names
 
 
-def get_segmeth_calls(bam_fn, mod_names, meth_db, chrom, seg_start, seg_end, seg_name, seg_strand):
+def densecall_filter(reads, max_density=.7):
+    ''' reads is a dict of Read objects with modified base calls '''
+    out = {}
+    filtered_count = 0
+
+    for name, read in reads.items():
+        if read.mod_frac() <= max_density:
+            out[name] = read
+        else:
+            filtered_count += 1
+    
+    logger.info('filtered %d reads via --max_read_density %f' % (filtered_count, max_density))
+
+    return out
+
+
+def get_segmeth_calls(args, bam_fn, mod_names, meth_db, chrom, seg_start, seg_end, seg_name, seg_strand):
     conn = sqlite3.connect(meth_db)
     c = conn.cursor()
 
@@ -474,6 +503,8 @@ def get_segmeth_calls(bam_fn, mod_names, meth_db, chrom, seg_start, seg_end, seg
             else:
                 seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
+    if args.max_read_density is not None:
+        seg_reads = densecall_filter(seg_reads, max_density=float(args.max_read_density))
 
     seg_result = {}
 
@@ -487,8 +518,9 @@ def get_segmeth_calls(bam_fn, mod_names, meth_db, chrom, seg_start, seg_end, seg
 
         seg_result[modname] = seg_meth_calls
 
+    read_count = len(seg_reads)
 
-    return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand)
+    return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, read_count)
 
 
 
@@ -570,6 +602,9 @@ def get_meth_locus(args, bam, meth_db, mod, phase=None):
             else:
                 seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
+    if args.max_read_density is not None:
+        seg_reads = densecall_filter(seg_reads, max_density=float(args.max_read_density))
+
     return seg_reads
 
 
@@ -612,6 +647,9 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
                 seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
             else:
                 seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
+
+    if args.max_read_density is not None:
+        seg_reads = densecall_filter(seg_reads, max_density=float(args.max_read_density))
 
     meth_table = dd(dict)
     sample = '.'.join(args.bam.split('.')[:-1])
@@ -734,13 +772,13 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
     return revised_coord_meth_pos, meth_profile
 
 
-def get_meth_calls_wg(bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod):
+def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod):
     conn = sqlite3.connect(meth_fn)
     c = conn.cursor()
 
     reads = get_phased_reads(bam_fn, chrom, seg_start, seg_end, tag_untagged=phased)
 
-    seg_methreads = {}
+    seg_reads = {}
 
     for index in reads:
         for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
@@ -758,11 +796,13 @@ def get_meth_calls_wg(bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod):
 
             cg_seg_start = cg_start - seg_start
 
-            if index not in seg_methreads:
-                seg_methreads[index] = Read(index, cg_seg_start, stat, methstate, modname, phase=reads[index])
+            if index not in seg_reads:
+                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname, phase=reads[index])
             else:
-                seg_methreads[index].add_mod(cg_seg_start, stat, methstate, modname)
+                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
+    if args.max_read_density is not None:
+        seg_reads = densecall_filter(seg_reads, max_density=float(args.max_read_density))
 
     meth_data = {}
     meth_data[1] = dd(list)
@@ -773,7 +813,7 @@ def get_meth_calls_wg(bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod):
     meth_table[2] = dd(dict)
 
     if phased:
-        for name, read in seg_methreads.items():
+        for name, read in seg_reads.items():
             if read.phase is None:
                 continue
 
@@ -805,7 +845,7 @@ def get_meth_calls_wg(bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod):
         # pass through as phase 1 if not analysing phases
         phase = 1
 
-        for name, read in seg_methreads.items():
+        for name, read in seg_reads.items():
             for loc in read.llrs.keys():
                 meth_data[phase][loc].append(read.meth_calls[loc])
 
@@ -1303,7 +1343,8 @@ def segmeth(args):
     'meth_calls',
     'unmeth_calls',
     'no_calls',
-    'methfrac'
+    'methfrac',
+    'readcount'
     ]
 
     mod_names = []
@@ -1360,7 +1401,7 @@ def segmeth(args):
                 seg_start = int(seg_start)
                 seg_end = int(seg_end)
 
-                res = pool.apply_async(get_segmeth_calls, [bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand])
+                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand])
 
                 results.append((res, base_name))
 
@@ -1375,7 +1416,7 @@ def segmeth(args):
 
         seg_id = '%s:%d-%d' % seg[:3]
 
-        seg_chrom, seg_start, seg_end, seg_name, seg_strand = map(str, seg)
+        seg_chrom, seg_start, seg_end, seg_name, seg_strand, read_count = map(str, seg)
 
         meth_segs[seg_id]['seg_id']     = seg_id
         meth_segs[seg_id]['seg_chrom']  = seg_chrom
@@ -1412,6 +1453,8 @@ def segmeth(args):
                  meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_methfrac'] = 'NaN'
             else:
                 meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_methfrac'] = meth_calls/float(meth_calls+unmeth_calls)
+
+            meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_readcount'] = read_count
 
 
     header = ['seg_id', 'seg_chrom', 'seg_start', 'seg_end', 'seg_name', 'seg_strand']
@@ -2257,7 +2300,7 @@ def region(args):
         for bam_fn, meth_fn in data.items():
             seg_strand = '.'
             seg_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
-            res = pool.apply_async(get_segmeth_calls, [bam_fn, mods, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand])
+            res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand])
             results.append(res)
 
     meth_segs = dd(dict)
@@ -2276,7 +2319,7 @@ def region(args):
 
         seg_id = '%s:%d-%d' % seg[:3]
 
-        seg_chrom, seg_start, seg_end, seg_name, seg_strand = map(str, seg)
+        seg_chrom, seg_start, seg_end, seg_name, seg_strand = map(str, seg[:-1])
 
         meth_segs[seg_id]['seg_id']     = seg_id
         meth_segs[seg_id]['seg_chrom']  = seg_chrom
@@ -2953,7 +2996,7 @@ def wgmeth(args):
                 seg_start = int(seg_start)
                 seg_end = int(seg_end)
 
-                res = pool.apply_async(get_meth_calls_wg, [args.bam, args.methdata, chrom, seg_start, seg_end, args.phased, args.mod])
+                res = pool.apply_async(get_meth_calls_wg, [args, args.bam, args.methdata, chrom, seg_start, seg_end, args.phased, args.mod])
 
                 results.append(res)
 
@@ -3069,6 +3112,7 @@ if __name__ == '__main__':
     parser_segmeth.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
     parser_segmeth.add_argument('-i', '--intervals', required=True, help='.bed file')
     parser_segmeth.add_argument('-p', '--procs', default=1, help='multiprocessing')
+    parser_segmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_segmeth.add_argument('--excl_ambig', action='store_true', default=False)
 
     # options for methylation strip / violin plots
@@ -3102,6 +3146,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_locus.add_argument('--smoothwindowsize', default=None, help='size of window for smoothing (default=auto)')
     parser_locus.add_argument('--maskcutoff', default=20, help='windowed read count masking cutoff (default=20)')
+    parser_locus.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
     parser_locus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_locus.add_argument('--methcall_ymax', default=None)
@@ -3130,6 +3175,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_region.add_argument('--min_window_calls', default=1, help='minimum reads per window to include in plot (default = 1)')
     parser_region.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default=8)')
+    parser_region.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_region.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_region.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
     parser_region.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
@@ -3161,6 +3207,7 @@ if __name__ == '__main__':
     parser_composite.add_argument('--slidingwindowsize', default=10, help='size of sliding window for meth frac (default 10)')
     parser_composite.add_argument('--slidingwindowstep', default=1, help='step size for meth frac (default 1)')
     parser_composite.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default 8)')
+    parser_composite.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_composite.add_argument('--globalign', action='store_true', default=False, help='experimental')
     parser_composite.add_argument('--excl_ambig', action='store_true', default=False)
     parser_composite.add_argument('--svg', action='store_true', default=False)
@@ -3172,6 +3219,7 @@ if __name__ == '__main__':
     parser_wgmeth.add_argument('-f', '--fai', required=True, help='fasta index (.fai)')
     parser_wgmeth.add_argument('-m', '--mod', default=None, help='output for specific mod (names vary, see output for hints)')
     parser_wgmeth.add_argument('-p', '--procs', default=1, help='multiprocessing')
+    parser_wgmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_wgmeth.add_argument('--dss', default=False, action='store_true', help='output in DSS format (default = bedMethyl)')
     parser_wgmeth.add_argument('--phased', action='store_true', default=False, help='multiprocessing')
 
