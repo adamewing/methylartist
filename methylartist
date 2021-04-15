@@ -682,7 +682,7 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
         logger.warning('too few sites after windowing: %s:%d-%d' % (seg_chrom, seg_start, seg_end))
         return [], []
 
-    smoothed_methfrac = smooth(np.asarray(list(windowed_methfrac.values())), window_len=int(args.smoothwindowsize))
+    smoothed_methfrac = smooth(np.asarray(list(windowed_methfrac.values())), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
 
     coord_meth_pos = []
 
@@ -1589,6 +1589,10 @@ def segplot(args):
 
     sns_plot.set_ylim(float(args.ymin),float(args.ymax))
 
+    if args.width is None:
+        args.width = 1 + len(order) * len(samples_mods)
+        logger.info('auto set --width: %d' % args.width)
+
     fig = sns_plot.figure
     fig.set_size_inches(float(args.width), float(args.height))
 
@@ -1721,6 +1725,7 @@ def locus(args):
 
     if args.modspace is not None:
         logger.info('user set --modspace %d, mod_n:ticks: %.3f' % (int(args.modspace), modspace_n/float(args.modspace)))
+        args.modspace = int(args.modspace)
     else:
         if modspace_n <= 400:
             args.modspace = 1
@@ -1731,8 +1736,9 @@ def locus(args):
 
     if args.smoothwindowsize is not None:
         logger.info('user set --smoothwindowsize %d, mod_n:smoothwindowsize: %.3f' % (int(args.smoothwindowsize), modspace_n/float(args.smoothwindowsize)))
+        args.smoothwindowsize = int(args.smoothwindowsize)
     else:
-        args.smoothwindowsize = int(modspace_n/200)*2+2 # must be even
+        args.smoothwindowsize = min(70, int(modspace_n/200)*2+2) # must be even
 
         if args.smoothwindowsize < 4:
             args.smoothwindowsize = 4
@@ -1740,9 +1746,10 @@ def locus(args):
         logger.info('auto set --smoothwindowsize %d' % args.smoothwindowsize)
 
     if args.slidingwindowsize is not None:
-        logger.info('user set --slidingwindowsite %d, mod_n:slidingwindowsize: %.3f' % (int(args.slidingwindowsize), modspace_n/float(args.slidingwindowsize)))
+        logger.info('user set --slidingwindowsize %d, mod_n:slidingwindowsize: %.3f' % (int(args.slidingwindowsize), modspace_n/float(args.slidingwindowsize)))
+        args.slidingwindowsize = int(args.slidingwindowsize)
     else:
-        args.slidingwindowsize = int(modspace_n/24)
+        args.slidingwindowsize = min(300, int(modspace_n/24))
 
         if args.slidingwindowsize < 10:
             args.slidingwindowsize = 10
@@ -2135,7 +2142,7 @@ def locus(args):
     for sample in sample_order:
         windowed_methfrac, meth_n = slide_window(meth_table, sample, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
 
-        smoothed_methfrac = smooth(np.asarray(list(windowed_methfrac.values())), window_len=int(args.smoothwindowsize))
+        smoothed_methfrac = smooth(np.asarray(list(windowed_methfrac.values())), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
 
         masked_segs = mask_methfrac(list(meth_n.values()), cutoff=args.maskcutoff)
 
@@ -2177,6 +2184,13 @@ def locus(args):
 
     if args.phased:
         fn_prefix += '.phased'
+
+    param_str = '.ms%dsmw%dslw%d' % (args.modspace, args.smoothwindowsize, args.slidingwindowsize)
+
+    fn_prefix += param_str
+
+    if args.max_read_density:
+        fn_prefix += '.mrd%.2f' % float(args.max_read_density)
 
     fig.set_size_inches(16, 8)
     if args.svg:
@@ -2386,7 +2400,7 @@ def region(args):
     meth_segs['pos'] = np.arange(len(meth_segs.index))
 
     for sample in sample_names:
-        meth_segs[sample] = smooth(np.asarray(meth_segs[sample + '_frac']), window_len=int(args.smoothwindowsize))
+        meth_segs[sample] = smooth(np.asarray(meth_segs[sample + '_frac']), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
         meth_segs[sample] = meth_segs[sample].rolling(window=10, min_periods=1, center=True).mean()
 
     #meth_segs.to_csv('test.csv')
@@ -3122,7 +3136,7 @@ if __name__ == '__main__':
     parser_segplot.add_argument('-c', '--categories', default=None, help='categories, comma delimited, need to match seg_name column from input')
     parser_segplot.add_argument('-v', '--violin', default=False, action='store_true')
     parser_segplot.add_argument('-n', '--mincalls', default=10, help='minimum number of calls to include site (methylated + unmethylated) (default=10)')
-    parser_segplot.add_argument('--width', default=12, help='figure width (default = 12)')
+    parser_segplot.add_argument('--width', default=None, help='figure width (default = automatic)')
     parser_segplot.add_argument('--height', default=6, help='figure height (default = 6)')
     parser_segplot.add_argument('--pointsize', default=1, help='point size for scatterplot (default = 1)')
     parser_segplot.add_argument('--ymin', default=-0.15, help='ymin (default = -0.15)')
@@ -3145,6 +3159,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--include_unphased', default=False, action='store_true', help='include an "unphased" category if called with --phased')
     parser_locus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_locus.add_argument('--smoothwindowsize', default=None, help='size of window for smoothing (default=auto)')
+    parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_locus.add_argument('--maskcutoff', default=20, help='windowed read count masking cutoff (default=20)')
     parser_locus.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
@@ -3175,6 +3190,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_region.add_argument('--min_window_calls', default=1, help='minimum reads per window to include in plot (default = 1)')
     parser_region.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default=8)')
+    parser_region.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_region.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_region.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_region.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
@@ -3207,6 +3223,7 @@ if __name__ == '__main__':
     parser_composite.add_argument('--slidingwindowsize', default=10, help='size of sliding window for meth frac (default 10)')
     parser_composite.add_argument('--slidingwindowstep', default=1, help='step size for meth frac (default 1)')
     parser_composite.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default 8)')
+    parser_composite.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_composite.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_composite.add_argument('--globalign', action='store_true', default=False, help='experimental')
     parser_composite.add_argument('--excl_ambig', action='store_true', default=False)
