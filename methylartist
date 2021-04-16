@@ -455,6 +455,14 @@ def get_modnames(meth_db):
     return mod_names
 
 
+def get_cutoffs(meth_db):
+    conn = sqlite3.connect(meth_db)
+    c = conn.cursor()
+
+    for row in c.execute("SELECT upper,lower FROM cutoffs"):
+        return row
+
+
 def densecall_filter(reads, max_density=.7):
     ''' reads is a dict of Read objects with modified base calls '''
     out = {}
@@ -1014,7 +1022,88 @@ def build_genes(gtf, chrom, start, end):
     return genes
 
 
+def sample_db(db, n=1000000):
+    conn = sqlite3.connect(db)
+    c = conn.cursor()
+
+    logger.info('sample %d values from %s' % (n, db))
+    return np.asarray(c.execute('SELECT stat FROM methdata ORDER BY RANDOM() LIMIT %d' % n).fetchall()).flatten()
+
+
 ## tools
+
+def scoredist(args):
+    sample = {}
+    model = {}
+
+    meth_cutoffs = []
+    unmeth_cutoffs = []
+
+    for db in args.db.split(','):
+        assert os.path.exists(db), '%s not found' % db
+        upper, lower = get_cutoffs(db)
+        meth_cutoffs.append(upper)
+        unmeth_cutoffs.append(lower)
+
+        sample[db] = sample_db(db, n=int(args.n))
+
+    meth_cutoffs = list(set(meth_cutoffs))
+    unmeth_cutoffs = list(set(unmeth_cutoffs))
+
+    if len(meth_cutoffs) > 1:
+        logger.warning('multipe upper (methylation) cutoffs:' + ','.join(map(str, meth_cutoffs)))
+
+    if len(unmeth_cutoffs) > 1:
+        logger.warning('multipe upper (unmethylation) cutoffs:' + ','.join(map(str, unmeth_cutoffs)))
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    dens = sns.kdeplot(data=sample)
+
+    top = ax.get_ylim()[1]
+
+    ax.vlines(meth_cutoffs, ymin=0, ymax=top, colors='black', linestyles='dashed')
+    ax.vlines(unmeth_cutoffs, ymin=0, ymax=top, colors='black', linestyles='dashed')
+
+    xmin, xmax = ax.get_xlim()
+
+    if args.xmin:
+        xmin = float(args.xmin)
+    
+    if args.xmax:
+        xmax = float(args.xmax)
+
+    ax.set_xlim(xmin, xmax)
+
+    out_fn = '_'.join(args.db.split(',')) + '.scoredist'
+
+    if args.svg:
+        out_fn += '.svg'
+    else:
+        out_fn += '.png'
+
+    logger.info('plot written to %s' % out_fn)
+    plt.savefig(out_fn)
+
+
+def adjustcutoffs(args):
+    conn = sqlite3.connect(args.db)
+    c = conn.cursor()
+
+    logger.info('%s: reset methylation states to 0' % args.db)
+    c.execute("UPDATE methdata SET methstate=0")
+
+    logger.info('%s: mark sites with stat > %f methylated (1)' % (args.db, float(args.methylated)))
+    c.execute('UPDATE methdata SET methstate=1 where stat > %f' % float(args.methylated))
+
+    logger.info('%s: mark sites with stat < %f unmethylated (1)' % (args.db, float(args.unmethylated)))
+    c.execute('UPDATE methdata SET methstate=-1 where stat < %f' % float(args.unmethylated))
+
+    logger.info('%s: update cutoff table' % args.db)
+    c.execute('UPDATE cutoffs SET upper=%f' % float(args.methylated))
+    c.execute('UPDATE cutoffs SET lower=%f' % float(args.unmethylated))
+
+    conn.commit()
 
 def db_guppy(args):
     assert os.path.exists(args.fast5), 'path not found: %s' % args.fast5
@@ -1092,6 +1181,7 @@ def db_guppy(args):
         c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer, modname text)''')
         c.execute('''CREATE TABLE modnames (mod text)''')
         c.execute('''CREATE INDEX read_index ON methdata(readname)''')
+        c.execute('''CREATE TABLE cutoffs (upper real, lower real)''')
 
     else:
         logger.info('appending records to %s' % db_fn)
@@ -1135,6 +1225,9 @@ def db_guppy(args):
                 c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d, '%s')" % ins_data)
 
             c.execute("INSERT INTO modnames VALUES ('%s')" % args.modname)
+
+            if not args.append:
+                c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f')" % (llr, -1*llr))
 
             logger.info('commiting records from %s to %s' % (fn, db_fn))
             conn.commit()
@@ -1234,7 +1327,8 @@ def db_megalodon(args):
         for mod in modnames:
             c.execute("INSERT INTO modnames VALUES ('%s')" % mod)
 
-        c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f')" % (float(args.minprob), -1*float(args.minprob)))
+        if not args.append:
+            c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f')" % (llr, -1*llr))
 
         if len(ins_data) > 0:
             conn.executemany('INSERT INTO methdata VALUES (?,?,?,?,?,?,?)', ins_data)
@@ -1276,6 +1370,7 @@ def db_nanopolish(args):
         c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer, modname text)''')
         c.execute('''CREATE TABLE modnames (mod text)''')
         c.execute('''CREATE INDEX read_index ON methdata(readname)''')
+        c.execute('''CREATE TABLE cutoffs (upper real, lower real)''')
 
     else:
         logger.info('appending records to %s' % db_fn)
@@ -1326,6 +1421,9 @@ def db_nanopolish(args):
                 logger.info('processed %d records from %s' % (i, tsv))
 
         c.execute("INSERT INTO modnames VALUES ('%s')" % args.modname)
+
+        if not args.append:
+            c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f')" % (llr, -1*llr))
 
         logger.info('commiting records from %s to %s' % (tsv, db_fn))
 
@@ -1709,7 +1807,6 @@ def locus(args):
 
     meth_table['orig_loc'] = meth_table['loc']
     meth_table['loc'] = ss.rankdata(meth_table['loc'], method='dense')
-
 
     # create mod space
 
@@ -2110,9 +2207,11 @@ def locus(args):
     ax4.set_xticks([])
     ax4.yaxis.tick_right()
 
-    ax4.axhline(y=2.5, c='k', linestyle='--',lw=1)
+    upper, lower = get_cutoffs(list(data.values())[0])
+
+    ax4.axhline(y=upper, c='k', linestyle='--',lw=1)
     ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
-    ax4.axhline(y=-2.5, c='k', linestyle='--',lw=1)
+    ax4.axhline(y=lower, c='k', linestyle='--',lw=1)
 
     ax4 = sns.lineplot(x='loc', y='llr', hue='sample', data=meth_table, palette=sample_color, zorder=2)
     ax4.set_xlim(ax2.get_xlim())
@@ -3102,15 +3201,17 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers(title="tool", dest="tool")
     subparsers.required = True
 
-    parser_nanopolish = subparsers.add_parser('db-nanopolish')
-    parser_megalodon  = subparsers.add_parser('db-megalodon')
-    parser_guppy      = subparsers.add_parser('db-guppy')
-    parser_segmeth    = subparsers.add_parser('segmeth')
-    parser_segplot    = subparsers.add_parser('segplot')
-    parser_locus      = subparsers.add_parser('locus')
-    parser_region     = subparsers.add_parser('region')
-    parser_composite  = subparsers.add_parser('composite')
-    parser_wgmeth     = subparsers.add_parser('wgmeth')
+    parser_nanopolish    = subparsers.add_parser('db-nanopolish')
+    parser_megalodon     = subparsers.add_parser('db-megalodon')
+    parser_guppy         = subparsers.add_parser('db-guppy')
+    parser_segmeth       = subparsers.add_parser('segmeth')
+    parser_segplot       = subparsers.add_parser('segplot')
+    parser_locus         = subparsers.add_parser('locus')
+    parser_region        = subparsers.add_parser('region')
+    parser_composite     = subparsers.add_parser('composite')
+    parser_wgmeth        = subparsers.add_parser('wgmeth')
+    parser_adjustcutoffs = subparsers.add_parser('adjustcutoffs')
+    parser_scoredist     = subparsers.add_parser('scoredist')
 
     parser_segmeth.set_defaults(func=segmeth)
     parser_segplot.set_defaults(func=segplot)
@@ -3121,6 +3222,8 @@ if __name__ == '__main__':
     parser_nanopolish.set_defaults(func=db_nanopolish)
     parser_megalodon.set_defaults(func=db_megalodon)
     parser_guppy.set_defaults(func=db_guppy)
+    parser_adjustcutoffs.set_defaults(func=adjustcutoffs)
+    parser_scoredist.set_defaults(func=scoredist)
 
     # options for methylation segments
     parser_segmeth.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
@@ -3265,6 +3368,19 @@ if __name__ == '__main__':
     parser_nanopolish.add_argument('-a', '--append', default=False, action='store_true', help='append to database')
     parser_nanopolish.add_argument('-s', '--scalegroup', default=False, action='store_true', help='scale threshold by number of CpGs in a group')
     parser_nanopolish.add_argument('-n', '--modname', default='CpG', help='modification type (tag if combining multiple mods, default = "CpG")')
+
+    # options for adjusting methylation / unmethylation cutoffs in methylartist db
+    parser_adjustcutoffs.add_argument('-d', '--db', required=True, help='methylartist database')
+    parser_adjustcutoffs.add_argument('-m', '--methylated', required=True, help='mark as methylated above cutoff value')
+    parser_adjustcutoffs.add_argument('-u', '--unmethylated', required=True, help='mark as unmethylated below cutoff value')
+
+    # options for score distribution exploration funciton
+    parser_scoredist.add_argument('-d', '--db', required=True, help='methylartist database(s), can be comma-delimited')
+    parser_scoredist.add_argument('-n', '--n', default=1000000, help='sample size (default = 1000000)')
+    parser_scoredist.add_argument('--xmin', default=None)
+    parser_scoredist.add_argument('--xmax', default=None)
+    parser_scoredist.add_argument('--svg', action='store_true', default=False)
+
 
     args = parser.parse_args()
     main(args)

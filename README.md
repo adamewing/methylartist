@@ -195,7 +195,7 @@ Example:
 Plot of the GPER1 locus in hg38, highlighting the GeneHancer promoter/enhancer annotation (`GH07J001085`).
 
 ```
-methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes GPER1 -l 1085667-1089471 --cpgspace 30 -p 1,6,1,3,4
+methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes GPER1 -l 1085667-1089471 --modspace 30 -p 1,6,1,3,4
 ```
 
 ![locus plot](https://github.com/adamewing/methylartist/blob/main/docs/GPER1.MCF7_data_megalodon.chr7_1072064-1101499.m.locus.meth.png?raw=true)
@@ -208,7 +208,7 @@ Example:
 
 Plot of the ERBB2 (HER2) locus in hg38:
 ```
-methylartist locus -d MCF7_data_megalodon.colours.txt -i chr17:39677914-39738361 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --cpgspace 20 --genes ERBB2 --highlight_bed erbb2.highlights.txt --highlightpalette viridis
+methylartist locus -d MCF7_data_megalodon.colours.txt -i chr17:39677914-39738361 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --modspace 20 --genes ERBB2 --highlight_bed erbb2.highlights.txt --highlightpalette viridis
 ```
 
 Contents of `MCF7_data_megalodon.colours.txt`:
@@ -347,3 +347,14 @@ chr1    10524   6       6
 chr1    10541   8       7
 chr1    10562   8       8
 ```
+
+### scoredist
+
+Outputs distribution of modified base statistics with current cutoffs for one or more methylartist databases
+```
+methylartist scoredist -d MCF7_ATCC.megalodon.db,MCF7_ECACC.megalodon.db
+```
+
+![score distribution](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_ATCC.megalodon.db_MCF7_ECACC.megalodon.db.scoredist.png)
+
+
