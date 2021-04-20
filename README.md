@@ -257,6 +257,21 @@ methylartist region -i chr11:100956822-101228191 -d MCF7_data_megalodon.txt -g H
 ![region plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_data_megalodon.chr11_100956822-101228191.m.region.meth.png?raw=true)
 
 
+It's also possible to use region plots to explore methylation profiles across entire chromosomes. This can be accomplished through turning off the read alignment plot with `--skip_align_plot` and adjusting `--panelratios` to set the read alignment plot panel to 0.
+
+Example:
+```
+methylartist region -i chr22:1-50818468 -d MCF7_data_megalodon.txt -p 48 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz -n CG -r Homo_sapiens_assembly38.fasta --skip_align_plot -w 10000 --smoothwindowsize 32 --highlight_bed chr22.highlights --panelratios 1,0,1,4 --modspace 40 --height 4.5
+```
+![region plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_data_megalodon.chr22_1-50818468.m.region.meth.png?raw=true)
+
+Contents of chr22.highlight (derived from UCSC Genome Browser hg38 gap and centromere annotations):
+
+```
+chr22   1       10510000        #444444
+chr22   12954788        15054318        #444444
+```
+
 ### composite
 
 Generates "composite" methylation plots where multiple per-element profiles are aligned to and plotted against a reference sequence.

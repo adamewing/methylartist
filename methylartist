@@ -2313,10 +2313,10 @@ def locus(args):
     img_h = 8
 
     if args.width:
-        img_w = int(args.width)
+        img_w = float(args.width)
 
     if args.height:
-        img_h = int(args.height)
+        img_h = float(args.height)
 
     fig.set_size_inches(img_w, img_h)
     
@@ -2930,10 +2930,10 @@ def region(args):
     img_h = 8
 
     if args.width:
-        img_w = int(args.width)
+        img_w = float(args.width)
 
     if args.height:
-        img_h = int(args.height)
+        img_h = float(args.height)
 
     fig.set_size_inches(img_w, img_h)
 
