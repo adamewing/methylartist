@@ -2309,7 +2309,17 @@ def locus(args):
     if args.max_read_density:
         fn_prefix += '.mrd%.2f' % float(args.max_read_density)
 
-    fig.set_size_inches(16, 8)
+    img_w = 16
+    img_h = 8
+
+    if args.width:
+        img_w = int(args.width)
+
+    if args.height:
+        img_h = int(args.height)
+
+    fig.set_size_inches(img_w, img_h)
+    
     if args.svg:
         plt.savefig('%s.locus.meth.svg' % fn_prefix, bbox_inches='tight')
         logger.info('plot saved to %s.locus.meth.svg' % fn_prefix)
@@ -2916,7 +2926,17 @@ def region(args):
     if args.genes is not None:
         fn_prefix = '_'.join(args.genes.split(',')) + '.' + fn_prefix
 
-    fig.set_size_inches(16, 8)
+    img_w = 16
+    img_h = 8
+
+    if args.width:
+        img_w = int(args.width)
+
+    if args.height:
+        img_h = int(args.height)
+
+    fig.set_size_inches(img_w, img_h)
+
     if args.svg:
         plt.savefig('%s.region.meth.svg' % fn_prefix, bbox_inches='tight')
         logger.info('plot saved to %s.region.meth.svg' % fn_prefix)
@@ -3297,6 +3317,8 @@ if __name__ == '__main__':
     parser_locus.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
     parser_locus.add_argument('--excl_ambig', action='store_true', default=False)
     parser_locus.add_argument('--unambig_highlight', action='store_true', default=False)
+    parser_locus.add_argument('--width', default=16, help='image width (inches, default=16)')
+    parser_locus.add_argument('--height', default=8, help='image width (inches, default=8)')
     parser_locus.add_argument('--svg', action='store_true')
 
     # options for region plots
@@ -3323,6 +3345,8 @@ if __name__ == '__main__':
     parser_region.add_argument('--panelratios',  default=None, help='Alter panel ratios: needs to be 4 comma-seperated integers. Default: 1,5,3,3')
     parser_region.add_argument('--skip_align_plot', default=False, action='store_true', help='blank alignment plot, useful if unneeded or for runtime.')
     parser_region.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
+    parser_region.add_argument('--width', default=16, help='image width (inches, default=16)')
+    parser_region.add_argument('--height', default=8, help='image width (inches, default=8)')
     parser_region.add_argument('--svg', action='store_true', default=False)
 
     # options for composite plots
