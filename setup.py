@@ -21,6 +21,7 @@ setup(
         'pandas',
         'matplotlib',
         'seaborn',
+        'bx-python',
         'ont-fast5-api'
     ]
 

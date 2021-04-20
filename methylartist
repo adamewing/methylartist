@@ -40,6 +40,7 @@ from operator import itemgetter
 from copy import deepcopy
 
 from ont_fast5_api.fast5_interface import get_fast5_file
+from bx.intervals.intersection import Intersecter, Interval
 
 FORMAT = '%(asctime)s %(message)s'
 logging.basicConfig(format=FORMAT)
@@ -1976,35 +1977,36 @@ def locus(args):
     if args.genes is not None:
         genes_of_interest = args.genes.strip().split(',')
 
-    i = 1
+    genemap = dd(Intersecter)
+
     for ensg in genes:
         if genes_of_interest:
             if genes[ensg].name not in genes_of_interest:
                 continue
 
+        if not genes[ensg].has_tx():
+            logger.warning('no transcript for gene: %s' % genes[ensg].name)
+            continue
+
         logger.info('gene in region: %s' % genes[ensg].name)
 
-        if genes[ensg].has_tx():
+        y = 1
 
-            tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [0.4+i, 0.4+i], zorder=2))
+        while genemap[y].find(genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start):
+            y += 1
 
-            #print('transcript: %d-%d %s' % (genes[ensg].tx_start, genes[ensg].tx_end, genes[ensg].name))
+        tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [0.4+y, 0.4+y], zorder=2))
 
         genes[ensg].merge_exons()
         for exon_start, exon_end in genes[ensg].exons:
             exon_len = exon_end - exon_start
+            exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, y], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=3))
 
-            exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, i], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=3))
+        genemap[y].add_interval(Interval(genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start))
 
-        #blocks_str = ','.join(['%d-%d' % (s,e) for s, e in genes[ensg].exons])
-        #print('%s exons: %s' % (genes[ensg].name, blocks_str))
+    gene_height = max(3, len(genemap))
 
-        i += 1
-
-    if i < 3:
-        i = 3
-
-    ax0.set_ylim(0,i)
+    ax0.set_ylim(0, gene_height)
     ax0.set_yticks([])
 
     highlight_patches = []
@@ -2636,35 +2638,35 @@ def region(args):
     if args.genes is not None:
         genes_of_interest = args.genes.strip().split(',')
 
-    i = 1
+    genemap = dd(Intersecter)
+
     for ensg in genes:
         if genes_of_interest:
             if genes[ensg].name not in genes_of_interest:
                 continue
 
+        if not genes[ensg].has_tx():
+            continue
+
         logger.info('gene in region: %s' % genes[ensg].name)
 
-        if genes[ensg].has_tx():
+        y = 1
 
-            tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start, genes[ensg].tx_end], [0.4+i, 0.4+i], zorder=2))
+        while genemap[y].find(genes[ensg].tx_start, genes[ensg].tx_end):
+            y += 1
 
-            #print('transcript: %d-%d %s' % (genes[ensg].tx_start, genes[ensg].tx_end, genes[ensg].name))
+        tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start, genes[ensg].tx_end], [0.4+y, 0.4+y], zorder=2))
 
         genes[ensg].merge_exons()
         for exon_start, exon_end in genes[ensg].exons:
             exon_len = exon_end - exon_start
+            exon_patches.append(matplotlib.patches.Rectangle([exon_start, y], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=3))
 
-            exon_patches.append(matplotlib.patches.Rectangle([exon_start, i], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=3))
+        genemap[y].add_interval(Interval(genes[ensg].tx_start, genes[ensg].tx_end))
 
-        #blocks_str = ','.join(['%d-%d' % (s,e) for s, e in genes[ensg].exons])
-        #print('%s exons: %s' % (genes[ensg].name, blocks_str))
+    gene_height = max(3, len(genemap))
 
-        i += 1
-
-    if i < 3:
-        i = 3
-
-    ax0.set_ylim(0,i)
+    ax0.set_ylim(0, gene_height)
     ax0.set_yticks([])
 
     highlight_patches = []
@@ -2699,7 +2701,7 @@ def region(args):
 
     else:
         logger.info('building read alignment plot...')
-        
+
         readstack = dd(list)
 
         max_y  = 1
