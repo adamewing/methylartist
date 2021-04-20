@@ -455,11 +455,11 @@ def get_modnames(meth_db):
     return mod_names
 
 
-def get_cutoffs(meth_db):
+def get_cutoffs(meth_db, mod):
     conn = sqlite3.connect(meth_db)
     c = conn.cursor()
 
-    for row in c.execute("SELECT upper,lower FROM cutoffs"):
+    for row in c.execute("SELECT upper,lower FROM cutoffs WHERE modname='%s'" % mod):
         return row
 
 
@@ -1022,12 +1022,12 @@ def build_genes(gtf, chrom, start, end):
     return genes
 
 
-def sample_db(db, n=1000000):
+def sample_db(db, mod, n=1000000):
     conn = sqlite3.connect(db)
     c = conn.cursor()
 
-    logger.info('sample %d values from %s' % (n, db))
-    return np.asarray(c.execute('SELECT stat FROM methdata ORDER BY RANDOM() LIMIT %d' % n).fetchall()).flatten()
+    logger.info('sample %d values from %s where modname="%s"' % (n, db, mod))
+    return np.asarray(c.execute('SELECT stat FROM methdata WHERE modname="%s" ORDER BY RANDOM() LIMIT %d' % (mod, n)).fetchall()).flatten()
 
 
 ## tools
@@ -1039,13 +1039,24 @@ def scoredist(args):
     meth_cutoffs = []
     unmeth_cutoffs = []
 
+    avail_mods = []
+
+    for db in args.db.split(','):
+        avail_mods += get_modnames(db)
+
+    avail_mods = list(set(avail_mods))
+
+    if args.mod not in avail_mods:
+        logger.warning('mod %s not found, available mods: %s' % (args.mod, ','.join(avail_mods)))
+        sys.exit()
+
     for db in args.db.split(','):
         assert os.path.exists(db), '%s not found' % db
-        upper, lower = get_cutoffs(db)
+        upper, lower = get_cutoffs(db, args.mod)
         meth_cutoffs.append(upper)
         unmeth_cutoffs.append(lower)
 
-        sample[db] = sample_db(db, n=int(args.n))
+        sample[db] = sample_db(db, args.mod, n=int(args.n))
 
     meth_cutoffs = list(set(meth_cutoffs))
     unmeth_cutoffs = list(set(unmeth_cutoffs))
@@ -1087,21 +1098,27 @@ def scoredist(args):
 
 
 def adjustcutoffs(args):
+    avail_mods = get_modnames(args.db)
+
+    if args.mod not in avail_mods:
+        logger.warning('mod %s not found, available mods: %s' % (args.mod, ','.join(avail_mods)))
+        sys.exit()
+
     conn = sqlite3.connect(args.db)
     c = conn.cursor()
 
-    logger.info('%s: reset methylation states to 0' % args.db)
-    c.execute("UPDATE methdata SET methstate=0")
+    logger.info('%s: reset methylation states to 0 for mod %s' % (args.db, args.mod))
+    c.execute("UPDATE methdata SET methstate=0 where modname='%s'" % args.mod)
 
-    logger.info('%s: mark sites with stat > %f methylated (1)' % (args.db, float(args.methylated)))
-    c.execute('UPDATE methdata SET methstate=1 where stat > %f' % float(args.methylated))
+    logger.info('%s: mark sites with stat > %f methylated (1) for mod %s' % (args.db, float(args.methylated), args.mod))
+    c.execute('UPDATE methdata SET methstate=1 where stat > %f and modname="%s"' % (float(args.methylated), args.mod))
 
-    logger.info('%s: mark sites with stat < %f unmethylated (1)' % (args.db, float(args.unmethylated)))
-    c.execute('UPDATE methdata SET methstate=-1 where stat < %f' % float(args.unmethylated))
+    logger.info('%s: mark sites with stat < %f unmethylated (1) for mod %s' % (args.db, float(args.unmethylated), args.mod))
+    c.execute('UPDATE methdata SET methstate=-1 where stat < %f and modname="%s"' % (float(args.unmethylated), args.mod))
 
-    logger.info('%s: update cutoff table' % args.db)
-    c.execute('UPDATE cutoffs SET upper=%f' % float(args.methylated))
-    c.execute('UPDATE cutoffs SET lower=%f' % float(args.unmethylated))
+    logger.info('%s: update cutoff table for mod %s' % (args.db, args.mod))
+    c.execute('UPDATE cutoffs SET upper=%f WHERE modname="%s"' % (float(args.methylated), args.mod))
+    c.execute('UPDATE cutoffs SET lower=%f WHERE modname="%s"' % (float(args.unmethylated), args.mod))
 
     conn.commit()
 
@@ -1181,7 +1198,7 @@ def db_guppy(args):
         c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer, modname text)''')
         c.execute('''CREATE TABLE modnames (mod text)''')
         c.execute('''CREATE INDEX read_index ON methdata(readname)''')
-        c.execute('''CREATE TABLE cutoffs (upper real, lower real)''')
+        c.execute('''CREATE TABLE cutoffs (upper real, lower real, modname text)''')
 
     else:
         logger.info('appending records to %s' % db_fn)
@@ -1227,7 +1244,7 @@ def db_guppy(args):
             c.execute("INSERT INTO modnames VALUES ('%s')" % args.modname)
 
             if not args.append:
-                c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f')" % (llr, -1*llr))
+                c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f', '%s')" % (llr, -1*llr, args.modname))
 
             logger.info('commiting records from %s to %s' % (fn, db_fn))
             conn.commit()
@@ -1264,7 +1281,7 @@ def db_megalodon(args):
     if not args.append:
         c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer, modname text)''')
         c.execute('''CREATE TABLE modnames (mod text)''')
-        c.execute('''CREATE TABLE cutoffs (upper real, lower real)''')
+        c.execute('''CREATE TABLE cutoffs (upper real, lower real, modname text)''')
         c.execute('''CREATE INDEX read_index ON methdata(readname)''')
 
     else:
@@ -1327,8 +1344,7 @@ def db_megalodon(args):
         for mod in modnames:
             c.execute("INSERT INTO modnames VALUES ('%s')" % mod)
 
-        if not args.append:
-            c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f')" % (llr, -1*llr))
+        c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f', '%s')" % (llr, -1*llr, mod))
 
         if len(ins_data) > 0:
             conn.executemany('INSERT INTO methdata VALUES (?,?,?,?,?,?,?)', ins_data)
@@ -1370,7 +1386,7 @@ def db_nanopolish(args):
         c.execute('''CREATE TABLE methdata (chrom text, pos integer, strand text, readname text, stat real, methstate integer, modname text)''')
         c.execute('''CREATE TABLE modnames (mod text)''')
         c.execute('''CREATE INDEX read_index ON methdata(readname)''')
-        c.execute('''CREATE TABLE cutoffs (upper real, lower real)''')
+        c.execute('''CREATE TABLE cutoffs (upper real, lower real, modname text)''')
 
     else:
         logger.info('appending records to %s' % db_fn)
@@ -1422,8 +1438,7 @@ def db_nanopolish(args):
 
         c.execute("INSERT INTO modnames VALUES ('%s')" % args.modname)
 
-        if not args.append:
-            c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f')" % (llr, -1*llr))
+        c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f', '%s')" % (llr, -1*llr, args.modname))
 
         logger.info('commiting records from %s to %s' % (tsv, db_fn))
 
@@ -1846,7 +1861,7 @@ def locus(args):
         logger.info('user set --slidingwindowsize %d, mod_n:slidingwindowsize: %.3f' % (int(args.slidingwindowsize), modspace_n/float(args.slidingwindowsize)))
         args.slidingwindowsize = int(args.slidingwindowsize)
     else:
-        args.slidingwindowsize = min(300, int(modspace_n/24))
+        args.slidingwindowsize = min(300, int(modspace_n/36))
 
         if args.slidingwindowsize < 10:
             args.slidingwindowsize = 10
@@ -2207,11 +2222,12 @@ def locus(args):
     ax4.set_xticks([])
     ax4.yaxis.tick_right()
 
-    upper, lower = get_cutoffs(list(data.values())[0])
-
-    ax4.axhline(y=upper, c='k', linestyle='--',lw=1)
     ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
-    ax4.axhline(y=lower, c='k', linestyle='--',lw=1)
+
+    for mod in use_mods: 
+        upper, lower = get_cutoffs(list(data.values())[0], mod)
+        ax4.axhline(y=upper, c='k', linestyle='--',lw=1)
+        ax4.axhline(y=lower, c='k', linestyle='--',lw=1)
 
     ax4 = sns.lineplot(x='loc', y='llr', hue='sample', data=meth_table, palette=sample_color, zorder=2)
     ax4.set_xlim(ax2.get_xlim())
@@ -2674,131 +2690,135 @@ def region(args):
 
     # per-read plot
 
-    logger.info('building read alignment plot...')
     ax1 = plt.subplot(gs[1])
     ax1.set_xticks([])
     ax1.set_yticks([])
 
-    readstack = dd(list)
+    if args.skip_align_plot:
+        logger.info('skipped alignment plot due to --skip_align_plot')
 
-    max_y  = 1
-    pack_y = 1
+    else:
+        logger.info('building read alignment plot...')
+        
+        readstack = dd(list)
 
-    masked_count = 0
+        max_y  = 1
+        pack_y = 1
 
-    for bamname in reads:
-        fetch_reads_bam = pysam.AlignmentFile(orig_bam[bamname])
-        pos_cache = {}
+        masked_count = 0
 
-        for read in fetch_reads_bam.fetch(chrom, start, end):
-            if read.mapq < 10:
-                continue
+        for bamname in reads:
+            fetch_reads_bam = pysam.AlignmentFile(orig_bam[bamname])
+            pos_cache = {}
 
-            if read.is_supplementary or read.is_secondary or read.is_duplicate:
-                continue
-
-            masked = False
-            if len(readmask) > 0:
-                for mask_start, mask_end in readmask:
-                    if read.reference_start >= mask_start and read.reference_end <= mask_end:
-                        logger.debug('masked read: %s' % read.query_name)
-                        masked_count += 1
-                        masked = True
-            
-            if masked:
-                continue
-
-            if read.query_name not in pos_cache:
-                pos_cache[read.query_name] = ([read.reference_start], [read.reference_end])
-            else:
-                pos_cache[read.query_name][0].append(read.reference_start)
-                pos_cache[read.query_name][1].append(read.reference_end)
-
-        for readname, read in reads[bamname].items():
-            if readname not in pos_cache:
-                logger.debug('read %s not found in %s (skipped)' % (readname, bamname))
-                continue
-
-            if read.call_count == 0:
-                continue
-
-            read.ypos = max_y
-            max_y += 1
-
-            read.starts, read.ends = pos_cache[readname]
-            readstack[bamname].append(read)
-
-        fetch_reads_bam.close()
-
-    if args.readmask:
-        logger.info('masked %d reads due to --readmask' % masked_count)
-
-    # read packing
-
-    for bamname in readstack:
-        reads = readstack[bamname]
-
-        y = dd(list)
-
-        for read in readstack[bamname]:
-            y[read.ypos].append(read)
-
-        for p in y:
-            for q in y:
-                if p == q:
+            for read in fetch_reads_bam.fetch(chrom, start, end):
+                if read.mapq < 10:
                     continue
 
-                for read_q in y[q]:
-                        move = True
+                if read.is_supplementary or read.is_secondary or read.is_duplicate:
+                    continue
 
-                        for read_p in y[p]:
-                            if read_q.overlap(read_p):
-                                move = False
+                masked = False
+                if len(readmask) > 0:
+                    for mask_start, mask_end in readmask:
+                        if read.reference_start >= mask_start and read.reference_end <= mask_end:
+                            logger.debug('masked read: %s' % read.query_name)
+                            masked_count += 1
+                            masked = True
+                
+                if masked:
+                    continue
 
-                        if move:
-                            y[p].append(read_q)
-                            y[q].remove(read_q)
+                if read.query_name not in pos_cache:
+                    pos_cache[read.query_name] = ([read.reference_start], [read.reference_end])
+                else:
+                    pos_cache[read.query_name][0].append(read.reference_start)
+                    pos_cache[read.query_name][1].append(read.reference_end)
 
-        for p in y:
-            if len(y[p]) > 0:
-                for read in sorted(y[p], key=lambda r: min(r.starts)):
-                    read.ypos = pack_y
-                pack_y += 1
+            for readname, read in reads[bamname].items():
+                if readname not in pos_cache:
+                    logger.debug('read %s not found in %s (skipped)' % (readname, bamname))
+                    continue
 
-    ax1.set_ylim(0,pack_y+1)
+                if read.call_count == 0:
+                    continue
 
-    for bamname in readstack:
-        for read in readstack[bamname]:
-            for call_pos, call in read.meth_calls.items():
-                #print(read.read_name, call_pos, max(read.ends)-min(read.starts))
-                call_pos += start
+                read.ypos = max_y
+                max_y += 1
 
-                if call == -1:
-                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=2, zorder=3)
+                read.starts, read.ends = pos_cache[readname]
+                readstack[bamname].append(read)
 
-                if call == 1:
-                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=3)
+            fetch_reads_bam.close()
 
-            for i in range(len(read.starts)):
-                readline_start = max(read.starts[i], start)
-                readline_end   = min(read.ends[i], end)
+        if args.readmask:
+            logger.info('masked %d reads due to --readmask' % masked_count)
 
-                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=2, color=sample_color[bamname], alpha=0.4))
+        # read packing
 
-    highlight_patches = []
+        for bamname in readstack:
+            reads = readstack[bamname]
 
-    if args.highlight_panels:
-        a = float(args.highlight_panels)
-        if args.highlight or args.highlight_bed:
-            for h, h_s in enumerate(h_start):
-                h_e = h_end[h]
-                h_color = h_colors[h]
-                ymin = min(ax1.get_ybound())
-                yheight = max(ax1.get_ybound())-ymin
-                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+            y = dd(list)
 
-    for h in highlight_patches:
-        ax1.add_patch(h)
+            for read in readstack[bamname]:
+                y[read.ypos].append(read)
+
+            for p in y:
+                for q in y:
+                    if p == q:
+                        continue
+
+                    for read_q in y[q]:
+                            move = True
+
+                            for read_p in y[p]:
+                                if read_q.overlap(read_p):
+                                    move = False
+
+                            if move:
+                                y[p].append(read_q)
+                                y[q].remove(read_q)
+
+            for p in y:
+                if len(y[p]) > 0:
+                    for read in sorted(y[p], key=lambda r: min(r.starts)):
+                        read.ypos = pack_y
+                    pack_y += 1
+
+        ax1.set_ylim(0,pack_y+1)
+
+        for bamname in readstack:
+            for read in readstack[bamname]:
+                for call_pos, call in read.meth_calls.items():
+                    call_pos += start
+
+                    if call == -1:
+                        ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=2, zorder=3)
+
+                    if call == 1:
+                        ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=3)
+
+                for i in range(len(read.starts)):
+                    readline_start = max(read.starts[i], start)
+                    readline_end   = min(read.ends[i], end)
+
+                    ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=2, color=sample_color[bamname], alpha=0.4))
+
+        highlight_patches = []
+
+        if args.highlight_panels:
+            a = float(args.highlight_panels)
+            if args.highlight or args.highlight_bed:
+                for h, h_s in enumerate(h_start):
+                    h_e = h_end[h]
+                    h_color = h_colors[h]
+                    ymin = min(ax1.get_ybound())
+                    yheight = max(ax1.get_ybound())-ymin
+                    highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+        for h in highlight_patches:
+            ax1.add_patch(h)
 
     # plot correspondence between genome space and cpg space
 
@@ -3299,6 +3319,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
     parser_region.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
     parser_region.add_argument('--panelratios',  default=None, help='Alter panel ratios: needs to be 4 comma-seperated integers. Default: 1,5,3,3')
+    parser_region.add_argument('--skip_align_plot', default=False, action='store_true', help='blank alignment plot, useful if unneeded or for runtime.')
     parser_region.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_region.add_argument('--svg', action='store_true', default=False)
 
@@ -3371,12 +3392,14 @@ if __name__ == '__main__':
 
     # options for adjusting methylation / unmethylation cutoffs in methylartist db
     parser_adjustcutoffs.add_argument('-d', '--db', required=True, help='methylartist database')
+    parser_adjustcutoffs.add_argument('--mod', required=True, help='modification to plot (will list for user if incorrect)')
     parser_adjustcutoffs.add_argument('-m', '--methylated', required=True, help='mark as methylated above cutoff value')
     parser_adjustcutoffs.add_argument('-u', '--unmethylated', required=True, help='mark as unmethylated below cutoff value')
 
     # options for score distribution exploration funciton
     parser_scoredist.add_argument('-d', '--db', required=True, help='methylartist database(s), can be comma-delimited')
     parser_scoredist.add_argument('-n', '--n', default=1000000, help='sample size (default = 1000000)')
+    parser_scoredist.add_argument('-m', '--mod', required=True, help='modification to plot (will list for user if incorrect)')
     parser_scoredist.add_argument('--xmin', default=None)
     parser_scoredist.add_argument('--xmax', default=None)
     parser_scoredist.add_argument('--svg', action='store_true', default=False)
