@@ -332,6 +332,14 @@ methylartist composite -b MCF7_ATCC.haplotag.bam -m MCF7_ATCC.megalodon.db --sam
 ![composite plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_ATCC.haplotag.L1HS.composite.png?raw=true)
 
 
+Note the `--plotmean` option will add a plot of the across-element mean + sd to the top of the plot:
+
+```
+methylartist composite -b MCF7_ECACC.haplotag.bam -m MCF7_ECACC.megalodon.db --sample MCF7_ECACC.haplotag_m -s L1HS.MCF7_data_megalodon.excl_ambig.segmeth.tsv -f L1HS -r Homo_sapiens_assembly38.fasta -t L1.3.fa -p 32 --blocks L1.3.highlights.bed --plotmean
+```
+
+![composite plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_ECACC.haplotag_m.L1HS.plotmean.composite.png?raw=true)
+
 ### wgmeth
 
 Outputs genome-wide statistics on CpGs covered by at least one call. By default, `wgmeth` yields output in bedMethyl format (0-based coordinates):

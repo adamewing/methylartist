@@ -702,11 +702,12 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
             if seg_strand == '+':
                 coord_meth_pos.append(cpg_to_coord[cpg])
             if seg_strand == '-':
-                coord_meth_pos.append((seg_end-seg_start)-cpg_to_coord[cpg])
+                coord_meth_pos.append((seg_end-seg_start)-cpg_to_coord[cpg]-2)
 
     # alignment to ref elt
 
     elt_seq = ref.fetch(seg_chrom, seg_start, seg_end)
+
     if seg_strand == '-':
         elt_seq = rc(elt_seq)
 
@@ -777,6 +778,7 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
             revised_coord_meth_pos.append(revised_pos)
             meth_profile.append(meth)
 
+    #print(revised_coord_meth_pos, seg_name, seg_chrom, seg_start, seg_end, seg_strand, use_mod)
 
     return revised_coord_meth_pos, meth_profile
 
@@ -3055,10 +3057,63 @@ def composite(args):
 
     # set up plot
     fig = plt.figure()
-    gs = gridspec.GridSpec(2,1,height_ratios=[1,8])
+    gs = None
+
+    if args.plotmean:
+        gs = gridspec.GridSpec(3,1,height_ratios=[2,1,8])
+    else:
+        gs = gridspec.GridSpec(2,1,height_ratios=[1,8])
+
+    g = 0
+
+    # mean
+
+    if args.plotmean:
+        ax0 = plt.subplot(gs[g])
+        g += 1
+        ax0.set_ylim((-0.05,1.05))
+        ax0.set_xlim((mod_start, mod_end))
+        ax0.set_xticks([])
+
+        meth_by_coord = dd(list)
+
+        per_elt_calls = []
+
+        for coord_meth_pos, meth_profile in out_res:
+            per_elt_calls.append(len(coord_meth_pos))
+            for c, m in zip(coord_meth_pos, meth_profile):
+                meth_by_coord[c].append(m)
+
+        median_call_count = int(np.median(per_elt_calls))
+
+        v = sorted([len(c) for c in meth_by_coord.values()], reverse=True)
+
+        cutoff = v[-1]
+
+        if len(v) > median_call_count:
+            cutoff = v[median_call_count]
+
+        logger.info('median per element call count: %d' % median_call_count)
+        logger.info('per site call count cutoff: %d' % cutoff)
+
+        meanplot_table = dd(dict)
+
+        for c in sorted(meth_by_coord.keys()):
+            if len(meth_by_coord[c]) >= cutoff:
+                for m in meth_by_coord[c]:
+                    u = str(uuid4())
+                    meanplot_table[u]['coord'] = c
+                    meanplot_table[u]['meth'] = m
+        
+        meanplot_table = pd.DataFrame.from_dict(meanplot_table).T
+        meanplot_table.to_csv('test.csv')
+
+        ax0 = sns.lineplot(x='coord', y='meth', data=meanplot_table, ci='sd', lw=2, color=args.colour)
+
 
     # mod
-    ax1 = plt.subplot(gs[0])
+    ax1 = plt.subplot(gs[g])
+    g += 1
     ax1.set_xlim((mod_start, mod_end))
 
     box = matplotlib.patches.Rectangle([0, 0], mod_end-mod_start, 1.0, edgecolor='#555555', facecolor='#cfcfcf', zorder=1)
@@ -3092,7 +3147,8 @@ def composite(args):
     ax1.xaxis.set_ticks_position('top')
 
     # wiggles
-    ax2 = plt.subplot(gs[1])
+    ax2 = plt.subplot(gs[g])
+    g += 1
 
     for coord_meth_pos, meth_profile in random.sample(out_res, int(args.outelts)):
         ax2.plot(coord_meth_pos, meth_profile, lw=float(args.linewidth), alpha=float(args.alpha), color=args.colour)
@@ -3105,6 +3161,9 @@ def composite(args):
     fig.set_size_inches(16, 6)
 
     fn_base = sample + '.' + '_'.join(fams)
+
+    if args.plotmean:
+        fn_base += '.plotmean'
 
     if args.svg:
         plt.savefig('%s.composite.svg' % fn_base, bbox_inches='tight')
@@ -3357,10 +3416,11 @@ if __name__ == '__main__':
     parser_composite.add_argument('-r', '--ref', required=True, help='ref genome fasta')
     parser_composite.add_argument('-t', '--teref', required=True, help='TE ref fasta')
     parser_composite.add_argument('-p', '--procs', default=1, help='multiprocessing')
-    parser_composite.add_argument('-c', '--colour', default='#ff4500', help='colour (default: #ff4500')
+    parser_composite.add_argument('-c', '--colour', default='#ff4500', help='colour (default: #ff4500)')
     parser_composite.add_argument('-a', '--alpha', default=0.3, help='alpha (default: 0.3)')
     parser_composite.add_argument('-w', '--linewidth', default=1, help='line width (default: 1)')
     parser_composite.add_argument('-l', '--lenfrac', default=0.95, help='fraction of TE length that must align (default 0.95)')
+    parser_composite.add_argument('--plotmean', default=False, action='store_true', help='plot mean of composite elements at top of plot')
     parser_composite.add_argument('--mod', default=None, help='modification to plot (mod codes will be listed, default: infer from sample name')
     parser_composite.add_argument('--motif', default='CG', help='modified motif to highlight (default = CG)')
     parser_composite.add_argument('--blocks', default=None, help='blocks to highlight (txt file with start, end, name, hex colour)')
