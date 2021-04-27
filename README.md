@@ -195,10 +195,10 @@ Example:
 Plot of the GPER1 locus in hg38, highlighting the GeneHancer promoter/enhancer annotation (`GH07J001085`).
 
 ```
-methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes GPER1 -l 1085667-1089471 --modspace 30 -p 1,6,1,3,4
+methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes GPER1 -l 1085667-1089471 -p 1,6,1,3,4
 ```
 
-![locus plot](https://github.com/adamewing/methylartist/blob/main/docs/GPER1.MCF7_data_megalodon.chr7_1072064-1101499.m.locus.meth.png?raw=true)
+![locus plot](https://github.com/adamewing/methylartist/blob/main/docs/GPER1.MCF7_data_megalodon.chr7_1072064-1101499.m.ms1smw38.locus.meth.png?raw=true)
 
 From top to bottom, the plot shows the genome coordinates, gene models (optional if `--gtf` is supplied), read mappings with modified bases as closed (modified) or open (unmodified) circles, translation from genome to CpG-only coordinate space, raw log-likelihood ratios, and smoothed methylated fraction plot.
 
@@ -208,7 +208,7 @@ Example:
 
 Plot of the ERBB2 (HER2) locus in hg38:
 ```
-methylartist locus -d MCF7_data_megalodon.colours.txt -i chr17:39677914-39738361 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --modspace 20 --genes ERBB2 --highlight_bed erbb2.highlights.txt --highlightpalette viridis
+methylartist locus -d MCF7_data_megalodon.colours.txt -i chr17:39677914-39738361 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes ERBB2 --highlight_bed erbb2.highlights.txt --highlightpalette viridis
 ```
 
 Contents of `MCF7_data_megalodon.colours.txt`:
@@ -223,7 +223,7 @@ chr17 39686731 39689728
 chr17 39698981 39707766
 ```
 
-![locus plot 2](https://github.com/adamewing/methylartist/blob/main/docs/ERBB2.MCF7_data_megalodon.colours.chr17_39677914-39738361.m.locus.meth.png?raw=true)
+![locus plot 2](https://github.com/adamewing/methylartist/blob/main/docs/ERBB2.MCF7_data_megalodon.colours.chr17_39677914-39738361.m.ms1smw38.locus.meth.png?raw=true)
 
 
 #### phasing
@@ -235,10 +235,10 @@ Examples:
 Plot of the PEG3 imprinted region on chromosome 19, hg38.
 
 ```
-methylartist locus -d MCF7_data_megalodon.txt -i chr19:56810076-56870725 -l 56835076-56841076 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes PEG3 --smoothwindowsize 12 --slidingwindowsize 40 --samplepalette viridis --phased
+methylartist locus -d MCF7_data_megalodon.txt -i chr19:56810076-56870725 -l 56835376-56840476 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes PEG3 --slidingwindowsize 20 -s 36 --samplepalette viridis --phased
 ```
 
-![phased locus plot](https://github.com/adamewing/methylartist/blob/main/docs/PEG3.MCF7_data_megalodon.chr19_56810076-56870725.m.phased.locus.meth.png?raw=true)
+![phased locus plot](https://github.com/adamewing/methylartist/blob/main/docs/PEG3.MCF7_data_megalodon.chr19_56810076-56870725.m.phased.ms1smw36.locus.meth.png?raw=true)
 
 Note the apparent differential imprinting between the ATCC and ECACC MCF7 lines.
 
