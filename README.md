@@ -238,7 +238,7 @@ Plot of the PEG3 imprinted region on chromosome 19, hg38.
 methylartist locus -d MCF7_data_megalodon.txt -i chr19:56810076-56870725 -l 56835376-56840476 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes PEG3 --slidingwindowsize 20 -s 36 --samplepalette viridis --phased
 ```
 
-![phased locus plot](https://github.com/adamewing/methylartist/blob/main/docs/PEG3.MCF7_data_megalodon.chr19_56810076-56870725.m.phased.ms1smw36.locus.meth.png?raw=true)
+![phased locus plot](https://github.com/adamewing/methylartist/blob/main/docs/PEG3.MCF7_data_megalodon.chr19_56810076-56870725.m.phased.ms1smw8slw36.locus.meth.png?raw=true)
 
 Note the apparent differential imprinting between the ATCC and ECACC MCF7 lines.
 
