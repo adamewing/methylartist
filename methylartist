@@ -532,7 +532,6 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_db, chrom, seg_start, seg_en
     return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, read_count)
 
 
-
 def get_meth_locus(args, bam, meth_db, mod, phase=None):
     # used for locus plots
 
@@ -594,6 +593,9 @@ def get_meth_locus(args, bam, meth_db, mod, phase=None):
         for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
             cg_chrom, cg_start, stat, methstate, modname = row
+
+            if methstate == 0:
+                continue
 
             if modname != mod:
                 continue
@@ -1713,6 +1715,8 @@ def segplot(args):
     fig = sns_plot.figure
     fig.set_size_inches(float(args.width), float(args.height))
 
+    basename += '.mc%d' % int(args.mincalls)
+
     if args.svg:
         fig.savefig(basename+'.segplot.svg', bbox_inches='tight')
         logger.info('plot saved to %s.segplot.svg' % basename)
@@ -1826,6 +1830,30 @@ def locus(args):
 
     meth_table['orig_loc'] = meth_table['loc']
     meth_table['loc'] = ss.rankdata(meth_table['loc'], method='dense')
+
+    # optional mincall filter
+    args.mincalls = int(args.mincalls)
+
+    if args.mincalls > 0:
+        drop_ix = []
+
+        logger.info('assessing coverage per --mincalls, per-read sites to consider: %d' % len(meth_table['loc']))
+        tick = 5000
+        for i, new_loc in enumerate(meth_table['loc'], 1):
+            for sample in sample_order:
+                call_count = len(meth_table.loc[(meth_table['sample'] == sample) & (meth_table['loc'] == new_loc)])
+
+                if call_count < args.mincalls:
+                    drop_ix += list(meth_table.loc[(meth_table['loc'] == new_loc)].index)
+            
+            if i % tick == 0:
+                logger.info('%s %s: processed %d sites' % (args.data, args.interval, i))
+        
+        drop_ix = list(set(drop_ix))
+        logger.info('dropping %d positions' % len(drop_ix))
+        meth_table.drop(drop_ix, inplace=True)
+
+        meth_table['loc'] = ss.rankdata(meth_table['loc'], method='dense')
 
     # create mod space
 
@@ -2299,12 +2327,15 @@ def locus(args):
     if args.phased:
         fn_prefix += '.phased'
 
-    param_str = '.ms%dsmw%d' % (args.modspace, int(args.smoothwindowsize))
+    param_str = '.ms%d.smw%d' % (args.modspace, int(args.smoothwindowsize))
 
     fn_prefix += param_str
 
     if args.max_read_density:
         fn_prefix += '.mrd%.2f' % float(args.max_read_density)
+
+    if args.mincalls > 0:
+        fn_prefix += '.mc%d' % args.mincalls
 
     img_w = 16
     img_h = 8
@@ -3360,6 +3391,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--slidingwindowsize', default=2, help='size of initial sliding window for coverage check (default=2)')
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_locus.add_argument('--maskcutoff', default=4, help='read count masking cutoff (default=4)')
+    parser_locus.add_argument('-n', '--mincalls', default=0, help='drop modspace positions if call count (meth+unmeth) < --mincalls (default=0)')
     parser_locus.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
     parser_locus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
