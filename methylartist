@@ -1310,20 +1310,21 @@ def db_megalodon(args):
 
         ins_data = []
 
+        minprob = float(args.minprob)
+
         for i, row in enumerate(csv_reader):
             readname = row['read_id']
             chrom    = row['chrm']
             pos      = int(row['pos'])
             strand   = row['strand']
-
             mod_prob = float(row['mod_log_prob'])
             can_prob = float(row['can_log_prob'])
-            minprob  = float(args.minprob)
+            
             mod_base = row['mod_base']
 
             modnames[mod_base] = True
 
-            llr = float(row['mod_log_prob']) - float(row['can_log_prob'])
+            lpr = float(row['mod_log_prob']) - float(row['can_log_prob'])
 
             # adjust position of - strand calls to match nanopolish scheme
             if strand == '-':
@@ -1337,9 +1338,7 @@ def db_megalodon(args):
             if np.exp(can_prob) >= minprob:
                 methcall = -1
 
-            assert (mod_prob + can_prob) < 1.01 # allow for some rounding or floating point error
-
-            ins_data.append((chrom, pos, strand, readname, llr, methcall, mod_base))
+            ins_data.append((chrom, pos, strand, readname, lpr, methcall, mod_base))
 
             if i % progress_interval == 0:
                 conn.executemany('INSERT INTO methdata VALUES (?,?,?,?,?,?,?)', ins_data)
@@ -1349,8 +1348,9 @@ def db_megalodon(args):
         for mod in modnames:
             c.execute("INSERT INTO modnames VALUES ('%s')" % mod)
 
-        if not args.append:
-            c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f', '%s')" % (llr, -1*llr, mod))
+        lpr_cutoff = np.log(minprob) - np.log(1-minprob)
+
+        c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f', '%s')" % (lpr_cutoff, -1*lpr_cutoff, mod))
 
         if len(ins_data) > 0:
             conn.executemany('INSERT INTO methdata VALUES (?,?,?,?,?,?,?)', ins_data)
@@ -2004,11 +2004,17 @@ def locus(args):
 
     genemap = dd(Intersecter)
 
-    for ensg in genes:
-        if genes_of_interest:
-            if genes[ensg].name not in genes_of_interest:
-                continue
+    if genes_of_interest:
+        new_genes = {}
+        for ensg in genes:
+            if genes[ensg].name in genes_of_interest:
+                new_genes[ensg] = genes[ensg]
+        
+        genes = new_genes
 
+    gene_colours = sns.color_palette(args.genepalette, n_colors=len(genes))
+
+    for i, ensg in enumerate(genes):
         if not genes[ensg].has_tx():
             logger.warning('no transcript for gene: %s' % genes[ensg].name)
             continue
@@ -2020,12 +2026,12 @@ def locus(args):
         while genemap[y].find(genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start):
             y += 1
 
-        tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [0.4+y, 0.4+y], zorder=2))
+        tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [0.4+y, 0.4+y], color=gene_colours[i], zorder=2))
 
         genes[ensg].merge_exons()
         for exon_start, exon_end in genes[ensg].exons:
             exon_len = exon_end - exon_start
-            exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, y], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=3))
+            exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, y], exon_len, 0.8, edgecolor=gene_colours[i], facecolor=gene_colours[i], zorder=3))
 
         genemap[y].add_interval(Interval(genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start))
 
@@ -2671,6 +2677,18 @@ def region(args):
     exon_patches = []
     tx_lines = []
 
+    # genes_of_interest = []
+
+    # if args.genes is not None:
+    #     genes_of_interest = args.genes.strip().split(',')
+
+    # genemap = dd(Intersecter)
+
+    # for ensg in genes:
+    #     if genes_of_interest:
+    #         if genes[ensg].name not in genes_of_interest:
+    #             continue
+
     genes_of_interest = []
 
     if args.genes is not None:
@@ -2678,11 +2696,17 @@ def region(args):
 
     genemap = dd(Intersecter)
 
-    for ensg in genes:
-        if genes_of_interest:
-            if genes[ensg].name not in genes_of_interest:
-                continue
+    if genes_of_interest:
+        new_genes = {}
+        for ensg in genes:
+            if genes[ensg].name in genes_of_interest:
+                new_genes[ensg] = genes[ensg]
+        
+        genes = new_genes
 
+    gene_colours = sns.color_palette(args.genepalette, n_colors=len(genes))
+
+    for i, ensg in enumerate(genes):
         if not genes[ensg].has_tx():
             continue
 
@@ -2693,12 +2717,12 @@ def region(args):
         while genemap[y].find(genes[ensg].tx_start, genes[ensg].tx_end):
             y += 1
 
-        tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start, genes[ensg].tx_end], [0.4+y, 0.4+y], zorder=2))
+        tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start, genes[ensg].tx_end], [0.4+y, 0.4+y], color=gene_colours[i], zorder=2))
 
         genes[ensg].merge_exons()
         for exon_start, exon_end in genes[ensg].exons:
             exon_len = exon_end - exon_start
-            exon_patches.append(matplotlib.patches.Rectangle([exon_start, y], exon_len, 0.8, edgecolor='#777777', facecolor='#ff4500', zorder=3))
+            exon_patches.append(matplotlib.patches.Rectangle([exon_start, y], exon_len, 0.8, edgecolor=gene_colours[i], facecolor=gene_colours[i], zorder=3))
 
         genemap[y].add_interval(Interval(genes[ensg].tx_start, genes[ensg].tx_end))
 
@@ -3400,6 +3424,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--methcall_xmax', default=None)
     parser_locus.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_locus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
+    parser_locus.add_argument('--genepalette', default="ocean", help='colour palette name for highlights (default = "ocean")')
     parser_locus.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
     parser_locus.add_argument('--excl_ambig', action='store_true', default=False)
     parser_locus.add_argument('--unambig_highlight', action='store_true', default=False)
@@ -3427,6 +3452,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_region.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_region.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
+    parser_region.add_argument('--genepalette', default="ocean", help='colour palette name for highlights (default = "ocean")')
     parser_region.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
     parser_region.add_argument('--panelratios',  default=None, help='Alter panel ratios: needs to be 4 comma-seperated integers. Default: 1,5,3,3')
     parser_region.add_argument('--skip_align_plot', default=False, action='store_true', help='blank alignment plot, useful if unneeded or for runtime.')
