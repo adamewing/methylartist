@@ -2389,55 +2389,65 @@ def region(args):
 
     assert start < end
 
-    if end-start < 100000:
-        logger.warning('locus smaller than 100kbp, "methylartist locus" may yield better results')
+    if end-start < 500000:
+        logger.warning('locus smaller than 500kbp, "methylartist locus" may yield better results')
 
-    w_size = int((end-start)/int(args.windows))
-    w_starts = list(range(start, end, w_size))
-    w_ends = [w + w_size for w in w_starts]
+    # w_size = int((end-start)/int(args.windows))
+    # w_starts = list(range(start, end, w_size))
+    # w_ends = [w + w_size for w in w_starts]
 
-    if args.norm_motif:
-        if args.ref is None:
-            sys.exit('must specify -r/--ref with -n/--norm_motif')
+    ref = pysam.FastaFile(args.ref)
+    motif = args.norm_motif.upper()
+    region_seq = ref.fetch(chrom, start, end).upper()
+    motif_count = region_seq.count(motif) + region_seq.count(rc(motif))
 
-        ref = pysam.FastaFile(args.ref)
-        motif = args.norm_motif.upper()
-        region_seq = ref.fetch(chrom, start, end).upper()
-        motif_count = region_seq.count(motif) + region_seq.count(rc(motif))
-        motifs_per_window = int(motif_count / int(args.windows))
+    if args.windows is None:
+        args.windows = round(motif_count / 100)
+        logger.info('set window count to %d' % args.windows)
 
-        if motifs_per_window == 0:
-            motifs_per_window = 1
+    motifs_per_window = int(motif_count / int(args.windows))
 
-        logger.info('motif count: %d, per window: %d' % (motif_count, motifs_per_window))
+    if motifs_per_window == 0:
+        motifs_per_window = 1
 
-        w_starts = [start]
-        w_ends = []
+    logger.info('motif count: %d, per window: %d' % (motif_count, motifs_per_window))
 
-        i = 0
-        motif_count = 0
+    w_starts = [start]
+    w_ends = []
 
-        while i < len(region_seq) - len(motif):
-            site_fwd = region_seq[i:i+len(motif)]
-            site_rev = rc(site_fwd)
+    i = 0
+    motif_count = 0
 
-            if motif in (site_fwd, site_rev):
-                motif_count += 1
+    while i < len(region_seq) - len(motif):
+        site_fwd = region_seq[i:i+len(motif)]
+        site_rev = rc(site_fwd)
 
-            i += 1
+        if motif in (site_fwd, site_rev):
+            motif_count += 1
 
-            if motif_count == motifs_per_window:
-                w_starts.append(start+i)
-                w_ends.append(start+i)
-                motif_count = 0
+        i += 1
 
-        w_ends.append(end)
+        if motif_count == motifs_per_window:
+            w_starts.append(start+i)
+            w_ends.append(start+i)
+            motif_count = 0
 
-        assert len(w_starts) == len(w_ends)
-        logger.info('using %d windows normalised for %s content' % (len(w_starts), args.norm_motif))
+    w_ends.append(end)
 
-    else:
-        logger.info('using %d windows of %d bp' % (len(w_starts), w_size))
+    assert len(w_starts) == len(w_ends)
+    logger.info('using %d windows normalised for %s content' % (len(w_starts), args.norm_motif))
+
+    if args.smoothwindowsize is None:
+        w = len(w_starts)
+        args.smoothwindowsize = round(-1e-7*(w*w)+.0055*w+6)
+        if args.smoothwindowsize % 2 != 0:
+            args.smoothwindowsize += 1
+            
+        logger.info('set --smoothwindowsize to %d' % args.smoothwindowsize)
+
+    if args.modspace is None:
+        args.modspace = round(len(w_starts)/300)
+        logger.info('set --modspace to %d' % args.modspace)
 
     data = {}
     mods = []
@@ -2574,8 +2584,6 @@ def region(args):
         meth_segs[sample] = smooth(np.asarray(meth_segs[sample + '_frac']), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
         meth_segs[sample] = meth_segs[sample].rolling(window=10, min_periods=1, center=True).mean()
 
-    #meth_segs.to_csv('test.csv')
-
     coord_to_pos = {}
     for orig_loc, new_loc in zip(meth_segs['seg_start'], meth_segs['pos']):
         coord_to_pos[orig_loc] = new_loc
@@ -2687,18 +2695,6 @@ def region(args):
     exon_patches = []
     tx_lines = []
 
-    # genes_of_interest = []
-
-    # if args.genes is not None:
-    #     genes_of_interest = args.genes.strip().split(',')
-
-    # genemap = dd(Intersecter)
-
-    # for ensg in genes:
-    #     if genes_of_interest:
-    #         if genes[ensg].name not in genes_of_interest:
-    #             continue
-
     genes_of_interest = []
 
     if args.genes is not None:
@@ -2714,13 +2710,14 @@ def region(args):
         
         genes = new_genes
 
+    if args.gtf:
+        logger.info('%d genes in region' % len(genes))
+
     gene_colours = sns.color_palette(args.genepalette, n_colors=len(genes))
 
     for i, ensg in enumerate(genes):
         if not genes[ensg].has_tx():
             continue
-
-        logger.info('gene in region: %s' % genes[ensg].name)
 
         y = 1
 
@@ -2987,6 +2984,8 @@ def region(args):
 
     if args.genes is not None:
         fn_prefix = '_'.join(args.genes.split(',')) + '.' + fn_prefix
+
+    fn_prefix += '.s%d.w%d.m%d' % (args.smoothwindowsize, args.windows, args.modspace)
 
     img_w = 16
     img_h = 8
@@ -3261,6 +3260,10 @@ def wgmeth(args):
             chrom, chrlen = line.strip().split()[:2]
             chrlen = int(chrlen)
 
+            if args.chrom:
+                if args.chrom != chrom:
+                    continue
+
             for seg_start in range(0, chrlen, bin_size):
                 seg_end = seg_start + bin_size
 
@@ -3300,12 +3303,15 @@ def wgmeth(args):
             meth_table[phase]['pos'] = meth_table[phase].index
             meth_table[phase] = meth_table[phase].sort_values(['chr', 'pos'])
 
-            outfn = None
+            outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1])
+
+            if args.chrom:
+                outfn += '.%s' % args.chrom
 
             if args.dss:
-                outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.%s.phase_%d.DSS.txt' % (str(args.mod), phase)
+                outfn += '.%s.phase_%d.DSS.txt' % (str(args.mod), phase)
             else:
-                outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '.%s.phase_%d.methyl.bed' % (str(args.mod), phase)
+                outfn += '.%s.phase_%d.methyl.bed' % (str(args.mod), phase)
 
             logger.info('writing %s' % outfn)
 
@@ -3329,13 +3335,15 @@ def wgmeth(args):
         meth_table[0]['pos'] = meth_table[0].index
         meth_table[0] = meth_table[0].sort_values(['chr', 'pos'])
 
-        outfn = None
+        outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1])
+
+        if args.chrom:
+            outfn += '.%s' % args.chrom
 
         if args.dss:
-            outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '%s.DSS.txt' % str(args.mod)
+            outfn += '%s.DSS.txt' % str(args.mod)
         else:
-            outfn = '.'.join(os.path.basename(args.bam).split('.')[:-1]) + '%s.methyl.bed' % str(args.mod)
-        
+            outfn += '%s.methyl.bed' % str(args.mod)
 
         logger.info('writing %s' % outfn)
         if args.dss:
@@ -3445,19 +3453,19 @@ if __name__ == '__main__':
     # options for region plots
     parser_region.add_argument('-i', '--interval', required=True, help='chrom:start-end')
     parser_region.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
+    parser_region.add_argument('-n', '--norm_motif', required=True, help='normalise window sizes to motif occurance')
+    parser_region.add_argument('-r', '--ref', required=True, help='ref genome fasta, required if normalising windows with -n/--norm_motif')
     parser_region.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
     parser_region.add_argument('-l', '--highlight', default=None, help='format: start-end, (can be chrom:start-end but chrom is ignored) can comma-delimit multiple highlights')
     parser_region.add_argument('-b', '--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
-    parser_region.add_argument('-w', '--windows', default=1000, help='set window count, default=1000')
+    parser_region.add_argument('-w', '--windows', default=None, help='set window count, default=auto')
     parser_region.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_region.add_argument('-m', '--mods', default=None, help='mods to consider (comma-delimited, default = all available)')
-    parser_region.add_argument('-n', '--norm_motif', default=None, help='normalise window sizes to motif occurance')
-    parser_region.add_argument('-r', '--ref', default=None, help='ref genome fasta, required if normalising windows with -n/--norm_motif')
+    parser_region.add_argument('-s', '--smoothwindowsize', default=None, help='size of window for smoothing (default=auto)')
     parser_region.add_argument('--maxuncovered', default=50.0, help='maximum percentage of uncovered windows tolerated (default = 50.0)')
-    parser_region.add_argument('--modspace', default=2, help='increase to increase spacing between links in top panel (default=2)')
+    parser_region.add_argument('--modspace', default=None, help='increase to increase spacing between links in top panel (default=auto)')
     parser_region.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_region.add_argument('--min_window_calls', default=1, help='minimum reads per window to include in plot (default = 1)')
-    parser_region.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default=8)')
     parser_region.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_region.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_region.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
@@ -3509,6 +3517,7 @@ if __name__ == '__main__':
     parser_wgmeth.add_argument('-f', '--fai', required=True, help='fasta index (.fai)')
     parser_wgmeth.add_argument('-m', '--mod', default=None, help='output for specific mod (names vary, see output for hints)')
     parser_wgmeth.add_argument('-p', '--procs', default=1, help='multiprocessing')
+    parser_wgmeth.add_argument('-c', '--chrom', default=None, help='limit analysis to one chromosome')
     parser_wgmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_wgmeth.add_argument('--dss', default=False, action='store_true', help='output in DSS format (default = bedMethyl)')
     parser_wgmeth.add_argument('--phased', action='store_true', default=False, help='split output into phases (currently just 0,1)')
