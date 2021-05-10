@@ -1703,6 +1703,8 @@ def segplot(args):
     else:
         sns_plot = sns.stripplot(x='group', y='mCpG', data=plot_data, hue='sample', dodge=True, jitter=True, size=pt_sz, order=order, hue_order=samples_mods, palette=args.palette)
 
+    sns_plot.set_xlabel("")
+
     if args.tiltlabel:
         sns_plot.set_xticklabels(sns_plot.get_xticklabels(), rotation=45)
 
