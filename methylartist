@@ -2059,7 +2059,6 @@ def locus(args):
         genemap[y].add_interval(Interval(genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start))
 
         if args.labelgenes:
-            os_x  = elt_end-elt_start
             lg_x  = max(genes[ensg].tx_start-elt_start, 0)
             gtxt  = ax0.text(lg_x, y+0.8, genes[ensg].name, bbox=dict(boxstyle="round,pad=0.3", fc="lavender", alpha=0.5, lw=0), zorder=4)
             bb_w  = gtxt.get_tightbbox(renderer=fig.canvas.get_renderer()).width
@@ -2406,18 +2405,17 @@ def region(args):
     if end-start < 500000:
         logger.warning('locus smaller than 500kbp, "methylartist locus" may yield better results')
 
-    # w_size = int((end-start)/int(args.windows))
-    # w_starts = list(range(start, end, w_size))
-    # w_ends = [w + w_size for w in w_starts]
-
     ref = pysam.FastaFile(args.ref)
     motif = args.norm_motif.upper()
     region_seq = ref.fetch(chrom, start, end).upper()
     motif_count = region_seq.count(motif) + region_seq.count(rc(motif))
 
     if args.windows is None:
-        args.windows = round(motif_count / 100)
+        args.windows = round(motif_count / 30)
         logger.info('set window count to %d' % args.windows)
+    
+    else:
+        args.windows = int(args.windows)
 
     motifs_per_window = int(motif_count / int(args.windows))
 
@@ -2461,6 +2459,9 @@ def region(args):
 
     if args.modspace is None:
         args.modspace = round(len(w_starts)/300)
+        if args.modspace == 0:
+            args.modspace = 1
+
         logger.info('set --modspace to %d' % args.modspace)
 
     data = {}
@@ -2747,7 +2748,18 @@ def region(args):
 
         genemap[y].add_interval(Interval(genes[ensg].tx_start, genes[ensg].tx_end))
 
+        if args.labelgenes:
+            lg_x  = max(genes[ensg].tx_start, start)
+            gtxt  = ax0.text(lg_x, y+0.8, genes[ensg].name, bbox=dict(boxstyle="round,pad=0.3", fc="lavender", alpha=0.5, lw=0), zorder=4)
+            bb_w  = gtxt.get_tightbbox(renderer=fig.canvas.get_renderer()).width
+            fig_w = fig.get_size_inches()[0]*fig.dpi
+            txt_w = bb_w/fig_w*(end-start)
+            gtxt.set_x(lg_x-txt_w/2)
+
     gene_height = max(3, len(genemap))
+
+    if args.labelgenes:
+        gene_height = max(6, len(genemap))
 
     ax0.set_ylim(0, gene_height)
     ax0.set_yticks([])
@@ -3490,6 +3502,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--panelratios',  default=None, help='Alter panel ratios: needs to be 4 comma-seperated integers. Default: 1,5,3,3')
     parser_region.add_argument('--skip_align_plot', default=False, action='store_true', help='blank alignment plot, useful if unneeded or for runtime.')
     parser_region.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
+    parser_region.add_argument('--labelgenes', default=False, action='store_true', help='plot gene names')
     parser_region.add_argument('--width', default=16, help='image width (inches, default=16)')
     parser_region.add_argument('--height', default=8, help='image width (inches, default=8)')
     parser_region.add_argument('--svg', action='store_true', default=False)

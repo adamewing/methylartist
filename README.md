@@ -208,7 +208,6 @@ methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sa
 ![locus plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_data_megalodon.chr7_1072064-1101499.m.ms1.smw38.locus.meth.png?raw=true)
 
 
-
 #### Custom sample and highlight colours
 
 Example:
