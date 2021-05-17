@@ -215,7 +215,7 @@ Example:
 
 Plot of the ERBB2 (HER2) locus in hg38:
 ```
-methylartist locus -d MCF7_data_megalodon.colours.txt -i chr17:39677914-39738361 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes ERBB2 --highlight_bed erbb2.highlights.txt --highlightpalette viridis
+methylartist locus -d MCF7_data_megalodon.colours.txt -i chr17:39677914-39738361 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes ERBB2 --highlight_bed erbb2.highlights.txt --highlightpalette viridis --labelgenes
 ```
 
 Contents of `MCF7_data_megalodon.colours.txt`:
@@ -230,7 +230,7 @@ chr17 39686731 39689728
 chr17 39698981 39707766
 ```
 
-![locus plot 2](https://github.com/adamewing/methylartist/blob/main/docs/ERBB2.MCF7_data_megalodon.colours.chr17_39677914-39738361.m.ms1smw38.locus.meth.png?raw=true)
+![locus plot 2](https://github.com/adamewing/methylartist/blob/main/docs/ERBB2.MCF7_data_megalodon.colours.chr17_39677914-39738361.m.ms1.smw38.locus.meth.png?raw=true)
 
 
 #### phasing
