@@ -2402,8 +2402,8 @@ def region(args):
 
     assert start < end
 
-    if end-start < 500000:
-        logger.warning('locus smaller than 500kbp, "methylartist locus" may yield better results')
+    if end-start < 1000000:
+        logger.warning('locus smaller than 1Mbp, "methylartist locus" may yield better results')
 
     ref = pysam.FastaFile(args.ref)
     motif = args.norm_motif.upper()
@@ -2413,9 +2413,8 @@ def region(args):
     if args.windows is None:
         args.windows = round(motif_count / 30)
         logger.info('set window count to %d' % args.windows)
-    
-    else:
-        args.windows = int(args.windows)
+
+    args.windows = int(args.windows)
 
     motifs_per_window = int(motif_count / int(args.windows))
 
@@ -2451,11 +2450,13 @@ def region(args):
 
     if args.smoothwindowsize is None:
         w = len(w_starts)
-        args.smoothwindowsize = round(-1e-7*(w*w)+.0055*w+6)
+        args.smoothwindowsize = round(0.02*w + 4)
         if args.smoothwindowsize % 2 != 0:
             args.smoothwindowsize += 1
             
         logger.info('set --smoothwindowsize to %d' % args.smoothwindowsize)
+
+    args.smoothwindowsize = int(args.smoothwindowsize)
 
     if args.modspace is None:
         args.modspace = round(len(w_starts)/300)
@@ -2463,6 +2464,8 @@ def region(args):
             args.modspace = 1
 
         logger.info('set --modspace to %d' % args.modspace)
+
+    args.modspace = int(args.modspace)
 
     data = {}
     mods = []
@@ -2673,6 +2676,17 @@ def region(args):
 
     fig = plt.figure()
     gs = gridspec.GridSpec(4,1,height_ratios=[1,5,1,3], hspace=0)
+
+    img_w = 16
+    img_h = 8
+
+    if args.width:
+        img_w = float(args.width)
+
+    if args.height:
+        img_h = float(args.height)
+
+    fig.set_size_inches(img_w, img_h)
 
     if args.panelratios:
         p_ratios = list(map(int, args.panelratios.split(',')))
@@ -3012,17 +3026,6 @@ def region(args):
         fn_prefix = '_'.join(args.genes.split(',')) + '.' + fn_prefix
 
     fn_prefix += '.s%d.w%d.m%d' % (args.smoothwindowsize, args.windows, args.modspace)
-
-    img_w = 16
-    img_h = 8
-
-    if args.width:
-        img_w = float(args.width)
-
-    if args.height:
-        img_h = float(args.height)
-
-    fig.set_size_inches(img_w, img_h)
 
     if args.svg:
         plt.savefig('%s.region.meth.svg' % fn_prefix, bbox_inches='tight')
