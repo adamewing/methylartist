@@ -202,6 +202,9 @@ methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sa
 
 From top to bottom, the plot shows the genome coordinates, gene models (optional if `--gtf` is supplied), read mappings with modified bases as closed (modified) or open (unmodified) circles, translation from genome to CpG-only coordinate space, raw log-likelihood ratios, and smoothed methylated fraction plot. Note that `--genes` results in plotting only the genes specified after `--genes` (comma-delimited), leaving this out plots all genes across the window. Gene name labels can be added via `--labelgenes`:
 
+```
+methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz -l 1085667-1089471 -p 1,6,1,3,4 --labelgenes
+```
 ![locus plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_data_megalodon.chr7_1072064-1101499.m.ms1.smw38.locus.meth.png?raw=true)
 
 
