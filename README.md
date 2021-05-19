@@ -210,9 +210,16 @@ methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sa
 
 #### Custom sample and highlight colours
 
-Example:
+Examples:
 
-Plot of the ERBB2 (HER2) locus in hg38:
+Plot of the ESR2 locus using the `--samplepalette` option:
+
+```
+methylartist locus -d MCF7_data_megalodon.txt -i chr14:64213064-64351433 --gtf Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes ESR2,SYNE2,TEX21P --samplepalette viridis
+```
+![locus plot 2](https://github.com/adamewing/methylartist/blob/main/docs/ESR2_SYNE2_TEX21P.MCF7_data_megalodon.chr14_64213064-64351433.m.ms1.smw44.locus.meth.png?raw=true)
+
+Plot of the ERBB2 (HER2) locus in hg38, using a data input file (`-d`) with custom colour specification:
 ```
 methylartist locus -d MCF7_data_megalodon.colours.txt -i chr17:39677914-39738361 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes ERBB2 --highlight_bed erbb2.highlights.txt --highlightpalette viridis --labelgenes
 ```
