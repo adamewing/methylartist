@@ -254,13 +254,27 @@ More tractable than "locus" for larger regions using binned methylation.
 
 Example:
 
-Plot of the PGR (Progesterone Receptor) region on chr11 in MCF7 cells. Highlighed region corresponds to the GeneHancer annotation `GH11J101126`. Note use of `-n CG` (requires `-r/--ref` to be set) to normalised bins for content of CpG dinucleotides. Options `--samplepalette` and `--highlightpalette` are used to set colours and `-c 2` has the effect of drawing connectors between genome space and modified base space every 2 bins.
+Plot of the PGR (Progesterone Receptor) region on chr11 in MCF7 cells. Highlighed region corresponds to the GeneHancer annotation `GH11J101126`. Note the parameter setting `-n CG` to normalised bins for content of CpG dinucleotides. Options `--samplepalette` and `--highlightpalette` are used to set colours. The number of windows and smoothing parameters are set automatically but can be modified from automatically set values via `-w/--windows` and `-s/--smoothwindowsize`. 
 
 ```
-methylartist region -i chr11:100956822-101228191 -d MCF7_data_megalodon.txt -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz -p 32 -n CG -r /home/data/ref/hg38/Homo_sapiens_assembly38.fasta --samplepalette magma -l 101126888-101129371 --highlightpalette viridis -c 2
+methylartist region -i chr11:100956822-101228191 -d MCF7_data_megalodon.txt -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz -p 32 -n CG -r Homo_sapiens_assembly38.fasta --samplepalette magma -l 101126888-101129371 --highlightpalette viridis
 ```
+![region plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_data_megalodon.chr11_100956822-101228191.m.s10.w500.m1.region.meth.png?raw=true)
 
-![region plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_data_megalodon.chr11_100956822-101228191.m.region.meth.png?raw=true)
+Expanded to a larger ~2Mbp region:
+
+```
+methylartist region -i chr11:98956822-103228191 -d MCF7_data_megalodon.txt -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz -p 32 -n CG -r Homo_sapiens_assembly38.fasta --samplepalette magma -l 101126888-101129371 --highlightpalette viridis
+```
+![region plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_data_megalodon.chr11_99956822-102228191.m.s14.w1024.m2.region.meth.png?raw=true)
+
+
+For an even larger region, it helps to drop the read alignment panel:
+```
+methylartist region -i chr11:95956822-106228191 -d MCF7_data_megalodon.txt -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz -p 32 -n CG -r Homo_sapiens_assembly38.fasta --samplepalette magma -l 101126888-101129371 --highlightpalette viridis --skip_align_plot --panelratio 1,0,1,4 --height 4.5
+```
+![region plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_data_megalodon.chr11_95956822-106228191.m.s50.w4398.m8.region.meth.png?raw=true)
+
 
 
 It's also possible to use region plots to explore methylation profiles across entire chromosomes. This can be accomplished through turning off the read alignment plot with `--skip_align_plot` and adjusting `--panelratios` to set the read alignment plot panel to 0. Setting the image height via `--height 4.5` maintains similar panel heights to the default.

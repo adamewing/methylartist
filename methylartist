@@ -2416,6 +2416,10 @@ def region(args):
 
     args.windows = int(args.windows)
 
+    if args.windows < 500:
+        args.windows = 500
+        logger.info('resetting windows to a minimum of 500')
+
     motifs_per_window = int(motif_count / int(args.windows))
 
     if motifs_per_window == 0:
