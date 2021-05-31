@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='methylartist',
-    version='0.1',
+    version='1.0',
     author='Adam Ewing',
     author_email='adam.ewing@gmail.com',
     description=("Tools for parsing and plotting nanopore methylation data"),
@@ -23,6 +23,13 @@ setup(
         'seaborn',
         'bx-python',
         'ont-fast5-api'
-    ]
+    ],
+    classifiers=[
+        'Development Status :: 4 - Beta',
+        'License :: OSI Approved :: MIT License',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+    ],
 
 )
