@@ -10,6 +10,7 @@ setup(
     description=("Tools for parsing and plotting nanopore methylation data"),
     license='MIT',
     url='https://github.com/adamewing/methylartist',
+    download_url='https://github.com/adamewing/methylartist/archive/refs/tags/1.0.tar.gz',
     scripts=['methylartist'],
     packages=find_packages(),
     install_requires = [
