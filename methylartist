@@ -486,9 +486,9 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_db, chrom, seg_start, seg_en
 
     reads = []
     if hasattr(args, 'excl_ambig') and args.excl_ambig:
-        reads = exclude_ambiguous_reads(bam_fn, chrom, seg_start, seg_end)
+        reads = exclude_ambiguous_reads(bam_fn, chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
     else:
-        reads = get_reads(bam_fn, chrom, seg_start, seg_end)
+        reads = get_reads(bam_fn, chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
 
     reads = list(set(reads))
 
@@ -555,14 +555,14 @@ def get_meth_locus(args, bam, meth_db, mod, phase=None):
     # get list of relevant reads (exludes reads not anchored outside interval)
     reads = []
     if hasattr(args, 'excl_ambig') and args.excl_ambig:
-        reads = exclude_ambiguous_reads(bam, chrom, elt_start, elt_end)
+        reads = exclude_ambiguous_reads(bam, chrom, elt_start, elt_end, min_mapq=int(args.min_mapq))
     else:
-        reads = get_reads(bam, chrom, elt_start, elt_end)
+        reads = get_reads(bam, chrom, elt_start, elt_end, min_mapq=int(args.min_mapq))
         
     reads = list(set(reads))
 
     if phase:
-        phased_reads_dict = get_phased_reads(bam, chrom, elt_start, elt_end, tag_untagged=(phase=='unphased'))
+        phased_reads_dict = get_phased_reads(bam, chrom, elt_start, elt_end, tag_untagged=(phase=='unphased'), min_mapq=int(args.min_mapq))
         reads = [r for r in reads if r in phased_reads_dict and phased_reads_dict[r] == phase]
 
     if hasattr(args, 'unambig_highlight') and hasattr(args, 'highlight'): 
@@ -578,7 +578,7 @@ def get_meth_locus(args, bam, meth_db, mod, phase=None):
 
             h_start, h_end = h_coords[0], h_coords[-1]
 
-            excl_reads = get_ambiguous_reads(bam, chrom, h_start, h_end)
+            excl_reads = get_ambiguous_reads(bam, chrom, h_start, h_end, min_mapq=int(args.min_mapq))
 
             new_reads = []
             for read in reads:
@@ -630,9 +630,9 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
 
     reads = []
     if args.excl_ambig:
-        reads = exclude_ambiguous_reads(args.bam, seg_chrom, seg_start, seg_end)
+        reads = exclude_ambiguous_reads(args.bam, seg_chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
     else:
-        reads = get_reads(args.bam, seg_chrom, seg_start, seg_end)
+        reads = get_reads(args.bam, seg_chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
 
     reads = list(set(reads))
 
@@ -789,7 +789,7 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
     conn = sqlite3.connect(meth_fn)
     c = conn.cursor()
 
-    reads = get_phased_reads(bam_fn, chrom, seg_start, seg_end, tag_untagged=phased)
+    reads = get_phased_reads(bam_fn, chrom, seg_start, seg_end, tag_untagged=phased, min_mapq=int(args.min_mapq))
 
     seg_reads = {}
 
@@ -1412,11 +1412,15 @@ def db_nanopolish(args):
         progress_interval = 500000
 
         for i, row in enumerate(csv_reader, 1):
-            r_start  = int(row['start'])
-            llr      = float(row['log_lik_ratio'])
-            seq      = row['sequence']
-            mod_base = args.modname
-
+            try:
+                r_start  = int(row['start'])
+                llr      = float(row['log_lik_ratio'])
+                seq      = row['sequence']
+                mod_base = args.modname
+            except:
+                logger.warning('bad line %d: %s' % (i, str(row)))
+                continue
+                
             if args.scalegroup:
                 llr = llr/float(row['num_motifs'])
 
@@ -1775,7 +1779,7 @@ def locus(args):
 
     if args.phased:
         for bam in data:
-            phased_reads = get_phased_reads(bam, chrom, elt_start, elt_end, tag_untagged=args.include_unphased)
+            phased_reads = get_phased_reads(bam, chrom, elt_start, elt_end, tag_untagged=args.include_unphased, min_mapq=int(args.min_mapq))
             phases[bam] = list(set([p for p in phased_reads.values() if p]))
             logger.info('phases for bam %s: %s' % (bam, ','.join(phases[bam])))
 
@@ -3431,6 +3435,7 @@ if __name__ == '__main__':
     parser_segmeth.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
     parser_segmeth.add_argument('-i', '--intervals', required=True, help='.bed file')
     parser_segmeth.add_argument('-p', '--procs', default=1, help='multiprocessing')
+    parser_segmeth.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_segmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_segmeth.add_argument('--excl_ambig', action='store_true', default=False)
 
@@ -3441,6 +3446,7 @@ if __name__ == '__main__':
     parser_segplot.add_argument('-c', '--categories', default=None, help='categories, comma delimited, need to match seg_name column from input')
     parser_segplot.add_argument('-v', '--violin', default=False, action='store_true')
     parser_segplot.add_argument('-n', '--mincalls', default=10, help='minimum number of calls to include site (methylated + unmethylated) (default=10)')
+    parser_segplot.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_segplot.add_argument('--width', default=None, help='figure width (default = automatic)')
     parser_segplot.add_argument('--height', default=6, help='figure height (default = 6)')
     parser_segplot.add_argument('--pointsize', default=1, help='point size for scatterplot (default = 1)')
@@ -3460,6 +3466,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('-s', '--smoothwindowsize', default=None, help='size of window for smoothing (default=auto)')
     parser_locus.add_argument('-t', '--slidingwindowstep', default=1, help='step size for initial sliding window (default=1)')
     parser_locus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
+    parser_locus.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_locus.add_argument('--phased', default=False, action='store_true', help='split samples into phases')
     parser_locus.add_argument('--include_unphased', default=False, action='store_true', help='include an "unphased" category if called with --phased')
     parser_locus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
@@ -3496,6 +3503,7 @@ if __name__ == '__main__':
     parser_region.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_region.add_argument('-m', '--mods', default=None, help='mods to consider (comma-delimited, default = all available)')
     parser_region.add_argument('-s', '--smoothwindowsize', default=None, help='size of window for smoothing (default=auto)')
+    parser_region.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_region.add_argument('--maxuncovered', default=50.0, help='maximum percentage of uncovered windows tolerated (default = 50.0)')
     parser_region.add_argument('--modspace', default=None, help='increase to increase spacing between links in top panel (default=auto)')
     parser_region.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
@@ -3526,6 +3534,7 @@ if __name__ == '__main__':
     parser_composite.add_argument('-a', '--alpha', default=0.3, help='alpha (default: 0.3)')
     parser_composite.add_argument('-w', '--linewidth', default=1, help='line width (default: 1)')
     parser_composite.add_argument('-l', '--lenfrac', default=0.95, help='fraction of TE length that must align (default 0.95)')
+    parser_composite.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_composite.add_argument('--plotmean', default=False, action='store_true', help='plot mean of composite elements at top of plot')
     parser_composite.add_argument('--mod', default=None, help='modification to plot (mod codes will be listed, default: infer from sample name')
     parser_composite.add_argument('--motif', default='CG', help='modified motif to highlight (default = CG)')
@@ -3553,6 +3562,7 @@ if __name__ == '__main__':
     parser_wgmeth.add_argument('-m', '--mod', default=None, help='output for specific mod (names vary, see output for hints)')
     parser_wgmeth.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_wgmeth.add_argument('-c', '--chrom', default=None, help='limit analysis to one chromosome')
+    parser_wgmeth.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_wgmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_wgmeth.add_argument('--dss', default=False, action='store_true', help='output in DSS format (default = bedMethyl)')
     parser_wgmeth.add_argument('--phased', action='store_true', default=False, help='split output into phases (currently just 0,1)')
