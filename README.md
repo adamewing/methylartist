@@ -4,6 +4,10 @@ Tools for parsing and plotting methylation patterns from nanopore data
 
 ## Installation
 
+`pip install methylartist`
+
+Alternatively:
+
 `git clone https://github.com/adamewing/methylartist.git` or download a .zip file from GitHub.
 
 install methylartist and dependencies via:
