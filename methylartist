@@ -2682,11 +2682,28 @@ def region(args):
 
     # set up plot
 
+    if end-start > 5e6:
+        logger.info('region size %s greater than 5Mbp, setting --skip_align_plot True' % (end-start))
+        args.skip_align_plot = True
+    
+    if args.force_align_plot == args.skip_align_plot == True:
+        logger.info('--skip_align_plot overridden via --force_align_plot')
+        args.skip_align_plot = False
+
     fig = plt.figure()
-    gs = gridspec.GridSpec(4,1,height_ratios=[1,5,1,3], hspace=0)
+    height_ratios = [1,5,1,3]
+
+    if args.skip_align_plot:
+        height_ratios = [1,0,1,4]
+
+    gs = gridspec.GridSpec(4,1,height_ratios=height_ratios, hspace=0)
 
     img_w = 16
     img_h = 8
+
+    if args.skip_align_plot:
+        if '--height' not in sys.argv[0]:
+            args.height = 4.5
 
     if args.width:
         img_w = float(args.width)
@@ -3516,6 +3533,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
     parser_region.add_argument('--panelratios',  default=None, help='Alter panel ratios: needs to be 4 comma-seperated integers. Default: 1,5,3,3')
     parser_region.add_argument('--skip_align_plot', default=False, action='store_true', help='blank alignment plot, useful if unneeded or for runtime.')
+    parser_region.add_argument('--force_align_plot', default=False, action='store_true', help='retain alignment plot even over regions > 5Mbp where it would be disabled automatically')
     parser_region.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_region.add_argument('--labelgenes', default=False, action='store_true', help='plot gene names')
     parser_region.add_argument('--width', default=16, help='image width (inches, default=16)')
