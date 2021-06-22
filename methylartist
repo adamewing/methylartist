@@ -460,6 +460,9 @@ def get_modnames(meth_db):
 
 
 def get_cutoffs(meth_db, mod):
+    if not os.path.exists(meth_db):
+        sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % meth_db)
+
     conn = sqlite3.connect(meth_db)
     c = conn.cursor()
 
@@ -537,6 +540,9 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_db, chrom, seg_start, seg_en
 
 def get_meth_locus(args, bam, meth_db, mod, phase=None):
     # used for locus plots
+
+    if not os.path.exists(meth_db):
+        sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % meth_db)
 
     if phase:
         logger.info('fetching reads from %s with for mod %s on phase %s' % (bam, mod, phase))
@@ -623,6 +629,9 @@ def get_meth_locus(args, bam, meth_db, mod, phase=None):
 
 
 def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, seg_strand, use_mod):
+    if not os.path.exists(args.meth):
+        sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % args.meth)
+
     logger.info('profiling %s %s:%d-%d:%s:%s' % (seg_name, seg_chrom, seg_start, seg_end, seg_strand, use_mod))
 
     te_ref_seq = single_seq_fa(args.teref)
@@ -789,6 +798,9 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
 
 
 def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod):
+    if not os.path.exists(meth_fn):
+        sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % meth_fn)
+
     conn = sqlite3.connect(meth_fn)
     c = conn.cursor()
 
@@ -1031,6 +1043,9 @@ def build_genes(gtf, chrom, start, end):
 
 
 def sample_db(db, mod, n=1000000):
+    if not os.path.exists(db):
+        sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % db)
+
     conn = sqlite3.connect(db)
     c = conn.cursor()
 
@@ -1106,6 +1121,9 @@ def scoredist(args):
 
 
 def adjustcutoffs(args):
+    if not os.path.exists(args.db):
+        sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % args.db)
+
     avail_mods = get_modnames(args.db)
 
     if args.mod not in avail_mods:
