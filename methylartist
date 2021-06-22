@@ -253,7 +253,7 @@ def pandas_df(out, mod_base, can_base):
 
     data['can_log_prob'] = np.log((pd.to_numeric(data[can_base])+1)/256)
     data['mod_log_prob'] = np.log((pd.to_numeric(data[mod_base])+1)/256)
-    data['llr'] = data['mod_log_prob'] - data['can_log_prob']
+    data['rawstat'] = data['mod_log_prob'] - data['can_log_prob']
 
     return data
 
@@ -445,6 +445,9 @@ def rc(dna):
 
 
 def get_modnames(meth_db):
+    if not os.path.exists(meth_db):
+        sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % meth_db)
+
     conn = sqlite3.connect(meth_db)
     c = conn.cursor()
 
@@ -669,14 +672,14 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
         for loc in read.llrs.keys():
             uuid = str(uuid4())
             meth_table[uuid]['loc'] = loc
-            meth_table[uuid]['llr'] = read.llrs[loc]
+            meth_table[uuid]['rawstat'] = read.llrs[loc]
             meth_table[uuid]['read'] = name
             meth_table[uuid]['sample'] = sample
             meth_table[uuid]['call'] = read.meth_calls[loc]
 
     meth_table = pd.DataFrame.from_dict(meth_table).T
     meth_table['loc'] = pd.to_numeric(meth_table['loc'])
-    meth_table['llr'] = pd.to_numeric(meth_table['llr'])
+    meth_table['rawstat'] = pd.to_numeric(meth_table['rawstat'])
 
     meth_table['orig_loc'] = meth_table['loc']
     meth_table['loc'] = ss.rankdata(meth_table['loc'], method='dense')
@@ -1488,8 +1491,8 @@ def segmeth(args):
 
     base_names = ['.'.join(bam.split('.')[:-1]) for bam in data]
 
-    data_basename = '.'.join(args.data.split('.')[:-1])
-    ivl_basename = '.'.join(args.intervals.split('.')[:-1])
+    data_basename = '.'.join(os.path.basename(args.data).split('.')[:-1])
+    ivl_basename = '.'.join(os.path.basename(args.intervals).split('.')[:-1])
     outfn = '.'.join((ivl_basename, data_basename, 'segmeth.tsv'))
 
     if args.excl_ambig:
@@ -1680,9 +1683,9 @@ def segplot(args):
             for m in mods:
                 sm = s + '_' + m
                 uid = seg + ':' + sm
-                plot_data[uid]['sample'] = sm
-                plot_data[uid]['mCpG']   = data[sm + '_methfrac'].loc[seg]
-                plot_data[uid]['group']  = data['seg_name'].loc[seg]
+                plot_data[uid]['sample']  = sm
+                plot_data[uid]['modbase'] = data[sm + '_methfrac'].loc[seg]
+                plot_data[uid]['group']   = data['seg_name'].loc[seg]
 
                 if plot_data[uid]['group'] not in order:
                     order.append(plot_data[uid]['group'])
@@ -1701,11 +1704,11 @@ def segplot(args):
         order = args.categories.split(',')
 
     if args.violin:
-        sns_plot = sns.violinplot(x='group', y='mCpG', data=plot_data, hue='sample', dodge=True, jitter=True, order=order, hue_order=samples_mods, palette=args.palette)
+        sns_plot = sns.violinplot(x='group', y='modbase', data=plot_data, hue='sample', dodge=True, jitter=True, order=order, hue_order=samples_mods, palette=args.palette)
         basename += '.violin'
 
     else:
-        sns_plot = sns.stripplot(x='group', y='mCpG', data=plot_data, hue='sample', dodge=True, jitter=True, size=pt_sz, order=order, hue_order=samples_mods, palette=args.palette)
+        sns_plot = sns.stripplot(x='group', y='modbase', data=plot_data, hue='sample', dodge=True, jitter=True, size=pt_sz, order=order, hue_order=samples_mods, palette=args.palette)
 
     sns_plot.set_xlabel("")
 
@@ -1805,7 +1808,7 @@ def locus(args):
                         for loc in read.llrs.keys():
                             uuid = str(uuid4())
                             meth_table[uuid]['loc'] = loc
-                            meth_table[uuid]['llr'] = read.llrs[loc]
+                            meth_table[uuid]['rawstat'] = read.llrs[loc]
                             meth_table[uuid]['read'] = name
                             meth_table[uuid]['sample'] = bamname
                             meth_table[uuid]['call'] = read.meth_calls[loc]
@@ -1822,7 +1825,7 @@ def locus(args):
                     for loc in read.llrs.keys():
                         uuid = str(uuid4())
                         meth_table[uuid]['loc'] = loc
-                        meth_table[uuid]['llr'] = read.llrs[loc]
+                        meth_table[uuid]['rawstat'] = read.llrs[loc]
                         meth_table[uuid]['read'] = name
                         meth_table[uuid]['sample'] = bamname
                         meth_table[uuid]['call'] = read.meth_calls[loc]
@@ -1836,7 +1839,7 @@ def locus(args):
         sys.exit('%s: insufficient coverage for plot' % args.interval)
 
     meth_table['loc'] = pd.to_numeric(meth_table['loc'])
-    meth_table['llr'] = pd.to_numeric(meth_table['llr'])
+    meth_table['rawstat'] = pd.to_numeric(meth_table['rawstat'])
 
     meth_table['orig_loc'] = meth_table['loc']
     meth_table['loc'] = ss.rankdata(meth_table['loc'], method='dense')
@@ -2300,7 +2303,7 @@ def locus(args):
         ax4.axhline(y=upper, c='k', linestyle='--',lw=1)
         ax4.axhline(y=lower, c='k', linestyle='--',lw=1)
 
-    ax4 = sns.lineplot(x='loc', y='llr', hue='sample', data=meth_table, palette=sample_color, zorder=2)
+    ax4 = sns.lineplot(x='loc', y='rawstat', hue='sample', data=meth_table, palette=sample_color, zorder=2)
     ax4.set_xlim(ax2.get_xlim())
 
     highlight_patches = []
@@ -2363,7 +2366,7 @@ def locus(args):
     for h in highlight_patches:
         ax5.add_patch(h)
 
-    fn_prefix = '.'.join(args.data.split('.')[:-1]) + '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(use_mods)
+    fn_prefix = '.'.join(os.path.basename(args.data).split('.')[:-1]) + '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(use_mods)
 
     if args.genes is not None:
         fn_prefix = '_'.join(args.genes.split(',')) + '.' + fn_prefix
@@ -3045,7 +3048,7 @@ def region(args):
         ax4.add_patch(h)
 
     # output
-    fn_prefix = '.'.join(args.data.split('.')[:-1]) + '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(mods)
+    fn_prefix = '.'.join(os.path.basename(args.data).split('.')[:-1]) + '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(mods)
 
     if args.genes is not None:
         fn_prefix = '_'.join(args.genes.split(',')) + '.' + fn_prefix
@@ -3547,6 +3550,7 @@ if __name__ == '__main__':
     parser_composite.add_argument('-f', '--fams', required=True, help='families, comma delimited, corresponds to values in seg_name column in segmeth output')
     parser_composite.add_argument('-r', '--ref', required=True, help='ref genome fasta')
     parser_composite.add_argument('-t', '--teref', required=True, help='TE ref fasta')
+    parser_composite.add_argument('--sample', required=True, help='specify sample name')
     parser_composite.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_composite.add_argument('-c', '--colour', default='#ff4500', help='colour (default: #ff4500)')
     parser_composite.add_argument('-a', '--alpha', default=0.3, help='alpha (default: 0.3)')
@@ -3559,7 +3563,6 @@ if __name__ == '__main__':
     parser_composite.add_argument('--blocks', default=None, help='blocks to highlight (txt file with start, end, name, hex colour)')
     parser_composite.add_argument('--start', default=None, help='start plotting at this base (default None)')
     parser_composite.add_argument('--end', default=None, help='end plotting at this base (default None)')
-    parser_composite.add_argument('--sample', required=True, help='specify sample name (default = infer from .bam)')
     parser_composite.add_argument('--mincalls', default=100, help='minimum call count to include elt (default = 100)')
     parser_composite.add_argument('--maxsegs', default=300, help='maximum elements, if > max random.sample() (default = 300)')
     parser_composite.add_argument('--outelts', default=100, help='maximum output elements, if > max random.sample() (default = 300)')
