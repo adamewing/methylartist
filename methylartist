@@ -3464,7 +3464,7 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers(title="tool", dest="tool")
     subparsers.required = True
 
-    __version__ = "1.0.1"
+    __version__ = "1.0.2"
     parser.add_argument('-v', '--version', action='version', version='%(prog)s {version}'.format(version=__version__))
 
     parser_nanopolish    = subparsers.add_parser('db-nanopolish')
