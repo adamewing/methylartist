@@ -1139,7 +1139,7 @@ def adjustcutoffs(args):
     logger.info('%s: mark sites with stat > %f methylated (1) for mod %s' % (args.db, float(args.methylated), args.mod))
     c.execute('UPDATE methdata SET methstate=1 where stat > %f and modname="%s"' % (float(args.methylated), args.mod))
 
-    logger.info('%s: mark sites with stat < %f unmethylated (1) for mod %s' % (args.db, float(args.unmethylated), args.mod))
+    logger.info('%s: mark sites with stat < %f unmethylated (-1) for mod %s' % (args.db, float(args.unmethylated), args.mod))
     c.execute('UPDATE methdata SET methstate=-1 where stat < %f and modname="%s"' % (float(args.unmethylated), args.mod))
 
     logger.info('%s: update cutoff table for mod %s' % (args.db, args.mod))
@@ -1685,6 +1685,10 @@ def segplot(args):
                     use_seg = False
                     continue
 
+                if data[sm+'_readcount'].loc[seg] < int(args.minreads):
+                    use_seg = False
+                    continue
+
         if use_seg:
             useable.append(seg)
 
@@ -1729,6 +1733,7 @@ def segplot(args):
         sns_plot = sns.stripplot(x='group', y='modbase', data=plot_data, hue='sample', dodge=True, jitter=True, size=pt_sz, order=order, hue_order=samples_mods, palette=args.palette)
 
     sns_plot.set_xlabel("")
+    sns_plot.set_ylabel(args.ylabel)
 
     if args.tiltlabel:
         sns_plot.set_xticklabels(sns_plot.get_xticklabels(), rotation=45)
@@ -1743,6 +1748,7 @@ def segplot(args):
     fig.set_size_inches(float(args.width), float(args.height))
 
     basename += '.mc%d' % int(args.mincalls)
+    basename += '.mr%d' % int(args.minreads)
 
     if args.svg:
         fig.savefig(basename+'.segplot.svg', bbox_inches='tight')
@@ -2299,13 +2305,19 @@ def locus(args):
     ax2.set_xticks([])
     ax3.set_xticks([])
 
-    n_ticks = 10
+    n_ticks = int(args.nticks) + 1
     tick_interval = (elt_end-elt_start)/n_ticks
     tick_list = list(range(int(ax0.get_xlim()[0]), int(ax0.get_xlim()[1]), int(tick_interval)))
 
     xt_labels = [str(int(t+elt_start)) for t in tick_list]
-    ax0.set_xticks(tick_list) 
-    ax0.set_xticklabels(xt_labels)
+    xt_labels[0] = chrom
+    
+    ax0.set_xticks(tick_list)
+
+    if n_ticks > 11:
+        ax0.set_xticklabels(xt_labels, rotation=45)
+    else:
+        ax0.set_xticklabels(xt_labels)
 
     # llr plot
 
@@ -2316,12 +2328,16 @@ def locus(args):
 
     ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
 
-    for mod in use_mods: 
+    for mod in use_mods:
         upper, lower = get_cutoffs(list(data.values())[0], mod)
         ax4.axhline(y=upper, c='k', linestyle='--',lw=1)
         ax4.axhline(y=lower, c='k', linestyle='--',lw=1)
 
     ax4 = sns.lineplot(x='loc', y='rawstat', hue='sample', data=meth_table, palette=sample_color, zorder=2)
+
+    if args.statname:
+        ax4.set_ylabel(args.statname)
+
     ax4.set_xlim(ax2.get_xlim())
 
     highlight_patches = []
@@ -3030,13 +3046,18 @@ def region(args):
     ax2.set_xticks([])
     ax3.set_xticks([])
 
-    n_ticks = 10
+    n_ticks = int(args.nticks) + 1
     tick_interval = (end-start)/n_ticks
     tick_list = list(range(int(ax0.get_xlim()[0]), int(ax0.get_xlim()[1]), int(tick_interval)))
 
     xt_labels = [str(int(t)) for t in tick_list]
-    ax0.set_xticks(tick_list) 
-    ax0.set_xticklabels(xt_labels)
+    xt_labels[0] = chrom
+
+    ax0.set_xticks(tick_list)
+    if n_ticks > 11:
+        ax0.set_xticklabels(xt_labels, rotation=45)
+    else:
+        ax0.set_xticklabels(xt_labels)
 
     # meth frac plot
 
@@ -3240,10 +3261,9 @@ def composite(args):
                     meanplot_table[u]['meth'] = m
         
         meanplot_table = pd.DataFrame.from_dict(meanplot_table).T
-        meanplot_table.to_csv('test.csv')
 
         ax0 = sns.lineplot(x='coord', y='meth', data=meanplot_table, ci='sd', lw=2, color=args.colour)
-
+        ax0.set_ylabel(args.meanplot_ylabel)
 
     # mod
     ax1 = plt.subplot(gs[g])
@@ -3287,10 +3307,9 @@ def composite(args):
     for coord_meth_pos, meth_profile in random.sample(out_res, int(args.outelts)):
         ax2.plot(coord_meth_pos, meth_profile, lw=float(args.linewidth), alpha=float(args.alpha), color=args.colour)
 
-    #ax2.set_xlim((0,len(te_ref_seq)))
     ax2.set_ylim((-0.05,1.05))
-
     ax2.set_xlim((mod_start, mod_end))
+    ax2.set_xlabel('position')
 
     fig.set_size_inches(16, 6)
 
@@ -3487,12 +3506,14 @@ if __name__ == '__main__':
     parser_segplot.add_argument('-c', '--categories', default=None, help='categories, comma delimited, need to match seg_name column from input')
     parser_segplot.add_argument('-v', '--violin', default=False, action='store_true')
     parser_segplot.add_argument('-n', '--mincalls', default=10, help='minimum number of calls to include site (methylated + unmethylated) (default=10)')
+    parser_segplot.add_argument('-r', '--minreads', default=1, help='minimum reads in interval (default = 1)')
     parser_segplot.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_segplot.add_argument('--width', default=None, help='figure width (default = automatic)')
     parser_segplot.add_argument('--height', default=6, help='figure height (default = 6)')
     parser_segplot.add_argument('--pointsize', default=1, help='point size for scatterplot (default = 1)')
     parser_segplot.add_argument('--ymin', default=-0.15, help='ymin (default = -0.15)')
     parser_segplot.add_argument('--ymax', default=1.15, help='ymax (default = 1.15)')
+    parser_segplot.add_argument('--ylabel', default='% methylation', help='set label for y-axis (default: % methylation)')
     parser_segplot.add_argument('--tiltlabel', default=False, action='store_true')
     parser_segplot.add_argument('--palette', default="tab10", help='palette for phases (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_segplot.add_argument('--svg', default=False, action='store_true')
@@ -3522,6 +3543,8 @@ if __name__ == '__main__':
     parser_locus.add_argument('--methcall_ymax', default=None)
     parser_locus.add_argument('--methcall_xmin', default=None)
     parser_locus.add_argument('--methcall_xmax', default=None)
+    parser_locus.add_argument('--nticks', default=10, help='tick count (default=10)')
+    parser_locus.add_argument('--statname', default=None, help='label for raw statistic plot')
     parser_locus.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_locus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
     parser_locus.add_argument('--genepalette', default="viridis", help='colour palette name for highlights (default = "viridis")')
@@ -3556,6 +3579,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--genepalette', default="viridis", help='colour palette name for highlights (default = "viridis")')
     parser_region.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
     parser_region.add_argument('--panelratios',  default=None, help='Alter panel ratios: needs to be 4 comma-seperated integers. Default: 1,5,3,3')
+    parser_region.add_argument('--nticks', default=10, help='tick count (default=10)')
     parser_region.add_argument('--skip_align_plot', default=False, action='store_true', help='blank alignment plot, useful if unneeded or for runtime.')
     parser_region.add_argument('--force_align_plot', default=False, action='store_true', help='retain alignment plot even over regions > 5Mbp where it would be disabled automatically')
     parser_region.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
@@ -3579,6 +3603,7 @@ if __name__ == '__main__':
     parser_composite.add_argument('-l', '--lenfrac', default=0.95, help='fraction of TE length that must align (default 0.95)')
     parser_composite.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_composite.add_argument('--plotmean', default=False, action='store_true', help='plot mean of composite elements at top of plot')
+    parser_composite.add_argument('--meanplot_ylabel', default='% methylation', help='set y-axis label on mean plot')
     parser_composite.add_argument('--mod', default=None, help='modification to plot (mod codes will be listed, default: infer from sample name')
     parser_composite.add_argument('--motif', default='CG', help='modified motif to highlight (default = CG)')
     parser_composite.add_argument('--blocks', default=None, help='blocks to highlight (txt file with start, end, name, hex colour)')
