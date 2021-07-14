@@ -3526,7 +3526,7 @@ if __name__ == '__main__':
     parser_segplot.add_argument('--pointsize', default=1, help='point size for scatterplot (default = 1)')
     parser_segplot.add_argument('--ymin', default=-0.15, help='ymin (default = -0.15)')
     parser_segplot.add_argument('--ymax', default=1.15, help='ymax (default = 1.15)')
-    parser_segplot.add_argument('--ylabel', default='% methylation', help='set label for y-axis (default: % methylation)')
+    parser_segplot.add_argument('--ylabel', default='pct methylation', help='set label for y-axis (default: pct methylation)')
     parser_segplot.add_argument('--tiltlabel', default=False, action='store_true')
     parser_segplot.add_argument('--palette', default="tab10", help='palette for phases (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_segplot.add_argument('--svg', default=False, action='store_true')
