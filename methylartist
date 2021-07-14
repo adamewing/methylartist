@@ -361,7 +361,7 @@ def guppy_f5_fetch(fast5, bam_db, args):
     return out_fn
 
 
-def exclude_ambiguous_reads(fn, chrom, start, end, min_mapq=10):
+def exclude_ambiguous_reads(fn, chrom, start, end, min_mapq=10, spanning_only=False):
     reads = []
 
     bam = pysam.AlignmentFile(fn)
@@ -369,7 +369,11 @@ def exclude_ambiguous_reads(fn, chrom, start, end, min_mapq=10):
         p = read.get_reference_positions()
         if p[0] < start or p[-1] > end:
             if read.mapq >= min_mapq:
-                reads.append(read.query_name)
+                if spanning_only:
+                    if read.reference_start < start and read.reference_end > end:
+                        reads.append(read.query_name)
+                else:
+                    reads.append(read.query_name)
 
     return reads
 
@@ -386,13 +390,17 @@ def get_ambiguous_reads(fn, chrom, start, end, min_mapq=10, w=50):
     return reads
 
 
-def get_reads(fn, chrom, start, end, min_mapq=10):
+def get_reads(fn, chrom, start, end, min_mapq=10, spanning_only=False):
     reads = []
 
     bam = pysam.AlignmentFile(fn)
     for read in bam.fetch(chrom, start, end):
         if read.mapq >= min_mapq:
-            reads.append(read.query_name)
+            if spanning_only:
+                if read.reference_start < start and read.reference_end > end:
+                    reads.append(read.query_name)
+            else:
+                reads.append(read.query_name)
 
     return reads
 
@@ -492,9 +500,9 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_db, chrom, seg_start, seg_en
 
     reads = []
     if hasattr(args, 'excl_ambig') and args.excl_ambig:
-        reads = exclude_ambiguous_reads(bam_fn, chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
+        reads = exclude_ambiguous_reads(bam_fn, chrom, seg_start, seg_end, min_mapq=int(args.min_mapq), spanning_only=args.spanning_only)
     else:
-        reads = get_reads(bam_fn, chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
+        reads = get_reads(bam_fn, chrom, seg_start, seg_end, min_mapq=int(args.min_mapq), spanning_only=args.spanning_only)
 
     reads = list(set(reads))
 
@@ -1511,11 +1519,15 @@ def segmeth(args):
 
     data_basename = '.'.join(os.path.basename(args.data).split('.')[:-1])
     ivl_basename = '.'.join(os.path.basename(args.intervals).split('.')[:-1])
-    outfn = '.'.join((ivl_basename, data_basename, 'segmeth.tsv'))
+    outfn = '.'.join((ivl_basename, data_basename))
 
     if args.excl_ambig:
-        outfn = '.'.join((ivl_basename, data_basename, 'excl_ambig', 'segmeth.tsv'))
+        outfn += '.excl_ambig'
 
+    if args.spanning_only:
+        outfn += '.spanning_only'
+    
+    outfn += '.segmeth.tsv'
 
     out = open(outfn, 'w')
 
@@ -3497,7 +3509,8 @@ if __name__ == '__main__':
     parser_segmeth.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_segmeth.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_segmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
-    parser_segmeth.add_argument('--excl_ambig', action='store_true', default=False)
+    parser_segmeth.add_argument('--excl_ambig', action='store_true', default=False, help='do not consider reads that align entirely within segment')
+    parser_segmeth.add_argument('--spanning_only', action='store_true', default=False, help='only consider reads that span segment')
 
     # options for methylation strip / violin plots
     parser_segplot.add_argument('-s', '--segmeth', required=True, help='output from segmeth.py')
