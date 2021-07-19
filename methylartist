@@ -1729,6 +1729,9 @@ def segplot(args):
 
     basename = '.'.join(args.segmeth.split('.')[:-1])
 
+    basename += '.mc%d' % int(args.mincalls)
+    basename += '.mr%d' % int(args.minreads)
+
     plot_data.to_csv(basename+'.segplot_data.csv')
     logger.info('plot data written to %s.segplot_data.csv' % basename)
 
@@ -1758,9 +1761,6 @@ def segplot(args):
 
     fig = sns_plot.figure
     fig.set_size_inches(float(args.width), float(args.height))
-
-    basename += '.mc%d' % int(args.mincalls)
-    basename += '.mr%d' % int(args.minreads)
 
     if args.svg:
         fig.savefig(basename+'.segplot.svg', bbox_inches='tight')
