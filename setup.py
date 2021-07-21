@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='methylartist',
-    version='1.0.4',
+    version='1.0.5',
     author='Adam Ewing',
     author_email='adam.ewing@gmail.com',
     description=("Tools for parsing and plotting nanopore methylation data"),

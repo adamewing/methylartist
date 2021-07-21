@@ -498,6 +498,9 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_db, chrom, seg_start, seg_en
     conn = sqlite3.connect(meth_db)
     c = conn.cursor()
 
+    if 'spanning_only' not in vars(args):
+        args.spanning_only=False
+
     reads = []
     if hasattr(args, 'excl_ambig') and args.excl_ambig:
         reads = exclude_ambiguous_reads(bam_fn, chrom, seg_start, seg_end, min_mapq=int(args.min_mapq), spanning_only=args.spanning_only)
