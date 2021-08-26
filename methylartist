@@ -405,7 +405,7 @@ def get_reads(fn, chrom, start, end, min_mapq=10, spanning_only=False):
     return reads
 
 
-def get_phased_reads(fn, chrom, start, end, min_mapq=10, tag_untagged=False, ignore_tags=False):
+def get_phased_reads(fn, chrom, start, end, min_mapq=10, tag_untagged=False, ignore_tags=False, HP_only=False):
     reads = {}
 
     bam = pysam.AlignmentFile(fn)
@@ -428,6 +428,9 @@ def get_phased_reads(fn, chrom, start, end, min_mapq=10, tag_untagged=False, ign
 
             if None not in (HP, PS):
                 phase = str(PS) + ':' + str(HP)
+
+                if HP_only:
+                    phase = str(HP)
 
             reads[read.query_name] = phase
 
@@ -494,7 +497,7 @@ def densecall_filter(reads, max_density=.7):
     return out
 
 
-def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand):
+def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase):
     c_lookup = {}
 
     for meth_db in meth_dbs:
@@ -511,6 +514,10 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
         reads = get_reads(bam_fn, chrom, seg_start, seg_end, min_mapq=int(args.min_mapq), spanning_only=args.spanning_only)
 
     reads = list(set(reads))
+
+    if phase:
+        phased_reads_dict = get_phased_reads(bam_fn, chrom, seg_start, seg_end, tag_untagged=(phase=='unphased'), min_mapq=int(args.min_mapq), HP_only=True)
+        reads = [r for r in reads if r in phased_reads_dict and phased_reads_dict[r] == phase]
 
     seg_reads = {}
 
@@ -826,7 +833,7 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
     conn = sqlite3.connect(meth_fn)
     c = conn.cursor()
 
-    reads = get_phased_reads(bam_fn, chrom, seg_start, seg_end, tag_untagged=phased, min_mapq=int(args.min_mapq))
+    reads = get_phased_reads(bam_fn, chrom, seg_start, seg_end, tag_untagged=phased, min_mapq=int(args.min_mapq), HP_only=True)
 
     seg_reads = {}
 
@@ -870,11 +877,11 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
             if read.phase == 'unphased':
                 continue
 
-            if read.phase.split(':')[1] not in ['1','2']:
+            if read.phase not in ['1','2']:
                 continue
 
             for loc in read.llrs.keys():
-                phase = int(read.phase.split(':')[1])
+                phase = int(read.phase)
                 assert phase in (1,2)
 
                 meth_data[phase][loc].append(read.meth_calls[loc])
@@ -1532,6 +1539,13 @@ def segmeth(args):
 
     base_names = ['.'.join(bam.split('.')[:-1]) for bam in data]
 
+    if args.phased:
+        phased_base_names = []
+        for bn in base_names:
+            phased_base_names.append(bn+'_ph1')
+            phased_base_names.append(bn+'_ph2')
+        base_names = phased_base_names
+
     data_basename = '.'.join(os.path.basename(args.data).split('.')[:-1])
     ivl_basename = '.'.join(os.path.basename(args.intervals).split('.')[:-1])
     outfn = '.'.join((ivl_basename, data_basename))
@@ -1552,29 +1566,38 @@ def segmeth(args):
 
     results = []
 
+    phases = [None]
+
+    if args.phased:
+        phases = ['1', '2']
+
     for bam_fn, meth_fn in data.items():
-        base_name = '.'.join(bam_fn.split('.')[:-1])
+        for phase in phases:
+            base_name = '.'.join(bam_fn.split('.')[:-1])
 
-        with open(args.intervals) as _:
-            for line in _:
-                c = line.strip().split()
-                chrom, seg_start, seg_end = c[:3]
+            if phase is not None:
+                base_name += '_ph' + phase
 
-                seg_name = 'NA'
-                seg_strand = 'NA'
+            with open(args.intervals) as _:
+                for line in _:
+                    c = line.strip().split()
+                    chrom, seg_start, seg_end = c[:3]
 
-                if len(c) > 3:
-                    seg_name = c[3]
+                    seg_name = 'NA'
+                    seg_strand = 'NA'
 
-                if len(c) > 4:
-                    seg_strand = c[4]
+                    if len(c) > 3:
+                        seg_name = c[3]
 
-                seg_start = int(seg_start)
-                seg_end = int(seg_end)
+                    if len(c) > 4:
+                        seg_strand = c[4]
 
-                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand])
+                    seg_start = int(seg_start)
+                    seg_end = int(seg_end)
 
-                results.append((res, base_name))
+                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase])
+
+                    results.append((res, base_name))
 
 
     meth_segs = dd(dict)
@@ -1626,7 +1649,6 @@ def segmeth(args):
                 meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_methfrac'] = meth_calls/float(meth_calls+unmeth_calls)
 
             meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_readcount'] = read_count
-
 
     header = ['seg_id', 'seg_chrom', 'seg_start', 'seg_end', 'seg_name', 'seg_strand']
 
@@ -3547,6 +3569,7 @@ if __name__ == '__main__':
     parser_segmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_segmeth.add_argument('--excl_ambig', action='store_true', default=False, help='do not consider reads that align entirely within segment')
     parser_segmeth.add_argument('--spanning_only', action='store_true', default=False, help='only consider reads that span segment')
+    parser_segmeth.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
 
     # options for methylation strip / violin plots
     parser_segplot.add_argument('-s', '--segmeth', required=True, help='output from segmeth.py')
