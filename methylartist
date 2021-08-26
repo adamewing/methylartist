@@ -494,9 +494,12 @@ def densecall_filter(reads, max_density=.7):
     return out
 
 
-def get_segmeth_calls(args, bam_fn, mod_names, meth_db, chrom, seg_start, seg_end, seg_name, seg_strand):
-    conn = sqlite3.connect(meth_db)
-    c = conn.cursor()
+def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand):
+    c_lookup = {}
+
+    for meth_db in meth_dbs:
+        conn = sqlite3.connect(meth_db)
+        c_lookup[meth_db] = conn.cursor()
 
     if 'spanning_only' not in vars(args):
         args.spanning_only=False
@@ -512,22 +515,24 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_db, chrom, seg_start, seg_en
     seg_reads = {}
 
     for index in reads:
-        for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+        for meth_db in meth_dbs:
+            c = c_lookup[meth_db]
+            for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-            cg_chrom, cg_start, stat, methstate, modname = row
+                cg_chrom, cg_start, stat, methstate, modname = row
 
-            if chrom != cg_chrom:
-                continue
+                if chrom != cg_chrom:
+                    continue
 
-            if cg_start < seg_start or cg_start > seg_end:
-                continue
+                if cg_start < seg_start or cg_start > seg_end:
+                    continue
 
-            cg_seg_start = cg_start - seg_start
+                cg_seg_start = cg_start - seg_start
 
-            if index not in seg_reads:
-                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
-            else:
-                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
+                if index not in seg_reads:
+                    seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
+                else:
+                    seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
     if args.max_read_density is not None:
         seg_reads = densecall_filter(seg_reads, max_density=float(args.max_read_density))
@@ -549,11 +554,8 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_db, chrom, seg_start, seg_en
     return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, read_count)
 
 
-def get_meth_locus(args, bam, meth_db, mod, phase=None):
+def get_meth_locus(args, bam, meth_dbs, mod, phase=None):
     # used for locus plots
-
-    if not os.path.exists(meth_db):
-        sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % meth_db)
 
     if phase:
         logger.info('fetching reads from %s with for mod %s on phase %s' % (bam, mod, phase))
@@ -569,8 +571,14 @@ def get_meth_locus(args, bam, meth_db, mod, phase=None):
     elt_start = int(elt_start.replace(',',''))
     elt_end = int(elt_end.replace(',',''))
 
-    conn = sqlite3.connect(meth_db)
-    c = conn.cursor()
+    c_lookup = {}
+
+    for meth_db in meth_dbs:
+        if not os.path.exists(meth_db):
+            sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % meth_db)
+
+        conn = sqlite3.connect(meth_db)
+        c_lookup[meth_db] = conn.cursor()
 
     # get list of relevant reads (exludes reads not anchored outside interval)
     reads = []
@@ -610,28 +618,31 @@ def get_meth_locus(args, bam, meth_db, mod, phase=None):
     seg_reads = {}
 
     for index in reads:
-        for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+        for meth_db in meth_dbs:
+            c = c_lookup[meth_db]
 
-            cg_chrom, cg_start, stat, methstate, modname = row
+            for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-            if methstate == 0:
-                continue
+                cg_chrom, cg_start, stat, methstate, modname = row
 
-            if modname != mod:
-                continue
+                if methstate == 0:
+                    continue
 
-            if chrom != cg_chrom:
-                continue
+                if modname != mod:
+                    continue
 
-            if cg_start < elt_start or cg_start > elt_end:
-                continue
+                if chrom != cg_chrom:
+                    continue
 
-            cg_seg_start = cg_start - elt_start
+                if cg_start < elt_start or cg_start > elt_end:
+                    continue
 
-            if index not in seg_reads:
-                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
-            else:
-                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
+                cg_seg_start = cg_start - elt_start
+
+                if index not in seg_reads:
+                    seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
+                else:
+                    seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
     if args.max_read_density is not None:
         seg_reads = densecall_filter(seg_reads, max_density=float(args.max_read_density))
@@ -1504,15 +1515,16 @@ def segmeth(args):
 
     mod_names = []
 
-    data = {}
+    data = dd(list)
 
     with open(args.data) as _:
         for line in _:
             bam, meth = line.strip().split()
-            data[bam] = meth
+            for m_db in meth.split(','):
+                data[bam].append(m_db)
 
-            for m in get_modnames(meth):
-                mod_names.append(m)
+                for m in get_modnames(m_db):
+                    mod_names.append(m)
 
     mod_names = list(set(mod_names))
 
@@ -1788,7 +1800,7 @@ def locus(args):
     elt_start = int(elt_start.replace(',',''))
     elt_end = int(elt_end.replace(',',''))
     
-    data = {}
+    data = dd(list)
     user_colours = {}
 
     with open(args.data) as _:
@@ -1799,7 +1811,8 @@ def locus(args):
                 sys.exit()
 
             bam, meth_db = c[:2]
-            data[bam] = meth_db
+            for m_db in meth_db.split(','):
+                data[bam].append(m_db)
 
             if len(c) == 3:
                 user_colours[bam] = c[2]
@@ -1825,9 +1838,10 @@ def locus(args):
             phases[bam] = list(set([p for p in phased_reads.values() if p]))
             logger.info('phases for bam %s: %s' % (bam, ','.join(phases[bam])))
 
-    for bam, meth_db in data.items():
-        mods = sorted(get_modnames(meth_db))
-        logger.info('found mods: %s in db %s' % (','.join(mods), meth_db))
+    for bam, meth_dbs in data.items():
+        for meth_db in meth_dbs:
+            mods = sorted(get_modnames(meth_db))
+            logger.info('found mods: %s in db %s' % (','.join(mods), meth_db))
 
         for mod in mods:
             if use_mods:
@@ -1841,7 +1855,7 @@ def locus(args):
                 for phase in phases[bam]:
                     bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + phase + '.' + mod
                     orig_bam[bamname] = bam
-                    reads[bamname] = get_meth_locus(args, bam, meth_db, mod, phase=phase)
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase)
 
                     for name, read in reads[bamname].items():
                         for loc in read.llrs.keys():
@@ -1858,7 +1872,7 @@ def locus(args):
             else:
                 bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + mod
                 orig_bam[bamname] = bam
-                reads[bamname] = get_meth_locus(args, bam, meth_db, mod)
+                reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod)
 
                 for name, read in reads[bamname].items():
                     for loc in read.llrs.keys():
@@ -2324,9 +2338,18 @@ def locus(args):
     tick_interval = (elt_end-elt_start)/n_ticks
     tick_list = list(range(int(ax0.get_xlim()[0]), int(ax0.get_xlim()[1]), int(tick_interval)))
 
+    revised_tick_list = []
+    for t in tick_list:
+        if t < 0:
+            revised_tick_list.append(0)
+        else:
+            revised_tick_list.append(t)
+
+    tick_list = sorted(list(set(revised_tick_list)))
+
     xt_labels = [str(int(t+elt_start)) for t in tick_list]
     xt_labels[0] = chrom
-    
+
     ax0.set_xticks(tick_list)
 
     if n_ticks > 11:
@@ -2344,7 +2367,7 @@ def locus(args):
     ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
 
     for mod in use_mods:
-        upper, lower = get_cutoffs(list(data.values())[0], mod)
+        upper, lower = get_cutoffs(list(data.values())[0][0], mod)
         ax4.axhline(y=upper, c='k', linestyle='--',lw=1)
         ax4.axhline(y=lower, c='k', linestyle='--',lw=1)
 
@@ -2527,7 +2550,7 @@ def region(args):
 
     args.modspace = int(args.modspace)
 
-    data = {}
+    data = dd(list)
     mods = []
     user_colours = {}
 
@@ -2539,8 +2562,9 @@ def region(args):
                 sys.exit()
 
             bam, meth_db = c[:2]
-            data[bam] = meth_db
-            mods += sorted(get_modnames(meth_db))
+            for m_db in meth_db.split(','):
+                data[bam].append(m_db)
+                mods += sorted(get_modnames(meth_db))
 
             if len(c) == 3:
                 user_colours[bam] = c[2]
@@ -2559,21 +2583,21 @@ def region(args):
     reads = {}
     orig_bam = {}
 
-    for bam, meth_db in data.items():
+    for bam, meth_dbs in data.items():
         for mod in mods:
             bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + mod
             orig_bam[bamname] = bam
-            reads[bamname] = get_meth_locus(args, bam, meth_db, mod)
+            reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod)
 
     pool = mp.Pool(processes=int(args.procs))
 
     results = []
 
     for seg_start, seg_end in zip(w_starts, w_ends):
-        for bam_fn, meth_fn in data.items():
+        for bam_fn, meth_dbs in data.items():
             seg_strand = '.'
             seg_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
-            res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand])
+            res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand])
             results.append(res)
 
     meth_segs = dd(dict)
@@ -3064,6 +3088,15 @@ def region(args):
     n_ticks = int(args.nticks) + 1
     tick_interval = (end-start)/n_ticks
     tick_list = list(range(int(ax0.get_xlim()[0]), int(ax0.get_xlim()[1]), int(tick_interval)))
+
+    revised_tick_list = []
+    for t in tick_list:
+        if t < 0:
+            revised_tick_list.append(0)
+        else:
+            revised_tick_list.append(t)
+
+    tick_list = sorted(list(set(revised_tick_list)))
 
     xt_labels = [str(int(t)) for t in tick_list]
     xt_labels[0] = chrom
