@@ -2586,7 +2586,7 @@ def region(args):
             bam, meth_db = c[:2]
             for m_db in meth_db.split(','):
                 data[bam].append(m_db)
-                mods += sorted(get_modnames(meth_db))
+                mods += sorted(get_modnames(m_db))
 
             if len(c) == 3:
                 user_colours[bam] = c[2]
