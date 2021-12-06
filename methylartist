@@ -11,6 +11,7 @@ import matplotlib
 import random
 import itertools
 import sqlite3
+from matplotlib.colors import NoNorm
 
 # Force matplotlib to not use any Xwindows backend.
 matplotlib.use('Agg')
@@ -497,12 +498,127 @@ def densecall_filter(reads, max_density=.7):
     return out
 
 
-def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase):
+def mods_methbam(bam_fn):
+    bam = pysam.AlignmentFile(bam_fn)
+
+    mm_warned = False
+
+    for rec in bam.fetch():
+        try:
+            mm = str(rec.get_tag('Mm')).rstrip(';')
+        except KeyError:
+            if not mm_warned:
+                logger.warning('cannot find Mm tag in at least one read, ensure this bam has Mm and Ml tags!')
+                mm_warned = True
+                continue
+        
+        mod_strings = mm.split(';')
+
+        mods = []
+
+        for mod_string in mod_strings:
+            m = mod_string.split(',')
+            mod_info = m[0]
+
+            mod_strand = '+'
+            if '-' in mod_info:
+                mod_strand = '-'
+            
+            mod_base, mod_type = mod_info.split(mod_strand)
+
+            mods.append(mod_type)
+        
+        return mods # assumes all mods are represented for each read that has an Mm tag
+        
+
+def parse_methbam(bam_fn, reads, chrom, start, end, meth_thresh=0.8, can_thresh=0.8):
+    bam = pysam.AlignmentFile(bam_fn)
+
+    mm_warned = False
+
+    for rec in bam.fetch(chrom, start, end):
+        if rec.is_unmapped:
+            continue
+
+        if rec.qname not in reads:
+            continue
+
+        ap = dict([(k, v) for (k, v) in rec.get_aligned_pairs() if k is not None])
+
+        try:
+            mm = str(rec.get_tag('Mm')).rstrip(';')
+        except KeyError:
+            if not mm_warned:
+                logger.warning('cannot find Mm tag in at least one read, ensure this bam has Mm and Ml tags!')
+                mm_warned = True
+                continue
+
+        try:
+            ml = rec.get_tag('Ml')
+        except KeyError:
+            continue
+
+        mod_strings = mm.split(';')
+        assert len(mod_strings) == 1, 'multiple mod types not yet implemented'
+
+        seq = rec.seq
+
+        if rec.is_reverse:
+            seq = rc(seq)
+
+        for mod_string, scores in zip(mod_strings, [ml]):
+            m = mod_string.split(',')
+            mod_info = m[0]
+
+            mod_relpos = list(map(int, m[1:]))
+
+            mod_strand = '+'
+
+            if '-' in mod_info:
+                mod_strand = '-'
+
+            mod_base, mod_type = mod_info.split(mod_strand)
+
+            assert len(mod_type) == 1, 'multiple mod types per base not yet implemented'
+
+            base_pos = [i for i, b in enumerate(seq) if b == mod_base]
+
+            i = -1
+
+            for skip, score in zip(mod_relpos, scores):
+                i += 1
+
+                if skip > 0:
+                    i += skip
+
+                genome_pos = ap[base_pos[i]]
+
+                if rec.is_reverse:
+                    genome_pos = ap[len(rec.seq)-base_pos[i]-1]-1
+
+                p_mod = score/255
+                p_can = 1-p_mod
+
+                assert p_mod <= 1.0
+
+                methstate = 0
+
+                if p_mod > meth_thresh:
+                    methstate = 1
+
+                if p_can > can_thresh:
+                    methstate = -1
+
+                yield (rec.qname, rec.reference_name, genome_pos, p_mod, methstate, mod_type)
+
+
+def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam):
     c_lookup = {}
 
-    for meth_db in meth_dbs:
-        conn = sqlite3.connect(meth_db)
-        c_lookup[meth_db] = conn.cursor()
+    if not methbam:
+        for meth_db in meth_dbs:
+            conn = sqlite3.connect(meth_db)
+            c_lookup[meth_db] = conn.cursor()
 
     if 'spanning_only' not in vars(args):
         args.spanning_only=False
@@ -519,27 +635,46 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
         phased_reads_dict = get_phased_reads(bam_fn, chrom, seg_start, seg_end, tag_untagged=(phase=='unphased'), min_mapq=int(args.min_mapq), HP_only=True)
         reads = [r for r in reads if r in phased_reads_dict and phased_reads_dict[r] == phase]
 
+    reads = set(reads)
     seg_reads = {}
 
-    for index in reads:
-        for meth_db in meth_dbs:
-            c = c_lookup[meth_db]
-            for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+    if methbam:
+        for row in parse_methbam(bam_fn, reads, chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8):
+            index, cg_chrom, cg_start, stat, methstate, modname = row
 
-                cg_chrom, cg_start, stat, methstate, modname = row
+            if chrom != cg_chrom:
+                continue
 
-                if chrom != cg_chrom:
-                    continue
+            if cg_start < seg_start or cg_start > seg_end:
+                continue
 
-                if cg_start < seg_start or cg_start > seg_end:
-                    continue
+            cg_seg_start = cg_start - seg_start
 
-                cg_seg_start = cg_start - seg_start
+            if index not in seg_reads:
+                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
+            else:
+                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
-                if index not in seg_reads:
-                    seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
-                else:
-                    seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
+    else:
+        for index in reads:
+            for meth_db in meth_dbs:
+                c = c_lookup[meth_db]
+                for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+
+                    cg_chrom, cg_start, stat, methstate, modname = row
+
+                    if chrom != cg_chrom:
+                        continue
+
+                    if cg_start < seg_start or cg_start > seg_end:
+                        continue
+
+                    cg_seg_start = cg_start - seg_start
+
+                    if index not in seg_reads:
+                        seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
+                    else:
+                        seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
     if args.max_read_density is not None:
         seg_reads = densecall_filter(seg_reads, max_density=float(args.max_read_density))
@@ -561,7 +696,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
     return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, read_count)
 
 
-def get_meth_locus(args, bam, meth_dbs, mod, phase=None):
+def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False):
     # used for locus plots
 
     if phase:
@@ -580,12 +715,13 @@ def get_meth_locus(args, bam, meth_dbs, mod, phase=None):
 
     c_lookup = {}
 
-    for meth_db in meth_dbs:
-        if not os.path.exists(meth_db):
-            sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % meth_db)
+    if not methbam:
+        for meth_db in meth_dbs:
+            if not os.path.exists(meth_db):
+                sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % meth_db)
 
-        conn = sqlite3.connect(meth_db)
-        c_lookup[meth_db] = conn.cursor()
+            conn = sqlite3.connect(meth_db)
+            c_lookup[meth_db] = conn.cursor()
 
     # get list of relevant reads (exludes reads not anchored outside interval)
     reads = []
@@ -620,36 +756,59 @@ def get_meth_locus(args, bam, meth_dbs, mod, phase=None):
                 if read not in excl_reads:
                     new_reads.append(read)
 
-            reads = new_reads
+            reads = set(new_reads)
 
     seg_reads = {}
 
-    for index in reads:
-        for meth_db in meth_dbs:
-            c = c_lookup[meth_db]
+    if methbam:
+        for row in parse_methbam(bam, reads, chrom, elt_start, elt_end, meth_thresh=0.8, can_thresh=0.8):
+            index, cg_chrom, cg_start, stat, methstate, modname = row
 
-            for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+            if methstate == 0:
+                continue
 
-                cg_chrom, cg_start, stat, methstate, modname = row
+            if modname != mod:
+                continue
 
-                if methstate == 0:
-                    continue
+            if chrom != cg_chrom:
+                continue
 
-                if modname != mod:
-                    continue
+            if cg_start < elt_start or cg_start > elt_end:
+                continue
 
-                if chrom != cg_chrom:
-                    continue
+            cg_seg_start = cg_start - elt_start
 
-                if cg_start < elt_start or cg_start > elt_end:
-                    continue
+            if index not in seg_reads:
+                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
+            else:
+                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
-                cg_seg_start = cg_start - elt_start
+    else:
+        for index in reads:
+            for meth_db in meth_dbs:
+                c = c_lookup[meth_db]
 
-                if index not in seg_reads:
-                    seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
-                else:
-                    seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
+                for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+                    cg_chrom, cg_start, stat, methstate, modname = row
+
+                    if methstate == 0:
+                        continue
+
+                    if modname != mod:
+                        continue
+
+                    if chrom != cg_chrom:
+                        continue
+
+                    if cg_start < elt_start or cg_start > elt_end:
+                        continue
+
+                    cg_seg_start = cg_start - elt_start
+
+                    if index not in seg_reads:
+                        seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
+                    else:
+                        seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
     if args.max_read_density is not None:
         seg_reads = densecall_filter(seg_reads, max_density=float(args.max_read_density))
@@ -658,7 +817,12 @@ def get_meth_locus(args, bam, meth_dbs, mod, phase=None):
 
 
 def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, seg_strand, use_mod):
-    if not os.path.exists(args.meth):
+    methbam = False
+
+    if args.meth is None:
+        methbam = True
+    
+    if not methbam and not os.path.exists(args.meth):
         sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % args.meth)
 
     logger.info('profiling %s %s:%d-%d:%s:%s' % (seg_name, seg_chrom, seg_start, seg_end, seg_strand, use_mod))
@@ -666,8 +830,12 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
     te_ref_seq = single_seq_fa(args.teref)
     ref = pysam.Fastafile(args.ref)
 
-    conn = sqlite3.connect(args.meth)
-    c = conn.cursor()
+    conn = None
+    c = None
+
+    if not methbam:
+        conn = sqlite3.connect(args.meth)
+        c = conn.cursor()
 
     reads = []
     if args.excl_ambig:
@@ -675,22 +843,18 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
     else:
         reads = get_reads(args.bam, seg_chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
 
-    reads = list(set(reads))
+    reads = set(reads)
 
     seg_reads = {}
 
-    for index in reads:
-        for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
-
-            cg_chrom, cg_start, stat, methstate, modname = row
+    if methbam:
+        for row in parse_methbam(args.bam, reads, seg_chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8):
+            index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if seg_chrom != cg_chrom:
                 continue
 
             if cg_start < seg_start or cg_start > seg_end:
-                continue
-
-            if modname != use_mod:
                 continue
 
             cg_seg_start = cg_start - seg_start
@@ -699,6 +863,28 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
                 seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
             else:
                 seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
+
+    else:
+        for index in reads:
+            for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+
+                cg_chrom, cg_start, stat, methstate, modname = row
+
+                if seg_chrom != cg_chrom:
+                    continue
+
+                if cg_start < seg_start or cg_start > seg_end:
+                    continue
+
+                if modname != use_mod:
+                    continue
+
+                cg_seg_start = cg_start - seg_start
+
+                if index not in seg_reads:
+                    seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
+                else:
+                    seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
     if args.max_read_density is not None:
         seg_reads = densecall_filter(seg_reads, max_density=float(args.max_read_density))
@@ -827,20 +1013,28 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
 
 
 def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod):
-    if not os.path.exists(meth_fn):
+    methbam = False
+
+    if args.methdb is None:
+        methbam = True
+    
+    if not methbam and not os.path.exists(meth_fn):
         sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % meth_fn)
 
-    conn = sqlite3.connect(meth_fn)
-    c = conn.cursor()
+    conn = None
+    c = None
+
+    if not methbam:
+        conn = sqlite3.connect(meth_fn)
+        c = conn.cursor()
 
     reads = get_phased_reads(bam_fn, chrom, seg_start, seg_end, tag_untagged=phased, min_mapq=int(args.min_mapq), HP_only=True)
 
     seg_reads = {}
 
-    for index in reads:
-        for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
-
-            cg_chrom, cg_start, stat, methstate, modname = row
+    if methbam:
+        for row in parse_methbam(bam_fn, set(reads), chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8):
+            index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if mod is not None and mod != modname:
                 continue
@@ -854,9 +1048,31 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
             cg_seg_start = cg_start - seg_start
 
             if index not in seg_reads:
-                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname, phase=reads[index])
+                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
             else:
                 seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
+
+    else:
+        for index in reads:
+            for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
+
+                cg_chrom, cg_start, stat, methstate, modname = row
+
+                if mod is not None and mod != modname:
+                    continue
+
+                if chrom != cg_chrom:
+                    continue
+
+                if cg_start < seg_start or cg_start > seg_end:
+                    continue
+
+                cg_seg_start = cg_start - seg_start
+
+                if index not in seg_reads:
+                    seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname, phase=reads[index])
+                else:
+                    seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
     if args.max_read_density is not None:
         seg_reads = densecall_filter(seg_reads, max_density=float(args.max_read_density))
@@ -1527,14 +1743,37 @@ def segmeth(args):
 
     data = dd(list)
 
-    with open(args.data) as _:
-        for line in _:
-            bam, meth = line.strip().split()
-            for m_db in meth.split(','):
-                data[bam].append(m_db)
+    if args.data is None and args.bams is None:
+        sys.exit('please specify either -d/--data or -b/--bams')
 
-                for m in get_modnames(m_db):
-                    mod_names.append(m)
+    methbam = False
+
+    if args.data is not None:
+        if args.bams is not None:
+            sys.exit('please specify either -d/--data or -b/--bams but not both')
+
+        with open(args.data) as _:
+            for line in _:
+                bam, meth = line.strip().split()
+                for m_db in meth.split(','):
+                    data[bam].append(m_db)
+
+                    for m in get_modnames(m_db):
+                        mod_names.append(m)
+
+    if args.bams is not None:
+        methbam = True
+        for bam in args.bams.split(','):
+            if ':' in bam:
+                bam, ucol = bam.split(':')
+                user_colours[bam] = ucol
+
+            if not os.path.exists(bam+'.bai'):
+                sys.exit('bam not indexed: %s' % bam)
+
+            data[bam] = None
+
+        mod_names = mods_methbam(bam)
 
     mod_names = list(set(mod_names))
 
@@ -1549,7 +1788,16 @@ def segmeth(args):
             phased_base_names.append(bn+'_ph2')
         base_names = phased_base_names
 
-    data_basename = '.'.join(os.path.basename(args.data).split('.')[:-1])
+    data_basename = None
+
+    if methbam:
+        data_basename = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1])
+        if len(args.bams.split(',')) > 1:
+            data_basename += '.cohort'
+
+    else:
+        data_basename = '.'.join(os.path.basename(args.data).split('.')[:-1])    
+
     ivl_basename = '.'.join(os.path.basename(args.intervals).split('.')[:-1])
     outfn = '.'.join((ivl_basename, data_basename))
 
@@ -1598,7 +1846,7 @@ def segmeth(args):
                     seg_start = int(seg_start)
                     seg_end = int(seg_end)
 
-                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase])
+                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam])
 
                     results.append((res, base_name))
 
@@ -1828,19 +2076,40 @@ def locus(args):
     data = dd(list)
     user_colours = {}
 
-    with open(args.data) as _:
-        for line in _:
-            c = line.strip().split()
-            if len(c) < 2:
-                logger.warning("required fields for -d/--data are: .bam file and methylation .db (generated by methylartist)")
-                sys.exit()
+    if args.data is None and args.bams is None:
+        sys.exit('please specify either -d/--data or -b/--bams')
 
-            bam, meth_db = c[:2]
-            for m_db in meth_db.split(','):
-                data[bam].append(m_db)
+    methbam = False
 
-            if len(c) == 3:
-                user_colours[bam] = c[2]
+    if args.data is not None:
+        if args.bams is not None:
+            sys.exit('please specify either -d/--data or -b/--bams but not both')
+
+        with open(args.data) as _:
+            for line in _:
+                c = line.strip().split()
+                if len(c) < 2:
+                    logger.warning("required fields for -d/--data are: .bam file and methylation .db (generated by methylartist)")
+                    sys.exit()
+
+                bam, meth_db = c[:2]
+                for m_db in meth_db.split(','):
+                    data[bam].append(m_db)
+
+                if len(c) == 3:
+                    user_colours[bam] = c[2]
+
+    if args.bams is not None:
+        methbam = True
+        for bam in args.bams.split(','):
+            if ':' in bam:
+                bam, ucol = bam.split(':')
+                user_colours[bam] = ucol
+
+            if not os.path.exists(bam+'.bai'):
+                sys.exit('bam not indexed: %s' % bam)
+
+            data[bam] = None
 
     # table for plotting
 
@@ -1864,9 +2133,14 @@ def locus(args):
             logger.info('phases for bam %s: %s' % (bam, ','.join(phases[bam])))
 
     for bam, meth_dbs in data.items():
-        for meth_db in meth_dbs:
-            mods = sorted(get_modnames(meth_db))
-            logger.info('found mods: %s in db %s' % (','.join(mods), meth_db))
+        if meth_dbs is None:
+            mods = mods_methbam(bam)
+            logger.info('found mods: %s in bam %s' % (','.join(mods), bam))
+
+        else:
+            for meth_db in meth_dbs:
+                mods = sorted(get_modnames(meth_db))
+                logger.info('found mods: %s in db %s' % (','.join(mods), meth_db))
 
         for mod in mods:
             if use_mods:
@@ -1880,7 +2154,7 @@ def locus(args):
                 for phase in phases[bam]:
                     bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + phase + '.' + mod
                     orig_bam[bamname] = bam
-                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase)
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam)
 
                     for name, read in reads[bamname].items():
                         for loc in read.llrs.keys():
@@ -1897,7 +2171,7 @@ def locus(args):
             else:
                 bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + mod
                 orig_bam[bamname] = bam
-                reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod)
+                reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, methbam=methbam)
 
                 for name, read in reads[bamname].items():
                     for loc in read.llrs.keys():
@@ -2392,7 +2666,12 @@ def locus(args):
     ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
 
     for mod in use_mods:
-        upper, lower = get_cutoffs(list(data.values())[0][0], mod)
+        upper = 1.0
+        lower = 0.0
+
+        if not methbam:
+            upper, lower = get_cutoffs(list(data.values())[0][0], mod)
+
         ax4.axhline(y=upper, c='k', linestyle='--',lw=1)
         ax4.axhline(y=lower, c='k', linestyle='--',lw=1)
 
@@ -2463,7 +2742,14 @@ def locus(args):
     for h in highlight_patches:
         ax5.add_patch(h)
 
-    fn_prefix = '.'.join(os.path.basename(args.data).split('.')[:-1]) + '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(use_mods)
+    fn_prefix = '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(use_mods)
+
+    if methbam:
+        fn_prefix = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1])
+        if len(args.bams.split(',')) > 1:
+            fn_prefix += '.cohort'
+    else:
+        fn_prefix = '.'.join(os.path.basename(args.data).split('.')[:-1]) + fn_prefix
 
     if args.genes is not None:
         fn_prefix = '_'.join(args.genes.split(',')) + '.' + fn_prefix
@@ -2579,20 +2865,42 @@ def region(args):
     mods = []
     user_colours = {}
 
-    with open(args.data) as _:
-        for line in _:
-            c = line.strip().split()
-            if len(c) < 2:
-                logger.warning("required fields for -d/--data are: .bam file and methylation .db (generated by methylartist)")
-                sys.exit()
+    if args.data is None and args.bams is None:
+        sys.exit('please specify either -d/--data or -b/--bams')
 
-            bam, meth_db = c[:2]
-            for m_db in meth_db.split(','):
-                data[bam].append(m_db)
-                mods += sorted(get_modnames(m_db))
+    methbam = False
 
-            if len(c) == 3:
-                user_colours[bam] = c[2]
+    if args.data is not None:
+        if args.bams is not None:
+            sys.exit('please specify either -d/--data or -b/--bams but not both')
+        with open(args.data) as _:
+            for line in _:
+                c = line.strip().split()
+                if len(c) < 2:
+                    logger.warning("required fields for -d/--data are: .bam file and methylation .db (generated by methylartist)")
+                    sys.exit()
+
+                bam, meth_db = c[:2]
+                for m_db in meth_db.split(','):
+                    data[bam].append(m_db)
+                    mods += sorted(get_modnames(m_db))
+
+                if len(c) == 3:
+                    user_colours[bam] = c[2]
+
+    if args.bams is not None:
+        methbam = True
+        for bam in args.bams.split(','):
+            if ':' in bam:
+                bam, ucol = bam.split(':')
+                user_colours[bam] = ucol
+
+            if not os.path.exists(bam+'.bai'):
+                sys.exit('bam not indexed: %s' % bam)
+
+            data[bam] = None
+
+        mods = mods_methbam(bam)
 
     mods = list(set(mods))
 
@@ -2621,7 +2929,7 @@ def region(args):
                     bamname += '.' + phase
 
                 orig_bam[bamname] = bam
-                reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase)
+                reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam)
 
     pool = mp.Pool(processes=int(args.procs))
 
@@ -2637,7 +2945,7 @@ def region(args):
             for bam_fn, meth_dbs in data.items():
                 seg_strand = '.'
                 seg_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
-                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase])
+                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam])
                 results.append(res)
 
         logger.info('parsing segments (phase %s)...' % str(phase))
@@ -3172,7 +3480,15 @@ def region(args):
         ax4.add_patch(h)
 
     # output
-    fn_prefix = '.'.join(os.path.basename(args.data).split('.')[:-1]) + '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(mods)
+
+    fn_prefix = '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(mods)
+
+    if methbam:
+        fn_prefix = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1])
+        if len(args.bams.split(',')) > 1:
+            fn_prefix += '.cohort'
+    else:
+        fn_prefix = '.'.join(os.path.basename(args.data).split('.')[:-1]) + fn_prefix
 
     if args.genes is not None:
         fn_prefix = '_'.join(args.genes.split(',')) + '.' + fn_prefix
@@ -3212,7 +3528,20 @@ def composite(args):
     if sample not in avail_samples:
         sys.exit('%s not in available samples: %s' % (sample, ','.join(avail_samples)))
 
-    avail_mods = get_modnames(args.meth)
+    avail_mods = []
+
+    methbam = False
+
+    if args.meth is None:
+        methbam = True
+
+    if methbam:
+        avail_mods = mods_methbam(args.bam)
+    else:
+        avail_mods = get_modnames(args.meth)
+
+    if methbam and len(avail_mods) == 0:
+        sys.exit('bam %s does not appear to contain Mm/Ml tags' % args.bam)
 
     logger.info('available mods: %s' % ','.join(avail_mods))
 
@@ -3221,6 +3550,7 @@ def composite(args):
     if len(avail_mods) == 1:
         use_mod = avail_mods[0]
         logger.info('using the one available mod: %s' % use_mod)
+
 
     if use_mod is None:
         if '_' not in sample:
@@ -3425,7 +3755,18 @@ def wgmeth(args):
     pool = mp.Pool(processes=int(args.procs))
     bin_size = int(args.binsize)
 
-    mods = sorted(get_modnames(args.methdb))
+    methbam = False
+
+    if args.methdb is None:
+        methbam = True
+
+    if methbam:
+        mods = sorted(mods_methbam(args.bam))
+    else:
+        mods = sorted(get_modnames(args.methdb))
+
+    if methbam and len(mods) == 0:
+        sys.exit('bam %s does not appear to contain Mm/Ml tags' % args.bam)
 
     if args.mod not in mods:
         logger.warning('mod %s not in known mods for db: %s' % (args.mod, ','.join(mods)))
@@ -3523,9 +3864,9 @@ def wgmeth(args):
             outfn += '.%s' % args.chrom
 
         if args.dss:
-            outfn += '%s.DSS.txt' % str(args.mod)
+            outfn += '.%s.DSS.txt' % str(args.mod)
         else:
-            outfn += '%s.methyl.bed' % str(args.mod)
+            outfn += '.%s.methyl.bed' % str(args.mod)
 
         logger.info('writing %s' % outfn)
         if args.dss:
@@ -3580,7 +3921,8 @@ if __name__ == '__main__':
     parser_scoredist.set_defaults(func=scoredist)
 
     # options for methylation segments
-    parser_segmeth.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
+    parser_segmeth.add_argument('-d', '--data', default=None, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
+    parser_segmeth.add_argument('-b', '--bams', default=None, help='one or more .bams with Mm and Ml tags for modification calls (see samtags spec)')
     parser_segmeth.add_argument('-i', '--intervals', required=True, help='.bed file')
     parser_segmeth.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_segmeth.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
@@ -3609,22 +3951,23 @@ if __name__ == '__main__':
     parser_segplot.add_argument('--svg', default=False, action='store_true')
 
     # options for locus-specific plots
-    parser_locus.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line (whitespace-delimited)')
+    parser_locus.add_argument('-d', '--data', default=None, help='text file with .bam filename and corresponding methylation database per line (whitespace-delimited)')
+    parser_locus.add_argument('-b', '--bams', default=None, help='one or more .bams with Mm and Ml tags for modification calls (see samtags spec)')
     parser_locus.add_argument('-i', '--interval', required=True, help='chrom:start-end')
     parser_locus.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
     parser_locus.add_argument('-l', '--highlight', default=None, help='format: start-end, (can be chrom:start-end but chrom is ignored) can comma-delimit multiple highlights')
-    parser_locus.add_argument('-b', '--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_locus.add_argument('-m', '--mods', default=None, help='mods, comma-delimited for >1 (default to all available mods)')
     parser_locus.add_argument('-s', '--smoothwindowsize', default=None, help='size of window for smoothing (default=auto)')
     parser_locus.add_argument('-t', '--slidingwindowstep', default=1, help='step size for initial sliding window (default=1)')
     parser_locus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
     parser_locus.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
+    parser_locus.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_locus.add_argument('--phased', default=False, action='store_true', help='split samples into phases')
     parser_locus.add_argument('--include_unphased', default=False, action='store_true', help='include an "unphased" category if called with --phased')
     parser_locus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_locus.add_argument('--slidingwindowsize', default=2, help='size of initial sliding window for coverage check (default=2)')
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
-    parser_locus.add_argument('--maskcutoff', default=4, help='read count masking cutoff (default=4)')
+    parser_locus.add_argument('--maskcutoff', default=1, help='read count masking cutoff (default=1)')
     parser_locus.add_argument('-n', '--mincalls', default=0, help='drop modspace positions if call count (meth+unmeth) < --mincalls (default=0)')
     parser_locus.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
@@ -3647,17 +3990,18 @@ if __name__ == '__main__':
 
     # options for region plots
     parser_region.add_argument('-i', '--interval', required=True, help='chrom:start-end')
-    parser_region.add_argument('-d', '--data', required=True, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
+    parser_region.add_argument('-d', '--data', default=None, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
+    parser_region.add_argument('-b', '--bams', default=None, help='one or more .bams with Mm and Ml tags for modification calls (see samtags spec)')
     parser_region.add_argument('-n', '--norm_motif', required=True, help='normalise window sizes to motif occurance')
     parser_region.add_argument('-r', '--ref', required=True, help='ref genome fasta, required if normalising windows with -n/--norm_motif')
     parser_region.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
     parser_region.add_argument('-l', '--highlight', default=None, help='format: start-end, (can be chrom:start-end but chrom is ignored) can comma-delimit multiple highlights')
-    parser_region.add_argument('-b', '--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_region.add_argument('-w', '--windows', default=None, help='set window count, default=auto')
     parser_region.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_region.add_argument('-m', '--mods', default=None, help='mods to consider (comma-delimited, default = all available)')
     parser_region.add_argument('-s', '--smoothwindowsize', default=None, help='size of window for smoothing (default=auto)')
     parser_region.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
+    parser_region.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_region.add_argument('--maxuncovered', default=50.0, help='maximum percentage of uncovered windows tolerated (default = 50.0)')
     parser_region.add_argument('--modspace', default=None, help='increase to increase spacing between links in top panel (default=auto)')
     parser_region.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
@@ -3681,8 +4025,8 @@ if __name__ == '__main__':
 
     # options for composite plots
     parser_composite.add_argument('-s', '--segdata', required=True, help='segmeth output')
-    parser_composite.add_argument('-b', '--bam', required=True)
-    parser_composite.add_argument('-m', '--meth', required=True, help='methylation database')
+    parser_composite.add_argument('-b', '--bam', required=True, help='alignments in .bam format. If -m/--meth not given .bam must contain modified basecalling tags')
+    parser_composite.add_argument('-m', '--meth', default=None, help='methylation database (if not given, modified bases must be tagged in .bam)')
     parser_composite.add_argument('-f', '--fams', required=True, help='families, comma delimited, corresponds to values in seg_name column in segmeth output')
     parser_composite.add_argument('-r', '--ref', required=True, help='ref genome fasta')
     parser_composite.add_argument('-t', '--teref', required=True, help='TE ref fasta')
@@ -3714,7 +4058,7 @@ if __name__ == '__main__':
 
     # options for whole genome output
     parser_wgmeth.add_argument('-b', '--bam', required=True, help='bam used for methylation calling')
-    parser_wgmeth.add_argument('-d', '--methdb', required=True, help='methylation database')
+    parser_wgmeth.add_argument('-d', '--methdb', default=None, help='methylation database')
     parser_wgmeth.add_argument('-s', '--binsize', default=1000000, help='bin size for parallelisation, default = 1000000')
     parser_wgmeth.add_argument('-f', '--fai', required=True, help='fasta index (.fai)')
     parser_wgmeth.add_argument('-m', '--mod', default=None, help='output for specific mod (names vary, see output for hints)')

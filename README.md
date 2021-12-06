@@ -20,9 +20,11 @@ install methylartist and dependencies via:
 
 Alignments stored in .bam format should be sorted and indexed and should use the same read names as the associated methylation data.
 
-### Methylation Calls
+### Modified Base Calls
 
-methylartist has functions for loading methylation data can from nanopolish, megalodon, or basecalled guppy fast5s, using the appropriate function below.
+The easiest way to provide modified basecall data is through .bam files with the Mm and Ml tags for modified base calling.
+
+If .bam files with modified base calls are not available, methylartist has functions for loading methylation data can from nanopolish, megalodon, or basecalled guppy fast5s, using the appropriate function below.
 
 Once coverted, the sqlite .db file can be input to methylartist functions (e.g. `segplot`, `locus`, etc).
 
@@ -111,7 +113,9 @@ Outputs aggregate methylation / demethylation call counts over intervals. Requir
 
 Requires whitespace-delimited list of segments in a BED3+2 format: chromosome, start, end, label, strand.
 
-Sample input file `-d/--data` has the following whitespace-delimited fields (one sample per line): BAM file, Methylation DB (generated with e.g. `db-nanopolish`)
+One or more .bam files may be supplied via the `-b/--bams` parameter. Multiple .bams may be comma-delimited.
+
+Optional sample input file `-d/--data` has the following whitespace-delimited fields (one sample per line): BAM file, Methylation DB (generated with e.g. `db-nanopolish`)
 
 Highly recommend parallelising with `-p/--proc` option if possible.
 
@@ -192,7 +196,9 @@ Note that default output is in .png format. For .svg vector output suitable for 
 
 Generates smoothed methylation profiles across specific loci with many configurable parameters for one or more samples.
 
-Sample input file `-d/--data` has the following whitespace-delimited fields (one sample per line): BAM file, Methylation DB (generated with e.g. `db-nanopolish`)
+One or more .bam files (with Mm/Ml tags) may be supplied via the `-b/--bams` parameter. Multiple .bams may be comma-delimited.
+
+Optional sample input file `-d/--data` has the following whitespace-delimited fields (one sample per line): BAM file, Methylation DB (generated with e.g. `db-nanopolish`)
 
 Example:
 
