@@ -2477,7 +2477,8 @@ def locus(args):
                 continue
 
             if read.is_supplementary or read.is_secondary or read.is_duplicate:
-                continue
+                if not args.allreads:
+                    continue
 
             masked = False
             if len(readmask) > 0:
@@ -3273,7 +3274,8 @@ def region(args):
                     continue
 
                 if read.is_supplementary or read.is_secondary or read.is_duplicate:
-                    continue
+                    if not args.allreads:
+                        continue
 
                 masked = False
                 if len(readmask) > 0:
@@ -3962,6 +3964,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
     parser_locus.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_locus.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
+    parser_locus.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_locus.add_argument('--phased', default=False, action='store_true', help='split samples into phases')
     parser_locus.add_argument('--include_unphased', default=False, action='store_true', help='include an "unphased" category if called with --phased')
     parser_locus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
@@ -4001,6 +4004,7 @@ if __name__ == '__main__':
     parser_region.add_argument('-m', '--mods', default=None, help='mods to consider (comma-delimited, default = all available)')
     parser_region.add_argument('-s', '--smoothwindowsize', default=None, help='size of window for smoothing (default=auto)')
     parser_region.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
+    parser_region.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_region.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_region.add_argument('--maxuncovered', default=50.0, help='maximum percentage of uncovered windows tolerated (default = 50.0)')
     parser_region.add_argument('--modspace', default=None, help='increase to increase spacing between links in top panel (default=auto)')
