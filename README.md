@@ -22,7 +22,7 @@ Alignments stored in .bam format should be sorted and indexed and should use the
 
 ### Modified Base Calls
 
-The easiest way to provide modified basecall data is through .bam files with the Mm and Ml tags for modified base calling.
+The easiest way to provide modified basecall data is through .bam files with the `Mm` and `Ml` tags for modified base calling.
 
 If .bam files with modified base calls are not available, methylartist has functions for loading methylation data can from nanopolish, megalodon, or basecalled guppy fast5s, using the appropriate function below.
 
@@ -105,6 +105,16 @@ Motifs (`-m`/`--motif`) are expressed by putting square brackets around the meth
 The `-n`/`--modname` option expects the 'long name' stored in the guppy metadata e.g. `5mC` or `6mA`.
 
 Read caching yields a large .db file ending with .bamcache.db. This can be deleted if you to not intend to append additional results to the methylation database (.guppy.db).
+
+
+### db-custom
+
+This enables free-form parsing of modified basecall tables into methylartist .db files for tools where modified base .bam files are not available and certain requirements are met. The table must contain, at a minimum, the read names, genomic position (chromosome and position), strand, and probability of the target base being modified. If not specified by a column (`--modbasecol`), the modification is specified by `--modbase`. The probability is assumed to be a raw probability between 0 and 1 of a given base being modified i.e. 1-p(canonical), other schemes may be used but `--canprob` and `--mincanprob` must be specified to set a column for canoncial base scores and a cutoff for a base being canonical.
+
+For example, modified basecalls from [deepsignal-plant](https://github.com/PengNi/deepsignal-plant) can be loaded as follows:
+
+
+`/home/taewing/methylartist/methylartist db-custom -m deepsignal_example.C.call_mods.tsv --readname 4 --chrom 0 --pos 1 --strand 2 --modprob 7 --modbase m -d deepsignal_example.db`
 
 
 ### segmeth
