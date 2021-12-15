@@ -2061,6 +2061,13 @@ def segplot(args):
     strip plots / violin plots of segmented methylation data over categories by sample
     '''
 
+    if args.ridge:
+        v = sns.__version__.split('.')
+        if int(v[1]) < 11:
+            sys.exit('--ridge requires seaborn 0.11.2 or later')
+        if int(v[2]) < 2:
+            sys.exit('--ridge requires seaborn 0.11.2 or later')
+
     data = pd.read_csv(args.segmeth, sep='\t', header=0, index_col=0)
 
     samples = []
@@ -2142,6 +2149,9 @@ def segplot(args):
                 plot_data[uid]['modbase'] = data[sm + '_methfrac'].loc[seg]
                 plot_data[uid]['group']   = data['seg_name'].loc[seg]
 
+                if args.ridge:
+                    plot_data[uid]['samplegroup'] = sm + ' ' + plot_data[uid]['group']
+
                 if plot_data[uid]['group'] not in order:
                     order.append(plot_data[uid]['group'])
 
@@ -2160,28 +2170,75 @@ def segplot(args):
 
     if args.categories is not None:
         order = args.categories.split(',')
+        plot_data = plot_data[plot_data['group'].isin(order)]
 
     if args.violin:
         sns_plot = sns.violinplot(x='group', y='modbase', data=plot_data, hue='sample', dodge=True, jitter=True, order=order, hue_order=samples_mods, palette=args.palette)
         basename += '.violin'
 
+    elif args.ridge:
+        sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
+        plot_data = plot_data.sort_values(['sample','group'])
+
+        if args.ridge_group_by_annotation:
+            plot_data = plot_data.sort_values(['group','sample'])
+
+        sns_plot = sns.FacetGrid(plot_data, row='samplegroup', hue='sample', aspect=15, height=.5, palette=args.palette)
+        sns_plot.map(sns.kdeplot, 'modbase', bw_adjust=.5, clip_on=False, fill=True, alpha=float(args.ridge_alpha), linewidth=1.5)
+        sns_plot.map(sns.kdeplot, 'modbase', clip_on=False, color='w', lw=2, bw_adjust=.5)
+        sns_plot.refline(y=0, linewidth=2, linestyle="-", color=None, clip_on=False)
+        sns_plot.figure.subplots_adjust(hspace=float(args.ridge_spacing))
+
+        seen_samples = set()
+        seen_groups = set()
+
+        s_col = sns.color_palette(args.palette, n_colors=len(set(plot_data['sample'])))
+
+        s = 0
+
+        for i in range(len(set(plot_data['samplegroup']))):
+            ax = sns_plot.axes[i,0]
+            samplename, groupname = ax.title.get_text().split('=')[-1].strip().split()
+
+            if args.ridge_group_by_annotation and groupname not in seen_groups:
+                ax.text(0, .15, groupname, color='k', ha='left', va='center', transform=ax.transAxes)
+            
+            if not args.ridge_group_by_annotation:
+                ax.text(0, .15, groupname, color='k', ha='left', va='center', transform=ax.transAxes)
+            
+            if samplename not in seen_samples:
+                ax.text(0, -.15, samplename, size=8, weight='bold', color=s_col[s], ha='left', va='center', transform=ax.transAxes)
+                s += 1
+
+            seen_groups.add(groupname)
+            seen_samples.add(samplename)
+
+        sns_plot.set_titles("")
+        sns_plot.set(yticks=[], ylabel="")
+        sns_plot.despine(bottom=True, left=True)
+
+        basename += '.ridge'
+
     else:
         sns_plot = sns.stripplot(x='group', y='modbase', data=plot_data, hue='sample', dodge=True, jitter=True, size=pt_sz, order=order, hue_order=samples_mods, palette=args.palette)
 
-    sns_plot.set_xlabel("")
-    sns_plot.set_ylabel(args.ylabel)
+    if not args.ridge:
+        sns_plot.set_xlabel("")
+        sns_plot.set_ylabel(args.ylabel)
 
-    if args.tiltlabel:
-        sns_plot.set_xticklabels(sns_plot.get_xticklabels(), rotation=45)
+        if args.tiltlabel:
+            sns_plot.set_xticklabels(sns_plot.get_xticklabels(), rotation=45)
 
-    sns_plot.set_ylim(float(args.ymin),float(args.ymax))
+        sns_plot.set_ylim(float(args.ymin),float(args.ymax))
 
-    if args.width is None:
-        args.width = 1 + len(order) * len(samples_mods)
-        logger.info('auto set --width: %d' % args.width)
+        if args.width is None:
+            args.width = 1 + len(order) * len(samples_mods)
+            logger.info('auto set --width: %d' % args.width)
 
     fig = sns_plot.figure
-    fig.set_size_inches(float(args.width), float(args.height))
+
+    if not args.ridge:
+        fig.set_size_inches(float(args.width), float(args.height))
 
     if args.svg:
         fig.savefig(basename+'.segplot.svg', bbox_inches='tight')
@@ -4074,6 +4131,7 @@ if __name__ == '__main__':
     parser_segplot.add_argument('-d', '--mods', default=None, help='mods, comma delimited')
     parser_segplot.add_argument('-c', '--categories', default=None, help='categories, comma delimited, need to match seg_name column from input')
     parser_segplot.add_argument('-v', '--violin', default=False, action='store_true')
+    parser_segplot.add_argument('-g', '--ridge', default=False, action='store_true')
     parser_segplot.add_argument('-n', '--mincalls', default=10, help='minimum number of calls to include site (methylated + unmethylated) (default=10)')
     parser_segplot.add_argument('-r', '--minreads', default=1, help='minimum reads in interval (default = 1)')
     parser_segplot.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
@@ -4085,6 +4143,9 @@ if __name__ == '__main__':
     parser_segplot.add_argument('--ylabel', default='pct methylation', help='set label for y-axis (default: pct methylation)')
     parser_segplot.add_argument('--tiltlabel', default=False, action='store_true')
     parser_segplot.add_argument('--palette', default="tab10", help='palette for phases (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
+    parser_segplot.add_argument('--ridge_group_by_annotation', default=False, action='store_true', help='group ridge plots by annotation rather than by sample')
+    parser_segplot.add_argument('--ridge_alpha', default=1.0, help='alpha (tranparency) for ridge plot fills (default = 1.0)')
+    parser_segplot.add_argument('--ridge_spacing', default=-0.25, help='ridge plot spacing (generally negative, default = -0.25)')
     parser_segplot.add_argument('--svg', default=False, action='store_true')
 
     # options for locus-specific plots

@@ -201,6 +201,15 @@ methylartist segplot -s MCF7_megalogon_annotations.segmeth.tsv -v
 
 Note that default output is in .png format. For .svg vector output suitable for editing in inkscape or illustrator add the `--svg` option. Note that for strip plots, this is often inadvisable due to the large number of points.
 
+New in 1.0.7, ridge plots (`-g/--ridge`):
+
+```
+methylartist segplot -s L1_FL.MCF7_data_megalodon.segmeth.tsv -c L1HS,L1PA2,L1PA3,L1PA4,L1PA5,L1PA6,L1PA7,L1PA8 -g --palette magma
+```
+
+![ridge plot](https://github.com/adamewing/methylartist/blob/main/docs/L1_FL.MCF7_data_megalodon.segmeth.mc10.mr1.ridge.segplot.png?raw=true)
+
+Ridge plots can also be grouped by annotation (`--ridge_group_by_annotation`) rather than by sample as in the above example.
 
 ### locus
 
