@@ -531,6 +531,24 @@ def mods_methbam(bam_fn):
         return mods # assumes all mods are represented for each read that has an Mm tag
         
 
+def split_ml(mod_strings, ml):
+    mls = []
+
+    total_ms = sum([len(ms.split(',')[1:]) for ms in mod_strings])
+
+    assert total_ms == len(ml), 'mod bam formatting error'
+
+    i = 0
+    for mod_string in mod_strings:
+        m = mod_string.split(',')[1:] # discard first item (desc of mod base)
+        mls.append(ml[i:i+len(m)])
+        i += len(m)
+
+        assert len(m) == len(mls[-1]), 'mod bam formatting error'
+    
+    return mls
+
+
 def parse_methbam(bam_fn, reads, chrom, start, end, meth_thresh=0.8, can_thresh=0.8):
     bam = pysam.AlignmentFile(bam_fn)
 
@@ -559,14 +577,14 @@ def parse_methbam(bam_fn, reads, chrom, start, end, meth_thresh=0.8, can_thresh=
             continue
 
         mod_strings = mm.split(';')
-        assert len(mod_strings) == 1, 'multiple mod types not yet implemented'
+        mls = split_ml(mod_strings, ml)
 
         seq = rec.seq
 
         if rec.is_reverse:
             seq = rc(seq)
 
-        for mod_string, scores in zip(mod_strings, [ml]):
+        for mod_string, scores in zip(mod_strings, mls):
             m = mod_string.split(',')
             mod_info = m[0]
 
@@ -579,7 +597,7 @@ def parse_methbam(bam_fn, reads, chrom, start, end, meth_thresh=0.8, can_thresh=
 
             mod_base, mod_type = mod_info.split(mod_strand)
 
-            assert len(mod_type) == 1, 'multiple mod types per base not yet implemented'
+            assert len(mod_type) == 1, 'multiple modfications listed this way: %s is not yet supported, please send me an example!' % mod_info
 
             base_pos = [i for i, b in enumerate(seq) if b == mod_base]
 
@@ -2936,7 +2954,7 @@ def locus(args):
     fn_prefix = '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(use_mods)
 
     if methbam:
-        fn_prefix = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1])
+        fn_prefix = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1]) + fn_prefix
         if len(args.bams.split(',')) > 1:
             fn_prefix += '.cohort'
     else:
@@ -3676,7 +3694,7 @@ def region(args):
     fn_prefix = '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(mods)
 
     if methbam:
-        fn_prefix = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1])
+        fn_prefix = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1]) + fn_prefix
         if len(args.bams.split(',')) > 1:
             fn_prefix += '.cohort'
     else:
