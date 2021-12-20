@@ -2284,6 +2284,11 @@ def locus(args):
     data = dd(list)
     user_colours = {}
 
+    markers = ['.',',','o','v','^','<','>','8','s','p','P','*','h','H','X','D','d']
+
+    if args.readmarker not in markers:
+        sys.exit('%s is not a valid marker type, valid types: %s' % (args.readmarker, ','.join(markers)))
+
     if args.data is None and args.bams is None:
         sys.exit('please specify either -d/--data or -b/--bams')
 
@@ -2758,20 +2763,26 @@ def locus(args):
 
     ax1.set_ylim(0,pack_y+1)
 
+
+
     for bamname in readstack:
         for read in readstack[bamname]:
+            rm = args.readmarker
+            ms = float(args.readmarkersize)
+            lw = float(args.readlinewidth)
+
             for call_pos, call in read.meth_calls.items():
                 if call == -1:
-                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=2, zorder=3)
+                    ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=ms, zorder=3)
 
                 if call == 1:
-                    ax1.plot(call_pos, read.ypos, marker='o', fillstyle='full', mec='black', mfc='black', markersize=2, zorder=3)
+                    ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec='black', mfc='black', markersize=ms, zorder=3)
 
             for i in range(len(read.starts)):
                 readline_start = max(read.starts[i], elt_start) - elt_start
                 readline_end   = min(read.ends[i], elt_end) - elt_start
 
-                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=2, color=sample_color[bamname], alpha=0.4))
+                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], lw=lw, zorder=2, color=sample_color[bamname], alpha=0.4))
 
     highlight_patches = []
 
@@ -2951,7 +2962,7 @@ def locus(args):
     for h in highlight_patches:
         ax5.add_patch(h)
 
-    fn_prefix = '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(use_mods)
+    fn_prefix = '.%s_%d_%d.%s' % (chrom, elt_start, elt_end, ''.join(use_mods))
 
     if methbam:
         fn_prefix = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1]) + fn_prefix
@@ -4182,6 +4193,9 @@ if __name__ == '__main__':
     parser_locus.add_argument('--phased', default=False, action='store_true', help='split samples into phases')
     parser_locus.add_argument('--include_unphased', default=False, action='store_true', help='include an "unphased" category if called with --phased')
     parser_locus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
+    parser_locus.add_argument('--readmarker', default='o', help='marker for (un)methylated glpyhs in read panel (matplotlib markers, default=o)')
+    parser_locus.add_argument('--readmarkersize', default=2.0, help='marker size for (un)methylated glpyhs in read panel (default=2.0)')
+    parser_locus.add_argument('--readlinewidth', default=1.0, help='width for lines representing read alignments (default=1.0)')
     parser_locus.add_argument('--slidingwindowsize', default=2, help='size of initial sliding window for coverage check (default=2)')
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_locus.add_argument('--maskcutoff', default=1, help='read count masking cutoff (default=1)')
