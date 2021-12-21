@@ -2770,10 +2770,14 @@ def locus(args):
             rm = args.readmarker
             ms = float(args.readmarkersize)
             lw = float(args.readlinewidth)
+            uec = sample_color[bamname]
+
+            if args.readopenmarkeredgecolor is not None:
+                uec = args.readopenmarkeredgecolor
 
             for call_pos, call in read.meth_calls.items():
                 if call == -1:
-                    ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec=sample_color[bamname], mfc='white', markersize=ms, zorder=3)
+                    ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec=uec, mfc='white', markersize=ms, zorder=3)
 
                 if call == 1:
                     ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec='black', mfc='black', markersize=ms, zorder=3)
@@ -2782,7 +2786,8 @@ def locus(args):
                 readline_start = max(read.starts[i], elt_start) - elt_start
                 readline_end   = min(read.ends[i], elt_end) - elt_start
 
-                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], lw=lw, zorder=2, color=sample_color[bamname], alpha=0.4))
+                #ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], lw=lw, zorder=2, color=sample_color[bamname], alpha=0.4))
+                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos, read.ypos], lw=lw, zorder=2, color=sample_color[bamname], alpha=0.4))
 
     highlight_patches = []
 
@@ -3581,7 +3586,7 @@ def region(args):
                     readline_start = max(read.starts[i], start)
                     readline_end   = min(read.ends[i], end)
 
-                    ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], zorder=2, color=sample_color[bamname], alpha=0.4))
+                    ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos, read.ypos], zorder=2, color=sample_color[bamname], alpha=0.4))
 
         highlight_patches = []
 
@@ -4196,6 +4201,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--readmarker', default='o', help='marker for (un)methylated glpyhs in read panel (matplotlib markers, default=o)')
     parser_locus.add_argument('--readmarkersize', default=2.0, help='marker size for (un)methylated glpyhs in read panel (default=2.0)')
     parser_locus.add_argument('--readlinewidth', default=1.0, help='width for lines representing read alignments (default=1.0)')
+    parser_locus.add_argument('--readopenmarkeredgecolor', default=None, help='edge color for open (unmethylated) markers in read plot (default = sample color)')
     parser_locus.add_argument('--slidingwindowsize', default=2, help='size of initial sliding window for coverage check (default=2)')
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_locus.add_argument('--maskcutoff', default=1, help='read count masking cutoff (default=1)')
