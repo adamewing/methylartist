@@ -30,8 +30,14 @@ import pandas as pd
 import pysam
 import scipy.stats as ss
 
-import skbio.alignment as skalign
-import skbio.sequence as skseq
+skbio_installed = True
+
+try:
+    import skbio.alignment as skalign
+    import skbio.sequence as skseq
+
+except ModuleNotFoundError:
+    skbio_installed = False
 
 from uuid import uuid4
 from collections import defaultdict as dd
@@ -40,7 +46,14 @@ from itertools import product
 from operator import itemgetter
 from copy import deepcopy
 
-from ont_fast5_api.fast5_interface import get_fast5_file
+ont_fast5_api_installed = True
+
+try:
+    from ont_fast5_api.fast5_interface import get_fast5_file
+
+except ModuleNotFoundError:
+    ont_fast5_api_installed = False
+
 from bx.intervals.intersection import Intersecter, Interval
 
 FORMAT = '%(asctime)s %(message)s'
@@ -595,7 +608,11 @@ def parse_methbam(bam_fn, reads, chrom, start, end, meth_thresh=0.8, can_thresh=
             if '-' in mod_info:
                 mod_strand = '-'
 
-            mod_base, mod_type = mod_info.split(mod_strand)
+            try:
+                mod_base, mod_type = mod_info.split(mod_strand)
+            except ValueError:
+                logger.debug('%s: malformed mod string for read %s (%s) skipped.' % (bam_fn, rec.qname, mod_info))
+                continue
 
             assert len(mod_type) == 1, 'multiple modfications listed this way: %s is not yet supported, please send me an example!' % mod_info
 
@@ -1415,6 +1432,9 @@ def adjustcutoffs(args):
     conn.commit()
 
 def db_guppy(args):
+    if not ont_fast5_api_installed:
+        sys.exit('ont_fast5_api is not installed but is required for this function. Please install e.g. via "pip install ont-fast5-api"')
+
     assert os.path.exists(args.fast5), 'path not found: %s' % args.fast5
 
     bam_db = args.samplename + '.bamcache.db'
@@ -1914,10 +1934,20 @@ def segmeth(args):
 
     if args.bams is not None:
         methbam = True
-        for bam in args.bams.split(','):
+        bams = []
+
+        if args.bams.endswith('.bam') or (':' in args.bams and args.bams.split(':')[0].endswith('.bam')):
+            bams = args.bams.split(',')
+
+        else:
+            logger.info('assuming %s contains a list of .bams' % args.bams)
+            with open(args.bams) as bam_list:
+                for line in bam_list:
+                    bams.append(line.strip())
+
+        for bam in bams:
             if ':' in bam:
-                bam, ucol = bam.split(':')
-                user_colours[bam] = ucol
+                bam, _ = bam.split(':')
 
             if not os.path.exists(bam+'.bai'):
                 sys.exit('bam not indexed: %s' % bam)
@@ -2314,7 +2344,18 @@ def locus(args):
 
     if args.bams is not None:
         methbam = True
-        for bam in args.bams.split(','):
+        bams = []
+
+        if args.bams.endswith('.bam') or (':' in args.bams and args.bams.split(':')[0].endswith('.bam')):
+            bams = args.bams.split(',')
+
+        else:
+            logger.info('assuming %s contains a list of .bams' % args.bams)
+            with open(args.bams) as bam_list:
+                for line in bam_list:
+                    bams.append(line.strip())
+
+        for bam in bams:
             if ':' in bam:
                 bam, ucol = bam.split(':')
                 user_colours[bam] = ucol
@@ -2770,6 +2811,8 @@ def locus(args):
             rm = args.readmarker
             ms = float(args.readmarkersize)
             lw = float(args.readlinewidth)
+            la = float(args.readlinealpha)
+            ma = float(args.markeralpha)
             uec = sample_color[bamname]
 
             if args.readopenmarkeredgecolor is not None:
@@ -2777,17 +2820,16 @@ def locus(args):
 
             for call_pos, call in read.meth_calls.items():
                 if call == -1:
-                    ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec=uec, mfc='white', markersize=ms, zorder=3)
+                    ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec=uec, mfc='white', markersize=ms, zorder=3, alpha=ma)
 
                 if call == 1:
-                    ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec='black', mfc='black', markersize=ms, zorder=3)
+                    ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec='black', mfc='black', markersize=ms, zorder=3, alpha=ma)
 
             for i in range(len(read.starts)):
                 readline_start = max(read.starts[i], elt_start) - elt_start
                 readline_end   = min(read.ends[i], elt_end) - elt_start
 
-                #ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos-0.1, read.ypos-0.1], lw=lw, zorder=2, color=sample_color[bamname], alpha=0.4))
-                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos, read.ypos], lw=lw, zorder=2, color=sample_color[bamname], alpha=0.4))
+                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos, read.ypos], lw=lw, zorder=2, color=sample_color[bamname], alpha=la))
 
     highlight_patches = []
 
@@ -3017,8 +3059,8 @@ def region(args):
 
     assert start < end
 
-    if end-start < 1000000:
-        logger.warning('locus smaller than 1Mbp, "methylartist locus" may yield better results')
+    if end-start < 500000:
+        logger.warning('locus smaller than 0.5 Mbp, "methylartist locus" may yield better results')
 
     ref = pysam.FastaFile(args.ref)
     motif = args.norm_motif.upper()
@@ -3115,7 +3157,18 @@ def region(args):
 
     if args.bams is not None:
         methbam = True
-        for bam in args.bams.split(','):
+        bams = []
+
+        if args.bams.endswith('.bam') or (':' in args.bams and args.bams.split(':')[0].endswith('.bam')):
+            bams = args.bams.split(',')
+
+        else:
+            logger.info('assuming %s contains a list of .bams' % args.bams)
+            with open(args.bams) as bam_list:
+                for line in bam_list:
+                    bams.append(line.strip())
+
+        for bam in bams:
             if ':' in bam:
                 bam, ucol = bam.split(':')
                 user_colours[bam] = ucol
@@ -3328,8 +3381,8 @@ def region(args):
 
     # set up plot
 
-    if end-start > 5e6:
-        logger.info('region size %s greater than 5Mbp, setting --skip_align_plot True' % (end-start))
+    if end-start > 500000:
+        logger.info('region size %s greater than 0.5 Mbp, setting --skip_align_plot True' % (end-start))
         args.skip_align_plot = True
     
     if args.force_align_plot == args.skip_align_plot == True:
@@ -3737,6 +3790,10 @@ def composite(args):
     '''
     plot composite methylation profiles relative to a consensus element
     '''
+
+    if not skbio_installed:
+        sys.exit('scikit-bio is not installed but is required for this function. Please install e.g. via "pip install scikit-bio" or "conda install -c https://conda.anaconda.org/biocore scikit-bio"')
+
     te_ref_seq = single_seq_fa(args.teref).upper()
 
     assert os.path.exists(args.ref + '.fai'), 'ref fasta must be indexed'
@@ -4199,8 +4256,10 @@ if __name__ == '__main__':
     parser_locus.add_argument('--include_unphased', default=False, action='store_true', help='include an "unphased" category if called with --phased')
     parser_locus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_locus.add_argument('--readmarker', default='o', help='marker for (un)methylated glpyhs in read panel (matplotlib markers, default=o)')
+    parser_locus.add_argument('--markeralpha', default=1.0, help='alpha (transparency) for (un)methylation marker (default=1.0)')
     parser_locus.add_argument('--readmarkersize', default=2.0, help='marker size for (un)methylated glpyhs in read panel (default=2.0)')
     parser_locus.add_argument('--readlinewidth', default=1.0, help='width for lines representing read alignments (default=1.0)')
+    parser_locus.add_argument('--readlinealpha', default=0.5, help='alpha (transparency) for read mapping lines (default=0.4)')
     parser_locus.add_argument('--readopenmarkeredgecolor', default=None, help='edge color for open (unmethylated) markers in read plot (default = sample color)')
     parser_locus.add_argument('--slidingwindowsize', default=2, help='size of initial sliding window for coverage check (default=2)')
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')

@@ -16,14 +16,12 @@ setup(
     install_requires = [
         'cython',
         'pysam',
-        'scikit-bio',
         'numpy',
         'scipy',
         'pandas',
         'matplotlib',
         'seaborn',
         'bx-python',
-        'ont-fast5-api'
     ],
     classifiers=[
         'Development Status :: 4 - Beta',
