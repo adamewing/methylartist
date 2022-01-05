@@ -22,7 +22,7 @@ Alignments stored in .bam format should be sorted and indexed and should use the
 
 ### Modified Base Calls
 
-The easiest way to provide modified basecall data is through .bam files with the `Mm` and `Ml` tags for modified base calling.
+The easiest way to provide modified basecall data is through .bam files with the `Mm` and `Ml` tags for modified base calling. Note that the `mod_mappings.bam` file output by megalodon will work for modified base calling, but is unsuitable for downstream applications involving sequence variation, including phasing.
 
 If .bam files with modified base calls are not available, methylartist has functions for loading methylation data can from nanopolish, megalodon, or basecalled guppy fast5s, using the appropriate function below.
 
@@ -136,7 +136,7 @@ Example:
 Aggregate whole-genome CpG methylation in 10kbp bins, promoters (Eukaryotic Promoter Database, EPD), L1HS and SVA retrotransposons:
 
 ```
-methylartist segmeth -d MCF7_data_megalodon.txt -i MCF7_megalogon_annotations.bed -p 32 --excl_ambig
+methylartist segmeth -d MCF7_data_megalodon.txt -i MCF7_megalodon_annotations.bed -p 32 --excl_ambig
 ```
 
 Contents of `MCF7_data_megalodon.txt`:
@@ -146,7 +146,7 @@ MCF7_ATCC.haplotag.bam MCF7_ATCC.megalodon.db
 MCF7_ECACC.haplotag.bam MCF7_ECACC.megalodon.db
 ```
 
-Contents of MCF7_megalogon_annotations.bed (first 10 lines):
+Contents of MCF7_megalodon_annotations.bed (first 10 lines):
 
 ```
 chr1    0       10000   WG_10kbp
@@ -161,7 +161,7 @@ chr1    80000   90000   WG_10kbp
 chr1    90000   100000  WG_10kbp
 ```
 
-Output in `` (first 10 lines):
+Output in ` MCF7_megalodon_annotations.segmeth.tsv` (first 10 lines):
 
 ```
 seg_id  seg_chrom       seg_start       seg_end seg_name        seg_strand      MCF7_ATCC.haplotag_m_meth_calls MCF7_ATCC.haplotag_m_unmeth_calls       MCF7_ATCC.haplotag_m_no_calls   MCF7_ATCC.haplotag_m_methfrac    MCF7_ECACC.haplotag_m_meth_calls        MCF7_ECACC.haplotag_m_unmeth_calls      MCF7_ECACC.haplotag_m_no_calls  MCF7_ECACC.haplotag_m_methfrac
