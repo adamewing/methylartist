@@ -521,7 +521,7 @@ def mods_methbam(bam_fn):
             mm = str(rec.get_tag('Mm')).rstrip(';')
         except KeyError:
             if not mm_warned:
-                logger.warning('cannot find Mm tag in at least one read, ensure this bam has Mm and Ml tags!')
+                logger.debug('cannot find Mm tag in at least one read, ensure this bam has Mm and Ml tags!')
                 mm_warned = True
                 continue
         
@@ -4316,6 +4316,7 @@ if __name__ == '__main__':
     parser_region.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_region.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_region.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
+    parser_region.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
     parser_region.add_argument('--maxuncovered', default=50.0, help='maximum percentage of uncovered windows tolerated (default = 50.0)')
     parser_region.add_argument('--modspace', default=None, help='increase to increase spacing between links in top panel (default=auto)')
     parser_region.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
