@@ -562,7 +562,7 @@ def split_ml(mod_strings, ml):
     return mls
 
 
-def parse_methbam(bam_fn, reads, chrom, start, end, meth_thresh=0.8, can_thresh=0.8):
+def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, can_thresh=0.8):
     bam = pysam.AlignmentFile(bam_fn)
 
     mm_warned = False
@@ -574,7 +574,7 @@ def parse_methbam(bam_fn, reads, chrom, start, end, meth_thresh=0.8, can_thresh=
         if rec.qname not in reads:
             continue
 
-        ap = dict([(k, v) for (k, v) in rec.get_aligned_pairs() if k is not None])
+        ap = dict([(k, v) for (k, v) in rec.get_aligned_pairs() if None not in (k,v)])
 
         try:
             mm = str(rec.get_tag('Mm')).rstrip(';')
@@ -610,6 +610,7 @@ def parse_methbam(bam_fn, reads, chrom, start, end, meth_thresh=0.8, can_thresh=
 
             try:
                 mod_base, mod_type = mod_info.split(mod_strand)
+                mod_type = mod_type.rstrip('?.')
             except ValueError:
                 logger.debug('%s: malformed mod string for read %s (%s) skipped.' % (bam_fn, rec.qname, mod_info))
                 continue
@@ -629,7 +630,7 @@ def parse_methbam(bam_fn, reads, chrom, start, end, meth_thresh=0.8, can_thresh=
                 genome_pos = ap[base_pos[i]]
 
                 if rec.is_reverse:
-                    genome_pos = ap[len(rec.seq)-base_pos[i]-1]-1
+                    genome_pos = ap[len(rec.seq)-base_pos[i]-1] - (int(motifsize)-1)
 
                 p_mod = score/255
                 p_can = 1-p_mod
@@ -796,7 +797,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False):
     seg_reads = {}
 
     if methbam:
-        for row in parse_methbam(bam, reads, chrom, elt_start, elt_end, meth_thresh=0.8, can_thresh=0.8):
+        for row in parse_methbam(bam, reads, chrom, elt_start, elt_end, motifsize=args.motifsize, meth_thresh=0.8, can_thresh=0.8):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if methstate == 0:
@@ -883,7 +884,7 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
     seg_reads = {}
 
     if methbam:
-        for row in parse_methbam(args.bam, reads, seg_chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8):
+        for row in parse_methbam(args.bam, reads, seg_chrom, seg_start, seg_end, motifsize=len(args.motif), meth_thresh=0.8, can_thresh=0.8):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if seg_chrom != cg_chrom:
@@ -1442,8 +1443,8 @@ def db_guppy(args):
     if os.path.exists(bam_db):
         logger.info('using existing bam cache db %s' % bam_db)
 
-
     else:
+        logger.info('mod motif size (--motifsize) = %d (ensure this is correct for your data)' % int(args.motifsize))
         conn = sqlite3.connect(bam_db)
         c = conn.cursor()
 
@@ -1536,9 +1537,9 @@ def db_guppy(args):
 
                 llr = float(row['mod_log_prob']) - float(row['can_log_prob'])
 
-                # adjust position of - strand calls to match nanopolish scheme
-                if strand == '-':
-                    pos -= 1
+            # adjust position of - strand calls based on mod motif size (default = 2 as CG is probably the most frequent use case)
+            if strand == '-':
+                pos -= (int(args.motifsize)-1)
 
                 methcall = 0
 
@@ -1586,6 +1587,8 @@ def db_megalodon(args):
     if args.append and not os.path.exists(db_fn):
         sys.exit('database %s does not exist and --append has been called' % db_fn)
 
+    logger.info('mod motif size (--motifsize) = %d (ensure this is correct for your data)' % int(args.motifsize))
+
     conn = sqlite3.connect(db_fn)
 
     c = conn.cursor()
@@ -1631,9 +1634,9 @@ def db_megalodon(args):
 
             modnames[mod_base] = True
 
-            # adjust position of - strand calls to match nanopolish scheme
+            # adjust position of - strand calls based on mod motif size (default = 2 as CG is probably the most frequent use case)
             if strand == '-':
-                pos -= 1
+                pos -= (int(args.motifsize)-1)
 
             methcall = 0
 
@@ -1652,8 +1655,7 @@ def db_megalodon(args):
 
         for mod in modnames:
             c.execute("INSERT INTO modnames VALUES ('%s')" % mod)
-
-        c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f', '%s')" % (minprob, 1-minprob, mod))
+            c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f', '%s')" % (minprob, 1-minprob, mod))
 
         if len(ins_data) > 0:
             conn.executemany('INSERT INTO methdata VALUES (?,?,?,?,?,?,?)', ins_data)
@@ -1685,6 +1687,8 @@ def db_custom(args):
 
     if args.append and not os.path.exists(db_fn):
         sys.exit('database %s does not exist and --append has been called' % db_fn)
+
+    logger.info('mod motif size (--motifsize) = %d (ensure this is correct for your data)' % int(args.motifsize))
 
     conn = sqlite3.connect(db_fn)
 
@@ -1768,9 +1772,9 @@ def db_custom(args):
 
             modnames[mod_base] = True
 
-            # adjust position of - strand calls to match nanopolish scheme
+            # adjust position of - strand calls based on mod motif size (default = 2 as CG is probably the most frequent use case)
             if strand == '-':
-                pos -= 1
+                pos -= (int(args.motifsize)-1)
 
             methcall = 0
 
@@ -1851,6 +1855,8 @@ def db_nanopolish(args):
 
         progress_interval = 500000
 
+        ins_data = []
+
         for i, row in enumerate(csv_reader, 1):
             try:
                 r_start  = int(row['start'])
@@ -1873,22 +1879,30 @@ def db_nanopolish(args):
                 methcall = -1
 
             # get per-CG position (nanopolish/calculate_methylation_frequency.py)
-            cg_pos = seq.find("CG")
+            if args.motif not in seq:
+                sys.exit('motif %s not found in kmer %s, please check --motif setting' % (args.motif, seq))
+
+            cg_pos = seq.find(args.motif)
             first_cg_pos = cg_pos
 
             while cg_pos != -1:
                 cg_start = r_start + cg_pos - first_cg_pos
-                cg_pos = seq.find("CG", cg_pos + 1)
+                cg_pos = seq.find(args.motif, cg_pos + 1)
 
-                ins_data = (row['chromosome'], cg_start, row['strand'], row['read_name'], llr, methcall, mod_base)
-                c.execute("INSERT INTO methdata VALUES ('%s', %d, '%s', '%s', %.2f, %d, '%s')" % ins_data)
+                ins_data.append((row['chromosome'], cg_start, row['strand'], row['read_name'], llr, methcall, mod_base))
 
             if i % progress_interval == 0:
+                conn.executemany('INSERT INTO methdata VALUES (?,?,?,?,?,?,?)', ins_data)
+                ins_data = []
                 logger.info('processed %d records from %s' % (i, tsv))
+
+        if len(ins_data) > 0:
+            conn.executemany('INSERT INTO methdata VALUES (?,?,?,?,?,?,?)', ins_data)
+            ins_data = []
 
         c.execute("INSERT INTO modnames VALUES ('%s')" % args.modname)
 
-        c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f', '%s')" % (llr, -1*llr, args.modname))
+        c.execute("INSERT INTO cutoffs VALUES ('%.4f', '%.4f', '%s')" % (float(args.thresh), float(args.thresh)*-1, args.modname))
 
         logger.info('commiting records from %s to %s' % (tsv, db_fn))
 
@@ -2343,6 +2357,7 @@ def locus(args):
                     user_colours[bam] = c[2]
 
     if args.bams is not None:
+        logger.info('mod motif size (--motifsize) = %d (ensure this is correct for your data)' % int(args.motifsize))
         methbam = True
         bams = []
 
@@ -3820,6 +3835,7 @@ def composite(args):
 
     if methbam:
         avail_mods = mods_methbam(args.bam)
+        args.motifsize = len(args.motif)
     else:
         avail_mods = get_modnames(args.meth)
 
@@ -4251,6 +4267,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
     parser_locus.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_locus.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
+    parser_locus.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
     parser_locus.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_locus.add_argument('--phased', default=False, action='store_true', help='split samples into phases')
     parser_locus.add_argument('--include_unphased', default=False, action='store_true', help='include an "unphased" category if called with --phased')
@@ -4382,12 +4399,14 @@ if __name__ == '__main__':
     parser_custom.add_argument('--minmodprob', default=0.8, help='probability threshold for calling modified base (default = 0.8)')
     parser_custom.add_argument('--mincanprob', default=None, help='probability threshold for calling canonical base (default = minmodprob)')
     parser_custom.add_argument('-a', '--append', default=False, action='store_true', help='append to database')
+    parser_custom.add_argument('--motifsize', default=2, help='mod motif size (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
 
     # options for megalodon db
     parser_megalodon.add_argument('-m', '--methdata', required=True, help='megalodon per_read_text methylation output')
     parser_megalodon.add_argument('-d', '--db', default=None, help='database name (default: auto-infer)')
     parser_megalodon.add_argument('-p', '--minprob', default=0.8, help='probability threshold for calling modified or unmodified base (default = 0.8)')
     parser_megalodon.add_argument('-a', '--append', default=False, action='store_true', help='append to database')
+    parser_megalodon.add_argument('--motifsize', default=2, help='mod motif size (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
 
     # options for guppy db
     parser_guppy.add_argument('-s', '--samplename', required=True, help='name for sample')
@@ -4400,6 +4419,7 @@ if __name__ == '__main__':
     parser_guppy.add_argument('--minprob', default=0.8, help='probability threshold for calling modified or unmodified base (default = 0.8)')
     parser_guppy.add_argument('-a', '--append', default=False, action='store_true', help='append to database')
     parser_guppy.add_argument('--include_unmatched', action='store_true', default=False, help='include sites where read base does not match genome base')
+    parser_guppy.add_argument('--motifsize', default=2, help='mod motif size (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
 
     # options for nanopolish db
     parser_nanopolish.add_argument('-m', '--methdata', required=True, help='whole genome nanopolish methylation output, can be comma-delimited')
@@ -4408,6 +4428,7 @@ if __name__ == '__main__':
     parser_nanopolish.add_argument('-a', '--append', default=False, action='store_true', help='append to database')
     parser_nanopolish.add_argument('-s', '--scalegroup', default=False, action='store_true', help='scale threshold by number of CpGs in a group')
     parser_nanopolish.add_argument('-n', '--modname', default='CpG', help='modification type (tag if combining multiple mods, default = "CpG")')
+    parser_nanopolish.add_argument('--motif', default='CG', help='mod motif (default = CG)')
 
     # options for adjusting methylation / unmethylation cutoffs in methylartist db
     parser_adjustcutoffs.add_argument('-d', '--db', required=True, help='methylartist database')
