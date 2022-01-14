@@ -56,7 +56,8 @@ def main(args):
                 if read.has_tag('HP') or read.has_tag('PS'):
                     continue
 
-                read.set_tags([("PS",ps),("HP",hp)])
+                read.set_tag("PS",ps)
+                read.set_tag("HP",hp)
                 tag_count += 1
 
         outbam.write(read)

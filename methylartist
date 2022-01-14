@@ -580,7 +580,7 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
             mm = str(rec.get_tag('Mm')).rstrip(';')
         except KeyError:
             if not mm_warned:
-                logger.warning('cannot find Mm tag in at least one read, ensure this bam has Mm and Ml tags!')
+                logger.debug('cannot find Mm tag in at least one read, ensure this bam has Mm and Ml tags!')
                 mm_warned = True
                 continue
 
