@@ -1393,7 +1393,7 @@ def scoredist(args):
 
     ax.set_xlim(xmin, xmax)
 
-    out_fn = '_'.join(args.db.split(',')) + '.scoredist'
+    out_fn = '_'.join(map(os.path.basename, args.db.split(','))) + '.scoredist'
 
     if args.svg:
         out_fn += '.svg'
