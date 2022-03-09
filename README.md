@@ -431,7 +431,7 @@ chr1    10562   8       8
 
 Outputs distribution of modified base statistics with current cutoffs for one or more methylartist databases
 ```
-methylartist scoredist -d MCF7_ATCC.megalodon.db,MCF7_ECACC.megalodon.db
+methylartist scoredist -d MCF7_ATCC.megalodon.db,MCF7_ECACC.megalodon.db -m m
 ```
 
 ![score distribution](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_ATCC.megalodon.db_MCF7_ECACC.megalodon.db.scoredist.png)
