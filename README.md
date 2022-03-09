@@ -186,7 +186,7 @@ Examples:
 Strip plot of whole-genome CpG methylation in 10kbp bins, promoters (Eukaryotic Promoter Database, EPD), L1HS and SVA retrotransposons:
 
 ```
-methylartist segplot -s MCF7_megalogon_annotations.segmeth.tsv
+methylartist segplot -s MCF7_megalodon_annotations.segmeth.tsv
 ```
 
 ![strip plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_megalogon_annotations.segmeth.segplot.png?raw=true)
