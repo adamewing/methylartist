@@ -1376,7 +1376,7 @@ def scoredist(args):
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    dens = sns.kdeplot(data=sample)
+    dens = sns.kdeplot(data=sample, palette=args.palette, lw=float(args.lw))
 
     top = ax.get_ylim()[1]
 
@@ -4478,6 +4478,8 @@ if __name__ == '__main__':
     parser_scoredist.add_argument('-m', '--mod', required=True, help='modification to plot (will list for user if incorrect)')
     parser_scoredist.add_argument('--xmin', default=None)
     parser_scoredist.add_argument('--xmax', default=None)
+    parser_scoredist.add_argument('--lw', default=2, help='line width (default = 2)')
+    parser_scoredist.add_argument('--palette', default="tab10", help='palette for phases (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_scoredist.add_argument('--svg', action='store_true', default=False)
 
 
