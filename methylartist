@@ -732,7 +732,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
     return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, read_count)
 
 
-def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False):
+def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False, HP_only=False):
     # used for locus plots
 
     if phase:
@@ -769,7 +769,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False):
     reads = list(set(reads))
 
     if phase:
-        phased_reads_dict = get_phased_reads(bam, chrom, elt_start, elt_end, tag_untagged=(phase=='unphased'), min_mapq=int(args.min_mapq))
+        phased_reads_dict = get_phased_reads(bam, chrom, elt_start, elt_end, tag_untagged=(phase=='unphased'), min_mapq=int(args.min_mapq), HP_only=HP_only)
         reads = [r for r in reads if r in phased_reads_dict and phased_reads_dict[r] == phase]
 
     if hasattr(args, 'unambig_highlight') and hasattr(args, 'highlight'): 
@@ -2413,7 +2413,7 @@ def locus(args):
 
     if args.phased:
         for bam in data:
-            phased_reads = get_phased_reads(bam, chrom, elt_start, elt_end, tag_untagged=args.include_unphased, min_mapq=int(args.min_mapq))
+            phased_reads = get_phased_reads(bam, chrom, elt_start, elt_end, tag_untagged=args.include_unphased, min_mapq=int(args.min_mapq), HP_only=args.ignore_ps)
             phases[bam] = list(set([p for p in phased_reads.values() if p]))
             logger.info('phases for bam %s: %s' % (bam, ','.join(phases[bam])))
 
@@ -2439,7 +2439,7 @@ def locus(args):
                 for phase in phases[bam]:
                     bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + phase + '.' + mod
                     orig_bam[bamname] = bam
-                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam)
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam, HP_only=args.ignore_ps)
 
                     for name, read in reads[bamname].items():
                         for loc in read.llrs.keys():
@@ -2643,6 +2643,21 @@ def locus(args):
     for sample in sample_color:
         if orig_bam[sample] in user_colours:
             sample_color[sample] = user_colours[orig_bam[sample]]
+
+    if args.color_by_hp:
+        if args.phased:
+            hp_color = {}
+            for hp in ('1','2'):
+                hp_color[hp] = sns.color_palette(args.samplepalette, n_colors=2)[int(hp)-1]
+            
+            for sample in sample_color:
+                hp = sample.split('.')[-2]
+                assert hp in ('1','2')
+                sample_color[sample] = hp_color[hp]
+
+        else:
+            logger.warning('--color_by_hp has no effect without --phase')
+
 
     # plot genes
 
@@ -3505,6 +3520,9 @@ def region(args):
 
         while genemap[y].find(genes[ensg].tx_start, genes[ensg].tx_end):
             y += 1
+            if y > int(args.gene_track_height):
+                y = int(args.gene_track_height)
+                break
 
         tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start, genes[ensg].tx_end], [0.4+y, 0.4+y], color=gene_colours[i], zorder=2))
 
@@ -4284,6 +4302,8 @@ if __name__ == '__main__':
     parser_locus.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
     parser_locus.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_locus.add_argument('--phased', default=False, action='store_true', help='split samples into phases')
+    parser_locus.add_argument('--ignore_ps', default=False, action='store_true', help='do not use phase set (PS) when plotting phased data (HP only)')
+    parser_locus.add_argument('--color_by_hp', default=False, action='store_true', help='color samples by HP value (req --phased)')
     parser_locus.add_argument('--include_unphased', default=False, action='store_true', help='include an "unphased" category if called with --phased')
     parser_locus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_locus.add_argument('--readmarker', default='o', help='marker for (un)methylated glpyhs in read panel (matplotlib markers, default=o)')
@@ -4340,6 +4360,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_region.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
     parser_region.add_argument('--genepalette', default="viridis", help='colour palette name for highlights (default = "viridis")')
+    parser_region.add_argument('--gene_track_height', default=None, help='maximum number of gene track layers')
     parser_region.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
     parser_region.add_argument('--panelratios',  default=None, help='Alter panel ratios: needs to be 4 comma-seperated integers. Default: 1,5,3,3')
     parser_region.add_argument('--nticks', default=10, help='tick count (default=10)')
