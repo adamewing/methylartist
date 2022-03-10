@@ -2,9 +2,15 @@
 
 Tools for parsing and plotting methylation patterns from nanopore data
 
+[![Anaconda-Server Badge](https://anaconda.org/bioconda/methylartist/badges/version.svg)](https://anaconda.org/bioconda/methylartist)
+
 ## Installation
 
 `pip install methylartist`
+
+Or:
+
+`conda install -c bioconda methylartist`
 
 Alternatively:
 
@@ -186,7 +192,7 @@ Examples:
 Strip plot of whole-genome CpG methylation in 10kbp bins, promoters (Eukaryotic Promoter Database, EPD), L1HS and SVA retrotransposons:
 
 ```
-methylartist segplot -s MCF7_megalogon_annotations.segmeth.tsv
+methylartist segplot -s MCF7_megalodon_annotations.segmeth.tsv
 ```
 
 ![strip plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_megalogon_annotations.segmeth.segplot.png?raw=true)
@@ -431,7 +437,7 @@ chr1    10562   8       8
 
 Outputs distribution of modified base statistics with current cutoffs for one or more methylartist databases
 ```
-methylartist scoredist -d MCF7_ATCC.megalodon.db,MCF7_ECACC.megalodon.db
+methylartist scoredist -d MCF7_ATCC.megalodon.db,MCF7_ECACC.megalodon.db -m m
 ```
 
 ![score distribution](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_ATCC.megalodon.db_MCF7_ECACC.megalodon.db.scoredist.png)
