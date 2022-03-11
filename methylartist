@@ -3520,9 +3520,10 @@ def region(args):
 
         while genemap[y].find(genes[ensg].tx_start, genes[ensg].tx_end):
             y += 1
-            if y > int(args.gene_track_height):
-                y = int(args.gene_track_height)
-                break
+            if args.gene_track_height:
+                if y > int(args.gene_track_height):
+                    y = int(args.gene_track_height)
+                    break
 
         tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start, genes[ensg].tx_end], [0.4+y, 0.4+y], color=gene_colours[i], zorder=2))
 
