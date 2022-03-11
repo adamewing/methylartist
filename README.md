@@ -20,6 +20,14 @@ install methylartist and dependencies via:
 
 `python setup.py install`
 
+Tests/examples:
+
+```
+git clone https://github.com/adamewing/methylartist-tests.git
+cd methylartist-tests
+source run_tests.sh
+```
+
 ## Input data
 
 ### Alignments (.bam)
