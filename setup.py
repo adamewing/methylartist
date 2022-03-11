@@ -4,13 +4,13 @@ from setuptools import setup, find_packages
 
 setup(
     name='methylartist',
-    version='1.1.0',
+    version='1.1.1',
     author='Adam Ewing',
     author_email='adam.ewing@gmail.com',
     description=("Tools for parsing and plotting nanopore methylation data"),
     license='MIT',
     url='https://github.com/adamewing/methylartist',
-    download_url='https://github.com/adamewing/methylartist/archive/refs/tags/1.1.0.tar.gz',
+    download_url='https://github.com/adamewing/methylartist/archive/refs/tags/1.1.1.tar.gz',
     scripts=['methylartist'],
     packages=find_packages(),
     install_requires = [
