@@ -736,9 +736,9 @@ def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False, HP_only=
     # used for locus plots
 
     if phase:
-        logger.info('fetching reads from %s with for mod %s on phase %s' % (bam, mod, phase))
+        logger.info('fetching reads from %s with mod %s on phase %s' % (bam, mod, phase))
     else:
-        logger.info('fetching reads from %s with for mod %s' % (bam, mod))
+        logger.info('fetching reads from %s with mod %s' % (bam, mod))
 
     assert ':' in args.interval
     assert '-' in args.interval
@@ -3015,6 +3015,12 @@ def locus(args):
 
     order_stack = 2
 
+    smoothalpha = float(args.smoothalpha)
+
+    if smoothalpha > 1.0 or smoothalpha < 0.0:
+        logger.warning('--smoothalpha must be between 0 and 1, set to 1.0')
+        smoothalpha = 1.0
+
     for sample in sample_order:
         windowed_methfrac, meth_n = slide_window(meth_table, sample, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
 
@@ -3022,7 +3028,7 @@ def locus(args):
 
         masked_segs = mask_methfrac(list(meth_n.values()), cutoff=args.maskcutoff)
 
-        ax5.plot(list(windowed_methfrac.keys()), smoothed_methfrac, marker='', lw=4, color=sample_color[sample])
+        ax5.plot(list(windowed_methfrac.keys()), smoothed_methfrac, marker='', lw=4, color=sample_color[sample], alpha=smoothalpha)
 
         order_stack += 1
 
@@ -3784,8 +3790,14 @@ def region(args):
     logger.info('building meth frac plot...')
     ax4 = plt.subplot(gs[3])
 
+    smoothalpha = float(args.smoothalpha)
+
+    if smoothalpha > 1.0 or smoothalpha < 0.0:
+        logger.warning('--smoothalpha must be between 0 and 1, set to 1.0')
+        smoothalpha = 1.0
+
     for sample in sample_order:
-        ax4.plot(meth_segs['pos'], meth_segs[sample], marker='', lw=4, color=sample_color[sample], zorder=2, label=sample)
+        ax4.plot(meth_segs['pos'], meth_segs[sample], marker='', lw=4, color=sample_color[sample], zorder=2, label=sample, alpha=smoothalpha)
 
     ax4.legend()
     ax4.set_xlim(ax2.get_xlim())
@@ -4315,6 +4327,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--readopenmarkeredgecolor', default=None, help='edge color for open (unmethylated) markers in read plot (default = sample color)')
     parser_locus.add_argument('--slidingwindowsize', default=2, help='size of initial sliding window for coverage check (default=2)')
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
+    parser_locus.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
     parser_locus.add_argument('--maskcutoff', default=1, help='read count masking cutoff (default=1)')
     parser_locus.add_argument('-n', '--mincalls', default=0, help='drop modspace positions if call count (meth+unmeth) < --mincalls (default=0)')
     parser_locus.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
@@ -4357,6 +4370,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_region.add_argument('--min_window_calls', default=1, help='minimum reads per window to include in plot (default = 1)')
     parser_region.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
+    parser_region.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
     parser_region.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_region.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_region.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
