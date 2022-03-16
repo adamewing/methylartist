@@ -3478,6 +3478,20 @@ def region(args):
         if orig_bam[sample] in user_colours:
             sample_color[sample] = user_colours[orig_bam[sample]]
 
+    if args.color_by_hp:
+        if args.phased:
+            hp_color = {}
+            for hp in ('1','2'):
+                hp_color[hp] = sns.color_palette(args.samplepalette, n_colors=2)[int(hp)-1]
+            
+            for sample in sample_color:
+                hp = sample.split('.')[-1]
+                assert hp in ('1','2')
+                sample_color[sample] = hp_color[hp]
+
+        else:
+            logger.warning('--color_by_hp has no effect without --phase')
+
     # plot genes
 
     ax0 = plt.subplot(gs[0])
@@ -4329,7 +4343,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_locus.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
     parser_locus.add_argument('--maskcutoff', default=1, help='read count masking cutoff (default=1)')
-    parser_locus.add_argument('-n', '--mincalls', default=0, help='drop modspace positions if call count (meth+unmeth) < --mincalls (default=0)')
+    parser_locus.add_argument('--mincalls', default=0, help='drop modspace positions if call count (meth+unmeth) < --mincalls (default=0)')
     parser_locus.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
     parser_locus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
@@ -4386,6 +4400,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--width', default=16, help='image width (inches, default=16)')
     parser_region.add_argument('--height', default=8, help='image width (inches, default=8)')
     parser_region.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
+    parser_region.add_argument('--color_by_hp', default=False, action='store_true', help='color samples by HP value (req --phased)')
     parser_region.add_argument('--svg', action='store_true', default=False)
 
     # options for composite plots
