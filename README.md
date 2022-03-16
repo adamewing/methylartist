@@ -82,13 +82,13 @@ The default filename (`/path/to/megalodon_output/per_read_modified_base_calls.tx
 Example:
 
 ```
-methylartist db-megalodon -m MCF7_ATCC_REP1/per_read_modified_base_calls.txt --db MCF7_ATCC_REP1.db
+methylartist db-megalodon -m MCF7_ATCC_REP1/per_read_modified_base_calls.txt --db MCF7_ATCC.megalodon.db
 ```
 
-Appending additional results to the above database:
+Appending (`-a`) additional results to the above database:
 
 ```
-methylartist db-megalodon -m MCF7_ATCC_REP2/per_read_modified_base_calls.txt --db MCF7_ATCC_REP2.db
+methylartist db-megalodon -m MCF7_ATCC_REP2/per_read_modified_base_calls.txt --db MCF7_ATCC.megalodon.db -a
 ```
 
 Input files can be uncompressed or .gzipped.
