@@ -2002,6 +2002,9 @@ def segmeth(args):
     if args.spanning_only:
         outfn += '.spanning_only'
     
+    if args.phased:
+        outfn += '.phased'
+
     outfn += '.segmeth.tsv'
 
     out = open(outfn, 'w')
