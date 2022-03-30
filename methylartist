@@ -3837,7 +3837,7 @@ def region(args):
 
     # output
 
-    fn_prefix = '.' + '_'.join(args.interval.split(':')[:2]) + '.' + ''.join(mods)
+    fn_prefix = '.%s_%d_%d.%s' % (chrom, start, end, ''.join(mods))
 
     if methbam:
         fn_prefix = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1]) + fn_prefix
