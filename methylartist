@@ -3031,18 +3031,27 @@ def locus(args):
 
         masked_segs = mask_methfrac(list(meth_n.values()), cutoff=args.maskcutoff)
 
+        frac_masked = len(list(itertools.chain(*masked_segs))) / len(meth_n.values())
+
+        logger.info('%s:%d-%d (%s), sample %s fraction masked: %.3f' % (chrom, elt_start, elt_end, ''.join(use_mods), sample, frac_masked))
+
+        if frac_masked > float(args.maxmaskedfrac):
+            logger.warning('%s:%d-%d (%s), skip sample %s due to --maxmaskedfrac %.3f' % (chrom, elt_start, elt_end, ''.join(use_mods), sample, float(args.maxmaskedfrac)))
+            continue
+
         ax5.plot(list(windowed_methfrac.keys()), smoothed_methfrac, marker='', lw=4, color=sample_color[sample], alpha=smoothalpha)
 
         order_stack += 1
 
-        for seg in masked_segs:
-            if len(seg) > 2:
-                mf_seg = np.asarray(smoothed_methfrac)[seg]
-                pos_seg = np.asarray(list(windowed_methfrac.keys()))[seg]
-            
-                ax5.plot(pos_seg, mf_seg, marker='', lw=4, color='#ffffff', alpha=0.8, zorder=order_stack)
+        if not args.nomask:
+            for seg in masked_segs:
+                if len(seg) > 2:
+                    mf_seg = np.asarray(smoothed_methfrac)[seg]
+                    pos_seg = np.asarray(list(windowed_methfrac.keys()))[seg]
+                
+                    ax5.plot(pos_seg, mf_seg, marker='', lw=4, color='#ffffff', alpha=0.8, zorder=order_stack)
 
-                order_stack += 1
+                    order_stack += 1
 
     ax5.set_xlim(ax2.get_xlim())
     ax5.set_ylim((-0.05,1.05))
@@ -4346,6 +4355,8 @@ if __name__ == '__main__':
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_locus.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
     parser_locus.add_argument('--maskcutoff', default=1, help='read count masking cutoff (default=1)')
+    parser_locus.add_argument('--maxmaskedfrac', default=1.0, help='skip smoothed plot if fraction of sample masked (--maskcutoff) > this value (default = 1.0)')
+    parser_locus.add_argument('--nomask', default=False, action='store_true', help='skip drawing segment masks')
     parser_locus.add_argument('--mincalls', default=0, help='drop modspace positions if call count (meth+unmeth) < --mincalls (default=0)')
     parser_locus.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
