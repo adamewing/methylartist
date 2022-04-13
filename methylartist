@@ -852,11 +852,11 @@ def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False, HP_only=
     return seg_reads
 
 
-def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_end, seg_name, seg_strand, use_mod, phase):
+def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, phase):
     per_bam_results = {}
 
     for bam in data:
-        logger.info('profiling %s: %s %s:%d-%d:%s:%s phase: %s' % (bam, seg_name, seg_chrom, seg_start, seg_end, seg_strand, use_mod, str(phase)))
+        logger.info('profiling %s: %s:%d-%d:%s:%s phase: %s' % (bam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, str(phase)))
 
         te_ref_seq = single_seq_fa(args.teref)
         ref = pysam.Fastafile(args.ref)
@@ -3896,12 +3896,6 @@ def composite(args):
 
     assert os.path.exists(args.ref + '.fai'), 'ref fasta must be indexed'
 
-    fams = args.fams.split(',')
-
-    logger.info('fams: %s' % ','.join(fams))
-
-    segdata = pd.read_csv(args.segdata, sep='\t', header=0, index_col=0)
-
     mod_names = []
 
     data = dd(list)
@@ -3972,9 +3966,6 @@ def composite(args):
         if use_mod not in mod_names:
             sys.exit('please specify a modification via --mod\navailable mods are: %s' % ','.join(mod_names))
 
-
-    base_names = ['.'.join(bam.split('.')[:-1]) for bam in data]
-
     data_basename = None
 
     if methbam:
@@ -3987,7 +3978,7 @@ def composite(args):
 
     seg_basename = '.'.join(os.path.basename(args.segdata).split('.')[:-1])
 
-    outfn = data_basename + '.' + seg_basename + '.' + '_'.join(fams)
+    outfn = data_basename + '.' + seg_basename
 
     if args.phased:
         outfn += '.phased'
@@ -4005,21 +3996,20 @@ def composite(args):
 
     results = []
 
-    for seg in segdata.index:
-        seg_chrom  = str(segdata['seg_chrom'].loc[seg])
-        seg_start  = int(segdata['seg_start'].loc[seg])
-        seg_end    = int(segdata['seg_end'].loc[seg])
-        seg_strand = str(segdata['seg_strand'].loc[seg])
-        seg_name   = str(segdata['seg_name'].loc[seg])
+    with open(args.segdata) as bed:
+        for line in bed:
+            seg_chrom, seg_start, seg_end, seg_strand = line.strip().split()
+            seg_start  = int(seg_start)
+            seg_end    = int(seg_end)
 
-        if args.phased:
-            for phase in ('1','2'):
-                res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_name, seg_strand, use_mod, phase])
+            if args.phased:
+                for phase in ('1','2'):
+                    res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, phase])
+                    results.append(res)
+
+            else:
+                res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, None])
                 results.append(res)
-
-        else:
-            res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_name, seg_strand, use_mod, None])
-            results.append(res)
 
     # collect mod data
     out_res = dd(list) # cache for --outelts
@@ -4480,8 +4470,7 @@ if __name__ == '__main__':
     # options for composite plots
     parser_composite.add_argument('-d', '--data', default=None, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
     parser_composite.add_argument('-b', '--bams', default=None, help='one or more .bams with Mm and Ml tags for modification calls (see samtags spec)')
-    parser_composite.add_argument('-s', '--segdata', required=True, help='segmeth output')
-    parser_composite.add_argument('-f', '--fams', required=True, help='families, comma delimited, corresponds to values in seg_name column in segmeth output')
+    parser_composite.add_argument('-s', '--segdata', required=True, help='BED3+1: chrom, start, end, strand')
     parser_composite.add_argument('-r', '--ref', required=True, help='ref genome fasta')
     parser_composite.add_argument('-t', '--teref', required=True, help='TE ref fasta')
     parser_composite.add_argument('-p', '--procs', default=1, help='multiprocessing')
