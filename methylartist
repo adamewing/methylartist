@@ -852,67 +852,44 @@ def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False, HP_only=
     return seg_reads
 
 
-def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, seg_strand, use_mod):
-    methbam = False
+def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_end, seg_name, seg_strand, use_mod, phase):
+    per_bam_results = {}
 
-    if args.meth is None:
-        methbam = True
-    
-    if not methbam and not os.path.exists(args.meth):
-        sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % args.meth)
+    for bam in data:
+        logger.info('profiling %s: %s %s:%d-%d:%s:%s phase: %s' % (bam, seg_name, seg_chrom, seg_start, seg_end, seg_strand, use_mod, str(phase)))
 
-    logger.info('profiling %s %s:%d-%d:%s:%s' % (seg_name, seg_chrom, seg_start, seg_end, seg_strand, use_mod))
+        te_ref_seq = single_seq_fa(args.teref)
+        ref = pysam.Fastafile(args.ref)
 
-    te_ref_seq = single_seq_fa(args.teref)
-    ref = pysam.Fastafile(args.ref)
+        conn = None
+        c = None
 
-    conn = None
-    c = None
+        if not methbam:
+            conn = sqlite3.connect(data[bam])
+            c = conn.cursor()
 
-    if not methbam:
-        conn = sqlite3.connect(args.meth)
-        c = conn.cursor()
+        reads = []
+        if args.excl_ambig:
+            reads = exclude_ambiguous_reads(bam, seg_chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
+        else:
+            reads = get_reads(bam, seg_chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
 
-    reads = []
-    if args.excl_ambig:
-        reads = exclude_ambiguous_reads(args.bam, seg_chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
-    else:
-        reads = get_reads(args.bam, seg_chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
+        if phase:
+            phased_reads_dict = get_phased_reads(bam, seg_chrom, seg_start, seg_end, tag_untagged=(phase=='unphased'), min_mapq=int(args.min_mapq), HP_only=True)
+            reads = [r for r in reads if r in phased_reads_dict and phased_reads_dict[r] == phase]
 
-    reads = set(reads)
+        reads = set(reads)
 
-    seg_reads = {}
+        seg_reads = {}
 
-    if methbam:
-        for row in parse_methbam(args.bam, reads, seg_chrom, seg_start, seg_end, motifsize=len(args.motif), meth_thresh=0.8, can_thresh=0.8):
-            index, cg_chrom, cg_start, stat, methstate, modname = row
-
-            if seg_chrom != cg_chrom:
-                continue
-
-            if cg_start < seg_start or cg_start > seg_end:
-                continue
-
-            cg_seg_start = cg_start - seg_start
-
-            if index not in seg_reads:
-                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
-            else:
-                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
-
-    else:
-        for index in reads:
-            for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
-
-                cg_chrom, cg_start, stat, methstate, modname = row
+        if methbam:
+            for row in parse_methbam(bam, reads, seg_chrom, seg_start, seg_end, motifsize=len(args.motif), meth_thresh=0.8, can_thresh=0.8):
+                index, cg_chrom, cg_start, stat, methstate, modname = row
 
                 if seg_chrom != cg_chrom:
                     continue
 
                 if cg_start < seg_start or cg_start > seg_end:
-                    continue
-
-                if modname != use_mod:
                     continue
 
                 cg_seg_start = cg_start - seg_start
@@ -922,130 +899,165 @@ def get_meth_profile_composite(args, seg_chrom, seg_start, seg_end, seg_name, se
                 else:
                     seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
-    if args.max_read_density is not None:
-        seg_reads = densecall_filter(seg_reads, max_density=float(args.max_read_density))
-
-    meth_table = dd(dict)
-    sample = '.'.join(args.bam.split('.')[:-1])
-
-    for name, read in seg_reads.items():
-        for loc in read.llrs.keys():
-            uuid = str(uuid4())
-            meth_table[uuid]['loc'] = loc
-            meth_table[uuid]['modstat'] = read.llrs[loc]
-            meth_table[uuid]['read'] = name
-            meth_table[uuid]['sample'] = sample
-            meth_table[uuid]['call'] = read.meth_calls[loc]
-
-    meth_table = pd.DataFrame.from_dict(meth_table).T
-    meth_table['loc'] = pd.to_numeric(meth_table['loc'])
-    meth_table['modstat'] = pd.to_numeric(meth_table['modstat'])
-
-    meth_table['orig_loc'] = meth_table['loc']
-    meth_table['loc'] = ss.rankdata(meth_table['loc'], method='dense')
-
-    coord_to_cpg = {}
-    cpg_to_coord = {}
-    for orig_loc, new_loc in zip(meth_table['orig_loc'], meth_table['loc']):
-        coord_to_cpg[orig_loc] = new_loc
-        cpg_to_coord[new_loc]  = orig_loc
-
-    windowed_methfrac, meth_n = slide_window(meth_table, sample, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
-
-    if len(windowed_methfrac) <= int(args.smoothwindowsize):
-        logger.warning('too few sites after windowing: %s:%d-%d' % (seg_chrom, seg_start, seg_end))
-        return [], []
-
-    smoothed_methfrac = smooth(np.asarray(list(windowed_methfrac.values())), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
-
-    coord_meth_pos = []
-
-    cpg_meth_pos = list(windowed_methfrac.keys())
-
-    for cpg in cpg_meth_pos:
-        if cpg in cpg_to_coord:
-            if seg_strand == '+':
-                coord_meth_pos.append(cpg_to_coord[cpg])
-            if seg_strand == '-':
-                coord_meth_pos.append((seg_end-seg_start)-cpg_to_coord[cpg]-2)
-
-    # alignment to ref elt
-
-    elt_seq = ref.fetch(seg_chrom, seg_start, seg_end)
-
-    if seg_strand == '-':
-        elt_seq = rc(elt_seq)
-
-    te_ref_seq = te_ref_seq.upper()
-    elt_seq = elt_seq.upper()
-
-    s_ref = skseq.DNA(te_ref_seq)
-    s_elt = skseq.DNA(elt_seq)
-
-    aln_res = []
-
-    try:
-        if args.globalign:
-            aln_res = skalign.global_pairwise_align_nucleotide(s_ref, s_elt)
         else:
-            aln_res = skalign.local_pairwise_align_ssw(s_ref, s_elt)
-    except IndexError: # scikit-bio throws this if no bases align  >:|
-        logger.warning('no align on seg: %s:%d-%d' % (seg_chrom, seg_start, seg_end))
-        return [], []
-    
-    coord_ref, coord_elt = aln_res[2]
-    
-    len_ref = coord_ref[1] - coord_ref[0]
-    len_elt = coord_elt[1] - coord_elt[0]
+            for index in reads:
+                for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % index):
 
-    if len_ref / len(te_ref_seq) < float(args.lenfrac):
-        logger.warning('ref align too short on seg: %s:%d-%d (%f)' % (seg_chrom, seg_start, seg_end, len_ref / len(te_ref_seq)))
-        return [], []
+                    cg_chrom, cg_start, stat, methstate, modname = row
 
-    if len_elt / len(elt_seq) < float(args.lenfrac):
-        logger.warning('elt align too short on seg: %s:%d-%d (%f)' % (seg_chrom, seg_start, seg_end, len_elt / len(elt_seq)))
-        return [], []
+                    if seg_chrom != cg_chrom:
+                        continue
 
-    tab_msa = aln_res[0]
+                    if cg_start < seg_start or cg_start > seg_end:
+                        continue
 
-    elt_to_ref_coords = {}
+                    if modname != use_mod:
+                        continue
 
-    pos_ref = coord_ref[0]
-    pos_elt = coord_elt[0]
+                    cg_seg_start = cg_start - seg_start
 
-    for pos in tab_msa.iter_positions():
-        pos = list(pos)
-        b_ref = pos[0]
-        b_elt = pos[1]
+                    if index not in seg_reads:
+                        seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
+                    else:
+                        seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
-        if '-' not in pos:
-            elt_to_ref_coords[pos_elt] = pos_ref
-            pos_ref += 1
-            pos_elt += 1
+        if args.max_read_density is not None:
+            seg_reads = densecall_filter(seg_reads, max_density=float(args.max_read_density))
 
-        if b_elt == '-':
-            pos_ref += 1
+        meth_table = dd(dict)
+        sample = '.'.join(bam.split('.')[:-1])
+        call_count = 0
 
-        if b_ref == '-':
-            elt_to_ref_coords[pos_elt] = 'na'
-            pos_elt += 1
+        for name, read in seg_reads.items():
+            for loc in read.llrs.keys():
+                uuid = str(uuid4())
+                meth_table[uuid]['loc'] = loc
+                meth_table[uuid]['modstat'] = read.llrs[loc]
+                meth_table[uuid]['read'] = name
+                meth_table[uuid]['sample'] = sample
+                meth_table[uuid]['call'] = read.meth_calls[loc]
 
-    revised_coord_meth_pos = []
-    meth_profile = []
+                if read.meth_calls[loc] in (1, -1):
+                    call_count += 1
 
-    for pos, meth in zip(coord_meth_pos, smoothed_methfrac):
-        if pos not in elt_to_ref_coords:
+        if call_count < args.mincalls:
+            logger.warning('too few calls on seg: %s:%d-%d (%d)' % (seg_chrom, seg_start, seg_end, call_count))
+            per_bam_results[bam] = None
             continue
 
-        revised_pos = elt_to_ref_coords[pos]
+        meth_table = pd.DataFrame.from_dict(meth_table).T
+        meth_table['loc'] = pd.to_numeric(meth_table['loc'])
+        meth_table['modstat'] = pd.to_numeric(meth_table['modstat'])
 
-        if revised_pos != 'na':
-            revised_coord_meth_pos.append(revised_pos)
-            meth_profile.append(meth)
+        meth_table['orig_loc'] = meth_table['loc']
+        meth_table['loc'] = ss.rankdata(meth_table['loc'], method='dense')
 
-    #print(revised_coord_meth_pos, seg_name, seg_chrom, seg_start, seg_end, seg_strand, use_mod)
+        coord_to_cpg = {}
+        cpg_to_coord = {}
+        for orig_loc, new_loc in zip(meth_table['orig_loc'], meth_table['loc']):
+            coord_to_cpg[orig_loc] = new_loc
+            cpg_to_coord[new_loc]  = orig_loc
 
-    return revised_coord_meth_pos, meth_profile
+        windowed_methfrac, meth_n = slide_window(meth_table, sample, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
+
+        if len(windowed_methfrac) <= int(args.smoothwindowsize):
+            logger.warning('too few sites after windowing: %s:%d-%d' % (seg_chrom, seg_start, seg_end))
+            per_bam_results[bam] = None
+            continue
+
+        smoothed_methfrac = smooth(np.asarray(list(windowed_methfrac.values())), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
+
+        coord_meth_pos = []
+
+        cpg_meth_pos = list(windowed_methfrac.keys())
+
+        for cpg in cpg_meth_pos:
+            if cpg in cpg_to_coord:
+                if seg_strand == '+':
+                    coord_meth_pos.append(cpg_to_coord[cpg])
+                if seg_strand == '-':
+                    coord_meth_pos.append((seg_end-seg_start)-cpg_to_coord[cpg]-2)
+
+        # alignment to ref elt
+
+        elt_seq = ref.fetch(seg_chrom, seg_start, seg_end)
+
+        if seg_strand == '-':
+            elt_seq = rc(elt_seq)
+
+        te_ref_seq = te_ref_seq.upper()
+        elt_seq = elt_seq.upper()
+
+        s_ref = skseq.DNA(te_ref_seq)
+        s_elt = skseq.DNA(elt_seq)
+
+        aln_res = []
+
+        try:
+            aln_res = skalign.local_pairwise_align_ssw(s_ref, s_elt)
+        except IndexError: # scikit-bio throws this if no bases align  >:|
+            logger.warning('no align on seg: %s:%d-%d' % (seg_chrom, seg_start, seg_end))
+            per_bam_results[bam] = None
+            continue
+        
+        coord_ref, coord_elt = aln_res[2]
+        
+        len_ref = coord_ref[1] - coord_ref[0]
+        len_elt = coord_elt[1] - coord_elt[0]
+
+        if len_ref / len(te_ref_seq) < float(args.lenfrac):
+            logger.warning('ref align too short on seg: %s:%d-%d (%f)' % (seg_chrom, seg_start, seg_end, len_ref / len(te_ref_seq)))
+            per_bam_results[bam] = None
+            continue
+
+        if len_elt / len(elt_seq) < float(args.lenfrac):
+            logger.warning('elt align too short on seg: %s:%d-%d (%f)' % (seg_chrom, seg_start, seg_end, len_elt / len(elt_seq)))
+            per_bam_results[bam] = None
+            continue
+
+        tab_msa = aln_res[0]
+
+        elt_to_ref_coords = {}
+
+        pos_ref = coord_ref[0]
+        pos_elt = coord_elt[0]
+
+        for pos in tab_msa.iter_positions():
+            pos = list(pos)
+            b_ref = pos[0]
+            b_elt = pos[1]
+
+            if '-' not in pos:
+                elt_to_ref_coords[pos_elt] = pos_ref
+                pos_ref += 1
+                pos_elt += 1
+
+            if b_elt == '-':
+                pos_ref += 1
+
+            if b_ref == '-':
+                elt_to_ref_coords[pos_elt] = 'na'
+                pos_elt += 1
+
+        revised_coord_meth_pos = []
+        meth_profile = []
+
+        for pos, meth in zip(coord_meth_pos, smoothed_methfrac):
+            if pos not in elt_to_ref_coords:
+                continue
+
+            revised_pos = elt_to_ref_coords[pos]
+
+            if revised_pos != 'na':
+                revised_coord_meth_pos.append(revised_pos)
+                meth_profile.append(meth)
+
+        bam_noext = '.'.join(bam.split('.')[:-1])
+        if phase:
+            bam_noext += '.phase' + phase
+        per_bam_results[bam_noext] = (revised_coord_meth_pos, meth_profile)
+
+    return per_bam_results
 
 
 def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod):
@@ -3890,70 +3902,104 @@ def composite(args):
 
     segdata = pd.read_csv(args.segdata, sep='\t', header=0, index_col=0)
 
-    sample = args.sample
+    mod_names = []
 
-    avail_samples = ['_'.join(col.split('_')[:-2]) for col in segdata if col.endswith('_meth_calls')]
+    data = dd(list)
 
-    if sample not in avail_samples:
-        sys.exit('%s not in available samples: %s' % (sample, ','.join(avail_samples)))
+    if args.data is None and args.bams is None:
+        sys.exit('please specify either -d/--data or -b/--bams')
 
-    avail_mods = []
+    if args.color_by_phase and not args.phased:
+        sys.exit('must specify --phased to use --color_by_phase')
 
     methbam = False
 
-    if args.meth is None:
+    if args.data is not None:
+        if args.bams is not None:
+            sys.exit('please specify either -d/--data or -b/--bams but not both')
+
+        with open(args.data) as _:
+            for line in _:
+                bam, meth = line.strip().split()
+                if ',' in meth:
+                    sys.exit('multiple .db files per bam not supported for composite')
+
+                data[bam] = meth
+
+                for m in get_modnames(meth):
+                    mod_names.append(m)
+
+    if args.bams is not None:
         methbam = True
+        bams = []
 
-    if methbam:
-        avail_mods = mods_methbam(args.bam)
-        args.motifsize = len(args.motif)
-    else:
-        avail_mods = get_modnames(args.meth)
+        if args.bams.endswith('.bam') or (':' in args.bams and args.bams.split(':')[0].endswith('.bam')):
+            bams = args.bams.split(',')
 
-    if methbam and len(avail_mods) == 0:
-        sys.exit('bam %s does not appear to contain Mm/Ml tags' % args.bam)
+        else:
+            logger.info('assuming %s contains a list of .bams' % args.bams)
+            with open(args.bams) as bam_list:
+                for line in bam_list:
+                    bams.append(line.strip())
 
-    logger.info('available mods: %s' % ','.join(avail_mods))
+        for bam in bams:
+            if ':' in bam:
+                bam, _ = bam.split(':')
+
+            if not os.path.exists(bam+'.bai'):
+                sys.exit('bam not indexed: %s' % bam)
+
+            data[bam] = None
+
+        mod_names = mods_methbam(bam)
+
+    mod_names = list(set(mod_names))
+
+    logger.info('found mod names: %s' % ','.join(mod_names))
 
     use_mod = None
 
-    if len(avail_mods) == 1:
-        use_mod = avail_mods[0]
+    if len(mod_names) == 1:
+        use_mod = mod_names[0]
         logger.info('using the one available mod: %s' % use_mod)
 
-
     if use_mod is None:
-        if '_' not in sample:
-            sys.exit('cannot guess which mod to use, pick with --mod from %s and re-run' % ','.join(avail_mods))
-        
-        use_mod = sample.split('_')[-1]
+        if args.mod is None:
+            sys.exit('please specify a modification via --mod\navailable mods are: %s' % ','.join(mod_names))
+            
+        use_mod = args.mod
 
-        if use_mod not in avail_mods:
-            sys.exit('inferred mod %s not available, pick with --mod from %s and re-run' % (use_mod, ','.join(avail_mods)))
+        if use_mod not in mod_names:
+            sys.exit('please specify a modification via --mod\navailable mods are: %s' % ','.join(mod_names))
 
-    useable = []
 
-    for seg in segdata.index:
-        use_seg = True
+    base_names = ['.'.join(bam.split('.')[:-1]) for bam in data]
 
-        if segdata['seg_name'].loc[seg] not in fams:
-            use_seg = False
-            continue
+    data_basename = None
 
-        if (segdata[sample+'_meth_calls'].loc[seg] + segdata[sample+'_unmeth_calls'].loc[seg]) < int(args.mincalls):
-            use_seg = False
-            continue
+    if methbam:
+        data_basename = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1])
+        if len(args.bams.split(',')) > 1:
+            data_basename += '.cohort'
 
-        if use_seg:
-            useable.append(seg)
+    else:
+        data_basename = '.'.join(os.path.basename(args.data).split('.')[:-1])    
 
-    if len(useable) > int(args.maxsegs):
-        useable = random.sample(useable, int(args.maxsegs))
+    seg_basename = '.'.join(os.path.basename(args.segdata).split('.')[:-1])
 
-    segdata = segdata.loc[useable]
+    outfn = data_basename + '.' + seg_basename + '.' + '_'.join(fams)
 
-    logger.info('useable segments: %d' % len(useable))
+    if args.phased:
+        outfn += '.phased'
 
+    outfn += '.composite'
+
+    if args.svg:
+        outfn += '.svg'
+    else:
+        outfn += '.png'
+
+    logger.info('composite output filename: %s' % outfn)
 
     pool = mp.Pool(processes=int(args.procs))
 
@@ -3966,9 +4012,31 @@ def composite(args):
         seg_strand = str(segdata['seg_strand'].loc[seg])
         seg_name   = str(segdata['seg_name'].loc[seg])
 
-        res = pool.apply_async(get_meth_profile_composite, [args, seg_chrom, seg_start, seg_end, seg_name, seg_strand, use_mod])
+        if args.phased:
+            for phase in ('1','2'):
+                res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_name, seg_strand, use_mod, phase])
+                results.append(res)
 
-        results.append(res)
+        else:
+            res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_name, seg_strand, use_mod, None])
+            results.append(res)
+
+    # collect mod data
+    out_res = dd(list) # cache for --outelts
+
+    for res in results:
+        per_bam_res = res.get()
+
+        for bam in per_bam_res:
+            if per_bam_res[bam] is None:
+                continue
+
+            coord_meth_pos, meth_profile = per_bam_res[bam]
+
+            if len(coord_meth_pos) == 0:
+                continue
+
+            out_res[bam].append((coord_meth_pos, meth_profile))
 
     # set bounds
     mod_start = 0
@@ -3982,47 +4050,41 @@ def composite(args):
 
     assert mod_start < mod_end
 
-    # collect mod data
-    out_res = [] # cache for --outelts
-
-    for res in results:
-        coord_meth_pos, meth_profile = res.get()
-
-        if len(coord_meth_pos) == 0:
-            continue
-
-        out_res.append((coord_meth_pos, meth_profile))
-
-
-    if len(out_res) < int(args.outelts):
-        logger.info('available profiles (%d) is less than --outelts (%d)' % (len(out_res), int(args.outelts)))
-        args.outelts = len(out_res)
-
     # set up plot
+
+    sample_color = {}
+    if args.color_by_phase:
+        for i, phase in enumerate(('phase1', 'phase2')):
+            sample_color[phase] = sns.color_palette(args.palette, n_colors=2)[i]
+
+    else:
+        for i, bam in enumerate(out_res):
+            sample_color[bam] = sns.color_palette(args.palette, n_colors=len(out_res))[i]
+
     fig = plt.figure()
     gs = None
 
-    if args.plotmean:
-        gs = gridspec.GridSpec(3,1,height_ratios=[2,1,8])
-    else:
-        gs = gridspec.GridSpec(2,1,height_ratios=[1,8])
+    gs = gridspec.GridSpec(3,1,height_ratios=[3,1,8])
 
     g = 0
 
     # mean
 
-    if args.plotmean:
-        ax0 = plt.subplot(gs[g])
-        g += 1
-        ax0.set_ylim((-0.05,1.05))
-        ax0.set_xlim((mod_start, mod_end))
-        ax0.set_xticks([])
+    ax0 = plt.subplot(gs[g])
+    g += 1
+    ax0.set_ylim((-0.05,1.05))
+    ax0.set_xlim((mod_start, mod_end))
+    ax0.set_xticks([])
+
+    meanplot_table = dd(dict)
+
+    for bam in out_res:
 
         meth_by_coord = dd(list)
 
         per_elt_calls = []
 
-        for coord_meth_pos, meth_profile in out_res:
+        for coord_meth_pos, meth_profile in out_res[bam]:
             per_elt_calls.append(len(coord_meth_pos))
             for c, m in zip(coord_meth_pos, meth_profile):
                 meth_by_coord[c].append(m)
@@ -4036,22 +4098,25 @@ def composite(args):
         if len(v) > median_call_count:
             cutoff = v[median_call_count]
 
-        logger.info('median per element call count: %d' % median_call_count)
-        logger.info('per site call count cutoff: %d' % cutoff)
-
-        meanplot_table = dd(dict)
+        logger.info('%s: median per element call count: %d' % (bam, median_call_count))
+        logger.info('%s: per site call count cutoff: %d' % (bam, cutoff))
 
         for c in sorted(meth_by_coord.keys()):
             if len(meth_by_coord[c]) >= cutoff:
                 for m in meth_by_coord[c]:
                     u = str(uuid4())
+                    if args.color_by_phase:
+                        meanplot_table[u]['sample'] = bam.split('.')[-1]
+                    else:    
+                        meanplot_table[u]['sample'] = bam
+
                     meanplot_table[u]['coord'] = c
                     meanplot_table[u]['meth'] = m
-        
-        meanplot_table = pd.DataFrame.from_dict(meanplot_table).T
+    
+    meanplot_table = pd.DataFrame.from_dict(meanplot_table).T
 
-        ax0 = sns.lineplot(x='coord', y='meth', data=meanplot_table, ci='sd', lw=2, color=args.colour)
-        ax0.set_ylabel(args.meanplot_ylabel)
+    ax0 = sns.lineplot(x='coord', y='meth', data=meanplot_table, ci='sd', lw=2, hue='sample', palette=sample_color)
+    ax0.set_ylabel(args.meanplot_ylabel)
 
     # mod
     ax1 = plt.subplot(gs[g])
@@ -4092,8 +4157,12 @@ def composite(args):
     ax2 = plt.subplot(gs[g])
     g += 1
 
-    for coord_meth_pos, meth_profile in random.sample(out_res, int(args.outelts)):
-        ax2.plot(coord_meth_pos, meth_profile, lw=float(args.linewidth), alpha=float(args.alpha), color=args.colour)
+    for bam in out_res:
+        for coord_meth_pos, meth_profile in random.sample(out_res[bam], int(args.outelts)):
+            if args.color_by_phase:
+                bam = bam.split('.')[-1]
+
+            ax2.plot(coord_meth_pos, meth_profile, lw=float(args.linewidth), alpha=float(args.alpha), color=sample_color[bam])
 
     ax2.set_ylim((-0.05,1.05))
     ax2.set_xlim((mod_start, mod_end))
@@ -4101,17 +4170,8 @@ def composite(args):
 
     fig.set_size_inches(16, 6)
 
-    fn_base = sample + '.' + '_'.join(fams)
-
-    if args.plotmean:
-        fn_base += '.plotmean'
-
-    if args.svg:
-        plt.savefig('%s.composite.svg' % fn_base, bbox_inches='tight')
-        logger.info('plotted to %s.composite.svg' % fn_base)
-    else:
-        plt.savefig('%s.composite.png' % fn_base, bbox_inches='tight')
-        logger.info('plotted to %s.composite.png' % fn_base)
+    plt.savefig(outfn, bbox_inches='tight')
+    logger.info('plotted to %s' % outfn)
 
 
 def wgmeth(args):
@@ -4418,20 +4478,18 @@ if __name__ == '__main__':
     parser_region.add_argument('--svg', action='store_true', default=False)
 
     # options for composite plots
+    parser_composite.add_argument('-d', '--data', default=None, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
+    parser_composite.add_argument('-b', '--bams', default=None, help='one or more .bams with Mm and Ml tags for modification calls (see samtags spec)')
     parser_composite.add_argument('-s', '--segdata', required=True, help='segmeth output')
-    parser_composite.add_argument('-b', '--bam', required=True, help='alignments in .bam format. If -m/--meth not given .bam must contain modified basecalling tags')
-    parser_composite.add_argument('-m', '--meth', default=None, help='methylation database (if not given, modified bases must be tagged in .bam)')
     parser_composite.add_argument('-f', '--fams', required=True, help='families, comma delimited, corresponds to values in seg_name column in segmeth output')
     parser_composite.add_argument('-r', '--ref', required=True, help='ref genome fasta')
     parser_composite.add_argument('-t', '--teref', required=True, help='TE ref fasta')
-    parser_composite.add_argument('--sample', required=True, help='specify sample name')
     parser_composite.add_argument('-p', '--procs', default=1, help='multiprocessing')
-    parser_composite.add_argument('-c', '--colour', default='#ff4500', help='colour (default: #ff4500)')
+    parser_composite.add_argument('-c','--palette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_composite.add_argument('-a', '--alpha', default=0.3, help='alpha (default: 0.3)')
     parser_composite.add_argument('-w', '--linewidth', default=1, help='line width (default: 1)')
     parser_composite.add_argument('-l', '--lenfrac', default=0.95, help='fraction of TE length that must align (default 0.95)')
     parser_composite.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
-    parser_composite.add_argument('--plotmean', default=False, action='store_true', help='plot mean of composite elements at top of plot')
     parser_composite.add_argument('--meanplot_ylabel', default='% methylation', help='set y-axis label on mean plot')
     parser_composite.add_argument('--mod', default=None, help='modification to plot (mod codes will be listed, default: infer from sample name')
     parser_composite.add_argument('--motif', default='CG', help='modified motif to highlight (default = CG)')
@@ -4446,8 +4504,9 @@ if __name__ == '__main__':
     parser_composite.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default 8)')
     parser_composite.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_composite.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
-    parser_composite.add_argument('--globalign', action='store_true', default=False, help='experimental')
     parser_composite.add_argument('--excl_ambig', action='store_true', default=False)
+    parser_composite.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
+    parser_composite.add_argument('--color_by_phase', default=False, action='store_true', help='color samples by HP value (req --phased)')
     parser_composite.add_argument('--svg', action='store_true', default=False)
 
     # options for whole genome output
