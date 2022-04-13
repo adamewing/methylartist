@@ -3998,7 +3998,23 @@ def composite(args):
 
     with open(args.segdata) as bed:
         for line in bed:
-            seg_chrom, seg_start, seg_end, seg_strand = line.strip().split()
+            c = line.strip().split()
+            
+            seg_chrom, seg_start, seg_end = line.strip().split()[:3]        
+
+            str_col = 0
+
+            if c[3] in ('-', '+'):
+                str_col = 3
+            
+            elif c[4] in ('-', '+'):
+                str_col = 4
+            
+            else:
+                sys.exit('strand (+/-) not found in cols 4 or 5 of %s' % args.segdata)
+            
+            seg_strand = c[str_col]
+
             seg_start  = int(seg_start)
             seg_end    = int(seg_end)
 
