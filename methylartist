@@ -30,6 +30,8 @@ import pandas as pd
 import pysam
 import scipy.stats as ss
 
+from pandas.api.types import CategoricalDtype
+
 skbio_installed = True
 
 try:
@@ -2260,8 +2262,10 @@ def segplot(args):
     elif args.ridge:
         sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
 
+        sample_order = CategoricalDtype(samples_mods, ordered=True)
+        plot_data['sample'] = plot_data['sample'].astype(sample_order)
+
         if args.categories:
-            from pandas.api.types import CategoricalDtype
             cat_order = CategoricalDtype(order, ordered=True)
             plot_data['group'] = plot_data['group'].astype(cat_order)
 
