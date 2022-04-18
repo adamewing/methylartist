@@ -942,7 +942,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
                 if read.meth_calls[loc] in (1, -1):
                     call_count += 1
 
-        if call_count < args.mincalls:
+        if call_count < int(args.mincalls):
             logger.warning('too few calls on seg: %s:%d-%d (%d)' % (seg_chrom, seg_start, seg_end, call_count))
             per_bam_results[bam] = None
             continue
@@ -2200,7 +2200,7 @@ def segplot(args):
             for m in mods:
                 sm = s + '_' + m
 
-                if (data[sm + '_meth_calls'].loc[seg] + data[sm + '_unmeth_calls'].loc[seg]) < int(args.mincalls):
+                if (data[sm + '_meth_calls'].loc[seg] + data[sm + '_unmeth_calls'].loc[seg]) < int(int(args.mincalls)):
                     use_seg = False
                     continue
 
@@ -2504,9 +2504,8 @@ def locus(args):
         sys.exit('%s: insufficient coverage for plot' % args.interval)        
 
     # optional mincall filter
-    args.mincalls = int(args.mincalls)
 
-    if args.mincalls > 0:
+    if int(args.mincalls) > 0:
         drop_ix = []
 
         logger.info('assessing coverage per --mincalls, per-read sites to consider: %d' % len(meth_table['loc']))
@@ -2515,7 +2514,7 @@ def locus(args):
             for sample in sample_order:
                 call_count = len(meth_table.loc[(meth_table['sample'] == sample) & (meth_table['loc'] == new_loc)])
 
-                if call_count < args.mincalls:
+                if call_count < int(args.mincalls):
                     drop_ix += list(meth_table.loc[(meth_table['loc'] == new_loc)].index)
             
             if i % tick == 0:
@@ -3109,8 +3108,8 @@ def locus(args):
     if args.max_read_density:
         fn_prefix += '.mrd%.2f' % float(args.max_read_density)
 
-    if args.mincalls > 0:
-        fn_prefix += '.mc%d' % args.mincalls
+    if int(args.mincalls) > 0:
+        fn_prefix += '.mc%d' % int(args.mincalls)
     
     if args.svg:
         plt.savefig('%s.locus.meth.svg' % fn_prefix, bbox_inches='tight')
