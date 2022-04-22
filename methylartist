@@ -44,6 +44,7 @@ except ModuleNotFoundError:
 from uuid import uuid4
 from collections import defaultdict as dd
 from collections import Counter
+from collections import namedtuple
 from itertools import product
 from operator import itemgetter
 from copy import deepcopy
@@ -106,9 +107,10 @@ class Read:
 
 
 class Gene:
-    def __init__(self, ensg, name):
+    def __init__(self, ensg, name, strand):
         self.ensg = ensg
         self.name = name
+        self.strand = strand
         self.tx_start = None
         self.tx_end = None
         self.cds_start = None
@@ -1295,6 +1297,57 @@ def mask_methfrac(data, cutoff=20):
     return segs
 
 
+def get_bed_annotations(fn, chrom, elt_start, elt_end):
+    ann = []
+
+    elt_start = int(elt_start)
+    elt_end = int(elt_end)
+
+    with open(fn) as bed:
+        for bed_rec in bed:
+            c = bed_rec.strip().split()
+            bed_chrom, bed_start, bed_end = c[:3]
+
+            if bed_chrom != chrom:
+                continue
+
+            bed_start = int(bed_start)
+            bed_end = int(bed_end)
+
+            if bed_end < elt_start:
+                continue
+
+            if bed_start > elt_end:
+                continue
+
+            if bed_start < elt_start:
+                bed_start = elt_start
+
+            if bed_end > elt_end:
+                bed_end = elt_end
+
+            bed_label = None
+            bed_colour = None
+            strand = None
+
+            if len(c) > 3:
+                bed_label = c[3]
+            
+            if len(c) > 4:
+                if c[4] not in ('+', '-'):
+                    sys.exit('format for --bed input must be: chrom start end label strand colour')
+                
+                strand = c[4]
+            
+            if len(c) > 5:
+                bed_colour = c[5]
+
+            BED = namedtuple("BED", "start end label strand colour")
+            ann.append(BED(start=bed_start, end=bed_end, label=bed_label, strand=strand, colour=bed_colour))
+    
+    return ann
+
+
 def build_genes(gtf, chrom, start, end):
     # used for locus plots
     genes = {}
@@ -1326,7 +1379,7 @@ def build_genes(gtf, chrom, start, end):
         name = attr_dict['gene_name']
 
         if ensg not in genes:
-            genes[ensg] = Gene(ensg, name)
+            genes[ensg] = Gene(ensg, name, strand)
 
         if feature == 'exon':
             genes[ensg].add_exon(block)
@@ -2714,6 +2767,8 @@ def locus(args):
 
     gene_colours = sns.color_palette(args.genepalette, n_colors=len(genes))
 
+    y = 1
+
     for i, ensg in enumerate(genes):
         if not genes[ensg].has_tx():
             logger.warning('no transcript for gene: %s' % genes[ensg].name)
@@ -2736,8 +2791,17 @@ def locus(args):
         genemap[y].add_interval(Interval(genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start))
 
         if args.labelgenes:
+            label = genes[ensg].name
+
+            if genes[ensg].strand in ('+', '-'):
+                if genes[ensg].strand == '+':
+                    label += '>>'
+                
+                else:
+                    label = '<<' + label
+
             lg_x  = max(genes[ensg].tx_start-elt_start, 0)
-            gtxt  = ax0.text(lg_x, y+0.8, genes[ensg].name, bbox=dict(boxstyle="round,pad=0.3", fc="lavender", alpha=0.5, lw=0), zorder=4)
+            gtxt  = ax0.text(lg_x, y+0.8, label, bbox=dict(boxstyle="round,pad=0.3", fc="lavender", alpha=0.5, lw=0), zorder=4)
             bb_w  = gtxt.get_tightbbox(renderer=fig.canvas.get_renderer()).width
             fig_w = fig.get_size_inches()[0]*fig.dpi
             txt_w = bb_w/fig_w*(elt_end-elt_start)
@@ -2747,6 +2811,36 @@ def locus(args):
 
     if args.labelgenes:
         gene_height = max(6, len(genemap))
+
+    if args.bed:
+        logger.info('loading annotations from %s' % args.bed)
+        gene_height += 3
+
+        y += 1
+
+        bed_annotations = get_bed_annotations(args.bed, chrom, elt_start, elt_end)
+        bed_colours = sns.color_palette(args.genepalette, n_colors=len(bed_annotations))
+
+        for i, ann in enumerate(bed_annotations):
+            bed_colour = bed_colours[i]
+
+            if ann.colour is not None:
+                bed_colour = ann.colour
+
+            exon_patches.append(matplotlib.patches.Rectangle([ann.start-elt_start, y], (ann.end-ann.start), 1.0, edgecolor=bed_colour, facecolor=bed_colour, zorder=3))
+
+            if ann.label is not None:
+                lg_x  = max(ann.start-elt_start, 0)
+                label = ann.label
+
+                if ann.strand is not None:
+                    if ann.strand == '+':
+                        label += '>>'
+                    
+                    else:
+                        label = '<<' + label
+
+                gtxt  = ax0.text(lg_x, y, label, bbox=dict(boxstyle="round,pad=0.3", fc="lavender", alpha=0.5, lw=0), zorder=4)
 
     ax0.set_ylim(0, gene_height)
     ax0.set_yticks([])
@@ -3005,7 +3099,7 @@ def locus(args):
         ax4.axhline(y=lower, c='k', linestyle='--',lw=1)
 
     ax4 = sns.lineplot(x='loc', y='modstat', hue='sample', data=meth_table, palette=sample_color, zorder=2)
-
+    
     if args.statname:
         ax4.set_ylabel(args.statname)
 
@@ -3067,6 +3161,39 @@ def locus(args):
                     ax5.plot(pos_seg, mf_seg, marker='', lw=4, color='#ffffff', alpha=0.8, zorder=order_stack)
 
                     order_stack += 1
+
+    ax4.set_zorder(order_stack)  # adjust z-level of legend after smoothed plot is finished
+
+    if args.color_by_hp:
+        handles, labels = ax4.get_legend_handles_labels()
+        phases = list(set([label.split('.')[-2] for label in labels]))
+
+        found_phases = {}
+
+        new_labels = []
+        new_handles = []
+
+        if args.phase_labels:
+            if ':' not in args.phase_labels:
+                sys.exit('incorrect syntax: %s' % args.phase_labels)
+
+            phase_labels = dict([pl.split(':') for pl in args.phase_labels.split(',')])
+
+        for i, label in enumerate(labels):
+            hp = label.split('.')[-2]
+            if hp not in found_phases:
+                phase_name = hp
+
+                if args.phase_labels:
+                    if hp in phase_labels:
+                        phase_name = phase_labels[hp]
+
+                new_labels.append(phase_name)
+                new_handles.append(handles[i])
+                
+            found_phases[hp] = True
+
+        ax4.legend(new_handles, new_labels)
 
     ax5.set_xlim(ax2.get_xlim())
     ax5.set_ylim((-0.05,1.05))
@@ -4332,7 +4459,7 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers(title="tool", dest="tool")
     subparsers.required = True
 
-    __version__ = "1.2.0"
+    __version__ = "1.2.1"
     parser.add_argument('-v', '--version', action='version', version='%(prog)s {version}'.format(version=__version__))
 
     parser_nanopolish    = subparsers.add_parser('db-nanopolish')
@@ -4406,12 +4533,14 @@ if __name__ == '__main__':
     parser_locus.add_argument('-t', '--slidingwindowstep', default=1, help='step size for initial sliding window (default=1)')
     parser_locus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
     parser_locus.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
+    parser_locus.add_argument('--bed', default=None, help='.bed file for additional annotations')
     parser_locus.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_locus.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
     parser_locus.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_locus.add_argument('--phased', default=False, action='store_true', help='split samples into phases')
     parser_locus.add_argument('--ignore_ps', default=False, action='store_true', help='do not use phase set (PS) when plotting phased data (HP only)')
     parser_locus.add_argument('--color_by_hp', default=False, action='store_true', help='color samples by HP value (req --phased)')
+    parser_locus.add_argument('--phase_labels', default=None, help='if --color_by_hp substitute HP tags for labels. Format HP:Label comma-delimited e.g.: 1:Father,2:Mother')
     parser_locus.add_argument('--include_unphased', default=False, action='store_true', help='include an "unphased" category if called with --phased')
     parser_locus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
     parser_locus.add_argument('--readmarker', default='o', help='marker for (un)methylated glpyhs in read panel (matplotlib markers, default=o)')
