@@ -542,6 +542,7 @@ def mods_methbam(bam_fn):
                 mod_strand = '-'
             
             mod_base, mod_type = mod_info.split(mod_strand)
+            mod_type = mod_type.rstrip('?.')
 
             mods.append(mod_type)
         
@@ -566,8 +567,11 @@ def split_ml(mod_strings, ml):
     return mls
 
 
-def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, can_thresh=0.8):
+def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, can_thresh=0.8, restrict_motif=None, restrict_ref=None):
     bam = pysam.AlignmentFile(bam_fn)
+
+    if restrict_ref is not None:
+        restrict_ref = pysam.Fastafile(restrict_ref)
 
     mm_warned = False
 
@@ -578,10 +582,11 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
         if rec.qname not in reads:
             continue
 
-        ap = dict([(k, v) for (k, v) in rec.get_aligned_pairs() if None not in (k,v)])
+        ap = dict([(k, v) for (k, v) in rec.get_aligned_pairs() if k is not None])
 
         try:
             mm = str(rec.get_tag('Mm')).rstrip(';')
+
         except KeyError:
             if not mm_warned:
                 logger.debug('cannot find Mm tag in at least one read, ensure this bam has Mm and Ml tags!')
@@ -631,10 +636,21 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
                 if skip > 0:
                     i += skip
 
-                genome_pos = ap[base_pos[i]]
+                genome_pos = None
 
                 if rec.is_reverse:
-                    genome_pos = ap[len(rec.seq)-base_pos[i]-1] - (int(motifsize)-1)
+                    genome_pos = ap[len(rec.seq)-base_pos[i]-1]
+
+                    if genome_pos is None:
+                        continue
+
+                    genome_pos -= (int(motifsize)-1)
+
+                else:
+                    genome_pos = ap[base_pos[i]]
+
+                if genome_pos is None:
+                    continue
 
                 p_mod = score/255
                 p_can = 1-p_mod
@@ -648,6 +664,11 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
 
                 if p_can > can_thresh:
                     methstate = -1
+
+                if None not in (restrict_motif, restrict_ref):
+                    ref_motif = restrict_ref.fetch(rec.reference_name, genome_pos, genome_pos+2)
+                    if ref_motif.upper() != restrict_motif.upper():
+                        continue
 
                 yield (rec.qname, rec.reference_name, genome_pos, p_mod, methstate, mod_type)
 
@@ -736,7 +757,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
     return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, read_count)
 
 
-def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False, HP_only=False):
+def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False, HP_only=False, restrict_motif=None, restrict_ref=None):
     # used for locus plots
 
     if phase:
@@ -801,7 +822,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False, HP_only=
     seg_reads = {}
 
     if methbam:
-        for row in parse_methbam(bam, reads, chrom, elt_start, elt_end, motifsize=args.motifsize, meth_thresh=0.8, can_thresh=0.8):
+        for row in parse_methbam(bam, reads, chrom, elt_start, elt_end, motifsize=args.motifsize, meth_thresh=0.8, can_thresh=0.8, restrict_motif=restrict_motif, restrict_ref=restrict_ref):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if methstate == 0:
@@ -2444,8 +2465,25 @@ def locus(args):
                 if len(c) == 3:
                     user_colours[bam] = c[2]
 
+    if args.restrict_ref is not None and args.restrict_motif is None:
+        logger.warning('must specify --restrict_motif with --restrict_ref e.g. --restrict_motif CG for CpG methylation')
+        sys.exit(1)
+
+    if args.restrict_ref is None and args.restrict_motif is not None:
+        logger.warning('must specify --restrict_ref with --restrict_motif')
+        sys.exit(1)
+
+    if args.restrict_motif is not None:
+        if len(args.restrict_motif) != int(args.motifsize):
+            logger.warning('motif size (set with --motifsize) %d does not match length of --restrict_motif (%s)' % (int(args.motifsize), args.restrict_motif))
+            sys.exit(1)
+
     if args.bams is not None:
         logger.info('mod motif size (--motifsize) = %d (ensure this is correct for your data)' % int(args.motifsize))
+
+        if args.restrict_ref is None:
+            logger.warning('*** WARNING: specifying a reference genome (indexed via samtools faidx) with --restrict_ref is strongly recommended when using mod .bams ***')
+
         methbam = True
         bams = []
 
@@ -2511,7 +2549,7 @@ def locus(args):
                 for phase in phases[bam]:
                     bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + phase + '.' + mod
                     orig_bam[bamname] = bam
-                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam, HP_only=args.ignore_ps)
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam, HP_only=args.ignore_ps, restrict_motif=args.restrict_motif, restrict_ref=args.restrict_ref)
 
                     for name, read in reads[bamname].items():
                         for loc in read.llrs.keys():
@@ -2528,7 +2566,7 @@ def locus(args):
             else:
                 bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + mod
                 orig_bam[bamname] = bam
-                reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, methbam=methbam)
+                reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, methbam=methbam, restrict_motif=args.restrict_motif, restrict_ref=args.restrict_ref)
 
                 for name, read in reads[bamname].items():
                     for loc in read.llrs.keys():
@@ -3147,6 +3185,9 @@ def locus(args):
         if frac_masked > float(args.maxmaskedfrac):
             logger.warning('%s:%d-%d (%s), skip sample %s due to --maxmaskedfrac %.3f' % (chrom, elt_start, elt_end, ''.join(use_mods), sample, float(args.maxmaskedfrac)))
             continue
+
+        if frac_masked > 0.1 and args.bams is not None and args.restrict_ref is None:
+            logger.warning('*** WARNING: specifying a reference genome (indexed via samtools faidx) with --restrict_ref is strongly recommended when using mod .bams ***')
 
         ax5.plot(list(windowed_methfrac.keys()), smoothed_methfrac, marker='', lw=4, color=sample_color[sample], alpha=smoothalpha)
 
@@ -4533,6 +4574,8 @@ if __name__ == '__main__':
     parser_locus.add_argument('-t', '--slidingwindowstep', default=1, help='step size for initial sliding window (default=1)')
     parser_locus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
     parser_locus.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
+    parser_locus.add_argument('--restrict_ref', default=None, help='restrict modified motifs to those that agree with the reference genome (requires --restrict_motif, recommended for mod bams)')
+    parser_locus.add_argument('--restrict_motif', default=None, help='motifs to use with --restrict_reference (required if using --restrict_reference, recommended for mod bams)')
     parser_locus.add_argument('--bed', default=None, help='.bed file for additional annotations')
     parser_locus.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_locus.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
