@@ -150,7 +150,7 @@ Example:
 Aggregate whole-genome CpG methylation in 10kbp bins, promoters (Eukaryotic Promoter Database, EPD), L1HS and SVA retrotransposons:
 
 ```
-methylartist segmeth -d MCF7_data_megalodon.txt -i MCF7_megalodon_annotations.bed -p 32 --excl_ambig
+methylartist segmeth -d MCF7_data_megalodon.txt -i MCF7_megalodon_annotations.bed -p 32
 ```
 
 Contents of `MCF7_data_megalodon.txt`:
