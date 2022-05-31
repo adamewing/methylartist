@@ -525,17 +525,24 @@ def mods_methbam(bam_fn):
     mm_warned = False
 
     for rec in bam.fetch():
+        mm = None
+
         try:
             mm = str(rec.get_tag('Mm')).rstrip(';')
         except KeyError:
             if not mm_warned:
-                logger.debug('cannot find Mm tag in at least one read, ensure this bam has Mm and Ml tags!')
+                logger.debug('cannot find Mm tag in at least one read (example: %s), ensure this bam has Mm and Ml tags!' % read.qname)
                 mm_warned = True
                 continue
         
-        mod_strings = mm.split(';')
-
         mods = []
+
+        if mm is None:
+            logger.debug('null Mm tag in at least one read (example: %s), ensure this bam has proper Mm and Ml tags!' % read.qname)
+            mm_warned = True
+            continue
+
+        mod_strings = mm.split(';')
 
         for mod_string in mod_strings:
             m = mod_string.split(',')
