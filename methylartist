@@ -531,14 +531,14 @@ def mods_methbam(bam_fn):
             mm = str(rec.get_tag('Mm')).rstrip(';')
         except KeyError:
             if not mm_warned:
-                logger.debug('cannot find Mm tag in at least one read (example: %s), ensure this bam has Mm and Ml tags!' % read.qname)
+                logger.debug('cannot find Mm tag in at least one read (example: %s), ensure this bam has Mm and Ml tags!' % rec.qname)
                 mm_warned = True
                 continue
         
         mods = []
 
         if mm is None:
-            logger.debug('null Mm tag in at least one read (example: %s), ensure this bam has proper Mm and Ml tags!' % read.qname)
+            logger.debug('null Mm tag in at least one read (example: %s), ensure this bam has proper Mm and Ml tags!' % rec.qname)
             mm_warned = True
             continue
 
@@ -595,6 +595,9 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
 
         ap = dict([(k, v) for (k, v) in rec.get_aligned_pairs() if k is not None])
 
+        mm = None
+        ml = None
+
         try:
             mm = str(rec.get_tag('Mm')).rstrip(';')
 
@@ -607,6 +610,9 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
         try:
             ml = rec.get_tag('Ml')
         except KeyError:
+            continue
+
+        if None in (mm, ml):
             continue
 
         mod_strings = mm.split(';')
