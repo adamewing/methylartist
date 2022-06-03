@@ -2283,7 +2283,12 @@ def segplot(args):
 
         mods = user_mods
 
-    samples_mods = list(set([s + '_' + m for s, m in itertools.product(samples, mods)]))
+    samples_mods = []
+    for s in samples:
+        for m in mods:
+            sample_mod = s + '_' + m
+            if sample_mod not in samples_mods:
+                samples_mods.append(sample_mod)
 
     logger.info('sample + mod permutations: %s' % ','.join(samples_mods))
 
