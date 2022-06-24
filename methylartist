@@ -528,17 +528,20 @@ def mods_methbam(bam_fn):
         mm = None
 
         try:
-            mm = str(rec.get_tag('Mm')).rstrip(';')
+            mm = str(rec.get_tag('MM')).rstrip(';')
         except KeyError:
-            if not mm_warned:
-                logger.debug('cannot find Mm tag in at least one read (example: %s), ensure this bam has Mm and Ml tags!' % rec.qname)
-                mm_warned = True
-                continue
+            try:
+                mm = str(rec.get_tag('Mm')).rstrip(';')
+            except KeyError:
+                if not mm_warned:
+                    logger.debug('cannot find Mm tag in at least one read (example: %s), ensure this bam has MM and ML tags!' % rec.qname)
+                    mm_warned = True
+                    continue
         
         mods = []
 
         if mm is None:
-            logger.debug('null Mm tag in at least one read (example: %s), ensure this bam has proper Mm and Ml tags!' % rec.qname)
+            logger.debug('null Mm tag in at least one read (example: %s), ensure this bam has proper MM and ML tags!' % rec.qname)
             mm_warned = True
             continue
 
@@ -599,18 +602,24 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
         ml = None
 
         try:
-            mm = str(rec.get_tag('Mm')).rstrip(';')
+            mm = str(rec.get_tag('MM')).rstrip(';')
 
         except KeyError:
-            if not mm_warned:
-                logger.debug('cannot find Mm tag in at least one read, ensure this bam has Mm and Ml tags!')
-                mm_warned = True
-                continue
+            try:
+                mm = str(rec.get_tag('Mm')).rstrip(';')
+            except:
+                if not mm_warned:
+                    logger.debug('cannot find Mm tag in at least one read, ensure this bam has MM and ML tags!')
+                    mm_warned = True
+                    continue
 
         try:
-            ml = rec.get_tag('Ml')
+            ml = rec.get_tag('ML')
         except KeyError:
-            continue
+            try:
+                ml = rec.get_tag('Ml')
+            except KeyError:
+                continue
 
         if None in (mm, ml):
             continue
@@ -4407,7 +4416,7 @@ def wgmeth(args):
         mods = sorted(get_modnames(args.methdb))
 
     if methbam and len(mods) == 0:
-        sys.exit('bam %s does not appear to contain Mm/Ml tags' % args.bam)
+        sys.exit('bam %s does not appear to contain MM/ML tags' % args.bam)
 
     if args.mod not in mods:
         if args.mod is None:
@@ -4610,7 +4619,7 @@ if __name__ == '__main__':
 
     # options for locus-specific plots
     parser_locus.add_argument('-d', '--data', default=None, help='text file with .bam filename and corresponding methylation database per line (whitespace-delimited)')
-    parser_locus.add_argument('-b', '--bams', default=None, help='one or more .bams with Mm and Ml tags for modification calls (see samtags spec)')
+    parser_locus.add_argument('-b', '--bams', default=None, help='one or more .bams with MM and ML tags for modification calls (see samtags spec)')
     parser_locus.add_argument('-i', '--interval', required=True, help='chrom:start-end')
     parser_locus.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
     parser_locus.add_argument('-l', '--highlight', default=None, help='format: start-end, (can be chrom:start-end but chrom is ignored) can comma-delimit multiple highlights')
@@ -4666,7 +4675,7 @@ if __name__ == '__main__':
     # options for region plots
     parser_region.add_argument('-i', '--interval', required=True, help='chrom:start-end')
     parser_region.add_argument('-d', '--data', default=None, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
-    parser_region.add_argument('-b', '--bams', default=None, help='one or more .bams with Mm and Ml tags for modification calls (see samtags spec)')
+    parser_region.add_argument('-b', '--bams', default=None, help='one or more .bams with MM and ML tags for modification calls (see samtags spec)')
     parser_region.add_argument('-n', '--motif', required=True, help='normalise window sizes to motif occurance')
     parser_region.add_argument('-r', '--ref', required=True, help='ref genome fasta, required if normalising windows with -n/--norm_motif')
     parser_region.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
@@ -4705,7 +4714,7 @@ if __name__ == '__main__':
 
     # options for composite plots
     parser_composite.add_argument('-d', '--data', default=None, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
-    parser_composite.add_argument('-b', '--bams', default=None, help='one or more .bams with Mm and Ml tags for modification calls (see samtags spec)')
+    parser_composite.add_argument('-b', '--bams', default=None, help='one or more .bams with MM and ML tags for modification calls (see samtags spec)')
     parser_composite.add_argument('-s', '--segdata', required=True, help='BED3+1: chrom, start, end, strand')
     parser_composite.add_argument('-r', '--ref', required=True, help='ref genome fasta')
     parser_composite.add_argument('-t', '--teref', required=True, help='TE ref fasta')
