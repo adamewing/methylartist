@@ -421,4 +421,6 @@ methylartist scoredist -d MCF7_ATCC.megalodon.db,MCF7_ECACC.megalodon.db -m m
 
 ![score distribution](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_ATCC.megalodon.db_MCF7_ECACC.megalodon.db.scoredist.png)
 
+## Citation
 
+Seth W Cheetham, Michaela Kindlova, Adam D Ewing, Methylartist: tools for visualizing modified bases from nanopore sequence data, Bioinformatics, Volume 38, Issue 11, 1 June 2022, Pages 3109–3112, https://doi.org/10.1093/bioinformatics/btac292
