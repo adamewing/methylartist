@@ -85,7 +85,7 @@ class Read:
         assert methcall in (-1,0,1)
 
         if cpg_loc in self.llrs:
-            logger.warning('warning: collision between mods, this is a bug! report me!')
+            logger.warning('warning: multiple modification calls for the same site + mod, read: %s  cpg_loc: %d  mod: %s' % (self.read_name, cpg_loc, modname))
 
         self.llrs[cpg_loc]       = stat
         self.meth_calls[cpg_loc] = methcall
