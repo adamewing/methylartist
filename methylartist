@@ -412,11 +412,15 @@ def get_ambiguous_reads(fn, chrom, start, end, min_mapq=10, w=50):
     return reads
 
 
-def get_reads(fn, chrom, start, end, min_mapq=10, spanning_only=False):
+def get_reads(fn, chrom, start, end, min_mapq=10, spanning_only=False, primary_only=False):
     reads = []
 
     bam = pysam.AlignmentFile(fn)
     for read in bam.fetch(chrom, start, end):
+        if primary_only:
+            if read.is_secondary or read.is_supplementary:
+                continue
+
         if read.mapq >= min_mapq:
             if spanning_only:
                 if read.reference_start < start and read.reference_end > end:
@@ -714,7 +718,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
     if hasattr(args, 'excl_ambig') and args.excl_ambig:
         reads = exclude_ambiguous_reads(bam_fn, chrom, seg_start, seg_end, min_mapq=int(args.min_mapq), spanning_only=args.spanning_only)
     else:
-        reads = get_reads(bam_fn, chrom, seg_start, seg_end, min_mapq=int(args.min_mapq), spanning_only=args.spanning_only)
+        reads = get_reads(bam_fn, chrom, seg_start, seg_end, min_mapq=int(args.min_mapq), spanning_only=args.spanning_only, primary_only=args.primary_only)
 
     reads = list(set(reads))
 
@@ -818,7 +822,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False, HP_only=
     if hasattr(args, 'excl_ambig') and args.excl_ambig:
         reads = exclude_ambiguous_reads(bam, chrom, elt_start, elt_end, min_mapq=int(args.min_mapq))
     else:
-        reads = get_reads(bam, chrom, elt_start, elt_end, min_mapq=int(args.min_mapq))
+        reads = get_reads(bam, chrom, elt_start, elt_end, min_mapq=int(args.min_mapq), primary_only=args.primary_only)
         
     reads = list(set(reads))
 
@@ -926,7 +930,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
         if args.excl_ambig:
             reads = exclude_ambiguous_reads(bam, seg_chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
         else:
-            reads = get_reads(bam, seg_chrom, seg_start, seg_end, min_mapq=int(args.min_mapq))
+            reads = get_reads(bam, seg_chrom, seg_start, seg_end, min_mapq=int(args.min_mapq), primary_only=args.primary_only)
 
         if phase:
             phased_reads_dict = get_phased_reads(bam, seg_chrom, seg_start, seg_end, tag_untagged=(phase=='unphased'), min_mapq=int(args.min_mapq), HP_only=True)
@@ -4591,6 +4595,7 @@ if __name__ == '__main__':
     parser_segmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_segmeth.add_argument('--excl_ambig', action='store_true', default=False, help='do not consider reads that align entirely within segment')
     parser_segmeth.add_argument('--spanning_only', action='store_true', default=False, help='only consider reads that span segment')
+    parser_segmeth.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
     parser_segmeth.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
 
     # options for methylation strip / violin plots
@@ -4667,6 +4672,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--genepalette', default="viridis", help='colour palette name for highlights (default = "viridis")')
     parser_locus.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
     parser_locus.add_argument('--excl_ambig', action='store_true', default=False)
+    parser_locus.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
     parser_locus.add_argument('--unambig_highlight', action='store_true', default=False)
     parser_locus.add_argument('--width', default=16, help='image width (inches, default=16)')
     parser_locus.add_argument('--height', default=8, help='image width (inches, default=8)')
@@ -4709,6 +4715,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--width', default=16, help='image width (inches, default=16)')
     parser_region.add_argument('--height', default=8, help='image width (inches, default=8)')
     parser_region.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
+    parser_region.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
     parser_region.add_argument('--color_by_hp', default=False, action='store_true', help='color samples by HP value (req --phased)')
     parser_region.add_argument('--svg', action='store_true', default=False)
 
@@ -4739,6 +4746,7 @@ if __name__ == '__main__':
     parser_composite.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_composite.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_composite.add_argument('--excl_ambig', action='store_true', default=False)
+    parser_composite.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
     parser_composite.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
     parser_composite.add_argument('--color_by_phase', default=False, action='store_true', help='color samples by HP value (req --phased)')
     parser_composite.add_argument('--svg', action='store_true', default=False)
@@ -4757,6 +4765,7 @@ if __name__ == '__main__':
     parser_wgmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_wgmeth.add_argument('--dss', default=False, action='store_true', help='output in DSS format (default = bedMethyl)')
     parser_wgmeth.add_argument('--phased', action='store_true', default=False, help='split output into phases (currently just 1,2)')
+    parser_wgmeth.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
 
     # options for custom db
     parser_custom.add_argument('-m', '--methdata', required=True, help='per-read methylation output table')
