@@ -33,6 +33,7 @@ import scipy.stats as ss
 from pandas.api.types import CategoricalDtype
 
 skbio_installed = True
+conflicting_call_warning = False
 
 try:
     import skbio.alignment as skalign
@@ -84,8 +85,15 @@ class Read:
     def add_mod(self, cpg_loc, stat, methcall, modname):
         assert methcall in (-1,0,1)
 
+        global conflicting_call_warning
+
         if cpg_loc in self.llrs:
-            logger.warning('warning: multiple modification calls for the same site + mod, read: %s  cpg_loc: %d  mod: %s' % (self.read_name, cpg_loc, modname))
+            if not conflicting_call_warning:
+                logger.warning('''warning: multiple modification calls for the same site + mod, read: %s  cpg_loc: %d  mod: %s
+                        consider excluding non-primary alignments from your analysis, or if using a .bam with mod tags try --primary_only
+                        this warning is only shown once per thread'''% (self.read_name, cpg_loc, modname))
+
+            conflicting_call_warning = True
 
         self.llrs[cpg_loc]       = stat
         self.meth_calls[cpg_loc] = methcall
