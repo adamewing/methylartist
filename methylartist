@@ -585,7 +585,7 @@ def split_ml(mod_strings, ml):
     return mls
 
 
-def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, can_thresh=0.8, restrict_motif=None, restrict_ref=None):
+def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, can_thresh=0.8, restrict_motif=None, restrict_ref=None, primary_only=False):
     bam = pysam.AlignmentFile(bam_fn)
 
     if restrict_ref is not None:
@@ -599,6 +599,10 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
 
         if rec.qname not in reads:
             continue
+
+        if primary_only:
+            if rec.is_secondary or rec.is_supplementary:
+                continue
 
         ap = dict([(k, v) for (k, v) in rec.get_aligned_pairs() if k is not None])
 
@@ -730,7 +734,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
     seg_reads = dd(dict)
 
     if methbam:
-        for row in parse_methbam(bam_fn, reads, chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8, restrict_ref=args.ref, restrict_motif=args.motif):
+        for row in parse_methbam(bam_fn, reads, chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8, restrict_ref=args.ref, restrict_motif=args.motif, primary_only=args.primary_only):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if chrom != cg_chrom:
@@ -855,7 +859,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False, HP_only=
     seg_reads = {}
 
     if methbam:
-        for row in parse_methbam(bam, reads, chrom, elt_start, elt_end, motifsize=args.motifsize, meth_thresh=0.8, can_thresh=0.8, restrict_motif=restrict_motif, restrict_ref=restrict_ref):
+        for row in parse_methbam(bam, reads, chrom, elt_start, elt_end, motifsize=args.motifsize, meth_thresh=0.8, can_thresh=0.8, restrict_motif=restrict_motif, restrict_ref=restrict_ref, primary_only=args.primary_only):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if methstate == 0:
@@ -941,7 +945,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
         seg_reads = {}
 
         if methbam:
-            for row in parse_methbam(bam, reads, seg_chrom, seg_start, seg_end, motifsize=len(args.motif), meth_thresh=0.8, can_thresh=0.8, restrict_motif=args.motif, restrict_ref=args.ref):
+            for row in parse_methbam(bam, reads, seg_chrom, seg_start, seg_end, motifsize=len(args.motif), meth_thresh=0.8, can_thresh=0.8, restrict_motif=args.motif, restrict_ref=args.ref, primary_only=args.primary_only):
                 index, cg_chrom, cg_start, stat, methstate, modname = row
 
                 if seg_chrom != cg_chrom:
@@ -1142,7 +1146,7 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
     seg_reads = {}
 
     if methbam:
-        for row in parse_methbam(bam_fn, set(reads), chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8, restrict_ref=args.ref, restrict_motif=args.motif):
+        for row in parse_methbam(bam_fn, set(reads), chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8, restrict_ref=args.ref, restrict_motif=args.motif, primary_only=args.primary_only):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if mod is not None and mod != modname:
