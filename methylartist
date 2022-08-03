@@ -2428,6 +2428,8 @@ def segplot(args):
             if not args.group_by_annotation:
                 ax.text(0, .15, samplename, weight='bold', color=s_col[s], ha='left', va='center', transform=ax.transAxes)
                 s += 1
+                if s == len(s_col):
+                    s = 0
             
             if groupname not in seen_groups:
                 ax.text(0, -.19, groupname, size=10, color='k', ha='left', va='center', transform=ax.transAxes)
