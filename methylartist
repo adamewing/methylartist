@@ -2346,6 +2346,9 @@ def segplot(args):
 
     logger.info('useable sites: %d' % len(useable))
 
+    if len(useable) < 1:
+        sys.exit('exiting: no useable sites, possibly due to lack of coverage or lack of modification calls')
+
     plot_data = dd(dict)
 
     order = []
