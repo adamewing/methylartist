@@ -2426,11 +2426,11 @@ def segplot(args):
                 ax.text(0, .15, groupname, color='k', ha='left', va='center', transform=ax.transAxes)
             
             if not args.group_by_annotation:
-                ax.text(0, .15, groupname, color='k', ha='left', va='center', transform=ax.transAxes)
-            
-            if samplename not in seen_samples:
-                ax.text(0, -.15, samplename, size=8, weight='bold', color=s_col[s], ha='left', va='center', transform=ax.transAxes)
+                ax.text(0, .15, samplename, weight='bold', color=s_col[s], ha='left', va='center', transform=ax.transAxes)
                 s += 1
+            
+            if groupname not in seen_groups:
+                ax.text(0, -.19, groupname, size=10, color='k', ha='left', va='center', transform=ax.transAxes)
 
             seen_groups.add(groupname)
             seen_samples.add(samplename)
