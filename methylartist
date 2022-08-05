@@ -460,8 +460,11 @@ def get_phased_reads(fn, chrom, start, end, min_mapq=10, tag_untagged=False, ign
                     if tag[0] == 'PS':
                         PS = tag[1]
 
-            if None not in (HP, PS):
-                phase = str(PS) + ':' + str(HP)
+            if HP is not None:
+                phase = str(HP)
+
+            if PS is not None:
+                phase = phase + ':' + str(PS)
 
                 if HP_only:
                     phase = str(HP)
