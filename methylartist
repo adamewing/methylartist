@@ -3304,7 +3304,7 @@ def locus(args):
         ax4.legend(new_handles, new_labels)
 
     ax5.set_xlim(ax2.get_xlim())
-    ax5.set_ylim((-0.05,1.05))
+    ax5.set_ylim((float(args.ymin),float(args.ymax)))
 
     highlight_patches = []
 
@@ -4077,7 +4077,7 @@ def region(args):
 
     ax4.legend()
     ax4.set_xlim(ax2.get_xlim())
-    ax4.set_ylim((-0.05,1.05))
+    ax4.set_ylim((float(args.ymin),float(args.ymax)))
 
     highlight_patches = []
 
@@ -4408,7 +4408,7 @@ def composite(args):
 
             ax2.plot(coord_meth_pos, meth_profile, lw=float(args.linewidth), alpha=float(args.alpha), color=sample_color[bam])
 
-    ax2.set_ylim((-0.05,1.05))
+    ax2.set_ylim((float(args.ymin),float(args.ymax)))
     ax2.set_xlim((mod_start, mod_end))
     ax2.set_xlabel('position')
 
@@ -4686,9 +4686,8 @@ if __name__ == '__main__':
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
     parser_locus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_locus.add_argument('--labelgenes', default=False, action='store_true', help='plot gene names')
-    parser_locus.add_argument('--methcall_ymax', default=None)
-    parser_locus.add_argument('--methcall_xmin', default=None)
-    parser_locus.add_argument('--methcall_xmax', default=None)
+    parser_locus.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot')
+    parser_locus.add_argument('--ymax', default=1.05, help='y-axis maximum for smoothed plot')
     parser_locus.add_argument('--nticks', default=10, help='tick count (default=10)')
     parser_locus.add_argument('--statname', default=None, help='label for raw statistic plot')
     parser_locus.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
@@ -4724,6 +4723,8 @@ if __name__ == '__main__':
     parser_region.add_argument('--min_window_calls', default=1, help='minimum reads per window to include in plot (default = 1)')
     parser_region.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_region.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
+    parser_region.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot')
+    parser_region.add_argument('--ymax', default=1.05, help='y-axis maximum for smoothed plot')
     parser_region.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_region.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_region.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
@@ -4768,6 +4769,8 @@ if __name__ == '__main__':
     parser_composite.add_argument('--slidingwindowstep', default=1, help='step size for meth frac (default 1)')
     parser_composite.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default 8)')
     parser_composite.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
+    parser_composite.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot')
+    parser_composite.add_argument('--ymax', default=1.05, help='y-axis maximum for smoothed plot')
     parser_composite.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_composite.add_argument('--excl_ambig', action='store_true', default=False)
     parser_composite.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
