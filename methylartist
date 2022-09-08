@@ -492,6 +492,49 @@ def rc(dna):
     return dna.translate(complements)[::-1]
 
 
+def iupac(motif):
+    motif = motif.upper()
+
+    iupac = {
+        'A':['A'],
+        'C':['C'],
+        'G':['G'],
+        'T':['T'],
+        'U':['T'],
+        'R':['A','G'],
+        'Y':['C','T'],
+        'S':['G','C'],
+        'W':['A','T'],
+        'K':['G','T'],
+        'M':['A','C'],
+        'B':['C','G','T'],
+        'D':['A','G','T'],
+        'H':['A','C','T'],
+        'V':['A','C','G'],
+        'N':['A','C','G','T']
+    }
+
+    motifs = []
+
+    for ib in list(motif):
+        if ib not in iupac:
+            sys.exit('base %s not an IUPAC base, please modify --motif' % b)
+
+        if len(motifs) == 0:
+            for bp in iupac[ib]:
+                motifs.append(bp)
+        else:
+            next_motifs = []
+
+            for bp in iupac[ib]:
+                for m in motifs:
+                    next_motifs.append(m + bp)
+
+            motifs = next_motifs
+
+    return motifs
+
+
 def get_modnames(meth_db):
     if not os.path.exists(meth_db):
         sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % meth_db)
@@ -3375,9 +3418,12 @@ def region(args):
         logger.warning('locus smaller than 0.5 Mbp, "methylartist locus" may yield better results')
 
     ref = pysam.FastaFile(args.ref)
-    motif = args.motif.upper()
+    motifs = iupac(args.motif)
     region_seq = ref.fetch(chrom, start, end).upper()
-    motif_count = region_seq.count(motif) + region_seq.count(rc(motif))
+    
+    motif_count = 0
+    for motif in motifs:
+        motif_count += region_seq.count(motif) + region_seq.count(rc(motif))
 
     if args.windows is None:
         args.windows = round(motif_count / 30)
@@ -3406,8 +3452,9 @@ def region(args):
         site_fwd = region_seq[i:i+len(motif)]
         site_rev = rc(site_fwd)
 
-        if motif in (site_fwd, site_rev):
-            motif_count += 1
+        for motif in motifs:
+            if motif in (site_fwd, site_rev):
+                motif_count += 1
 
         i += 1
 
