@@ -577,6 +577,16 @@ def densecall_filter(reads, max_density=.7):
     return out
 
 
+def is_bam(fn):
+    for f in fn.split(','):
+        try:
+            bam = pysam.AlignmentFile(f)
+        except:
+            return False
+
+    return True
+
+
 def mods_methbam(bam_fn):
     bam = pysam.AlignmentFile(bam_fn)
 
@@ -2139,6 +2149,9 @@ def segmeth(args):
         if args.bams.endswith('.bam') or (':' in args.bams and args.bams.split(':')[0].endswith('.bam')):
             bams = args.bams.split(',')
 
+        elif is_bam(args.bams):
+            bams = args.bams.split(',')
+
         else:
             logger.info('assuming %s contains a list of .bams' % args.bams)
             with open(args.bams) as bam_list:
@@ -2598,6 +2611,9 @@ def locus(args):
         bams = []
 
         if args.bams.endswith('.bam') or (':' in args.bams and args.bams.split(':')[0].endswith('.bam')):
+            bams = args.bams.split(',')
+
+        elif is_bam(args.bams):
             bams = args.bams.split(',')
 
         else:
@@ -3520,6 +3536,9 @@ def region(args):
 
         if args.bams.endswith('.bam') or (':' in args.bams and args.bams.split(':')[0].endswith('.bam')):
             bams = args.bams.split(',')
+        
+        elif is_bam(args.bams):
+            bams = args.bams.split(',')
 
         else:
             logger.info('assuming %s contains a list of .bams' % args.bams)
@@ -4213,6 +4232,9 @@ def composite(args):
         bams = []
 
         if args.bams.endswith('.bam') or (':' in args.bams and args.bams.split(':')[0].endswith('.bam')):
+            bams = args.bams.split(',')
+
+        elif is_bam(args.bams):
             bams = args.bams.split(',')
 
         else:
