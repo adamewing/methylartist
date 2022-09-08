@@ -4551,6 +4551,8 @@ def wgmeth(args):
 
     if args.phased:
         for phase in (0,1):
+            if len(meth_table[phase]) == 0:
+                sys.exit('no calls for phase %d: is this data phased?' % phase)
             meth_table[phase]['pos'] = meth_table[phase].index
             meth_table[phase] = meth_table[phase].sort_values(['chr', 'pos'])
 
