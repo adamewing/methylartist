@@ -636,7 +636,10 @@ def split_ml(mod_strings, ml):
 
     total_ms = sum([len(ms.split(',')[1:]) for ms in mod_strings])
 
-    assert total_ms == len(ml), 'mod bam formatting error'
+    if total_ms == 0:
+        return mls
+
+    assert total_ms == len(ml), 'mod bam formatting error total_ms: %d, len(ml): %d' % (total_ms, len(ml))
 
     i = 0
     for mod_string in mod_strings:
@@ -697,7 +700,11 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
             continue
 
         mod_strings = mm.split(';')
+        #try:
         mls = split_ml(mod_strings, ml)
+        # except AssertionError:
+        #     print(rec.to_string())
+        #     sys.exit(1)
 
         seq = rec.seq
 
@@ -4425,6 +4432,9 @@ def composite(args):
 
                     meanplot_table[u]['coord'] = c
                     meanplot_table[u]['meth'] = m
+
+    if len(meanplot_table) == 0:
+        sys.exit('no successful alignments!')
     
     meanplot_table = pd.DataFrame.from_dict(meanplot_table).T
 
@@ -4471,6 +4481,8 @@ def composite(args):
     g += 1
 
     for bam in out_res:
+        if len(out_res[bam]) < int(args.outelts):
+            sys.exit('fewer than --outelts (%d) usable elements (%d), giving up.' % (int(args.outelts),len(out_res[bam])))
         for coord_meth_pos, meth_profile in random.sample(out_res[bam], int(args.outelts)):
             if args.color_by_phase:
                 bam = bam.split('.')[-1]
