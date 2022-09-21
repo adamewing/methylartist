@@ -4294,6 +4294,9 @@ def composite(args):
 
     outfn = data_basename + '.' + seg_basename
 
+    if args.meanplot_cutoff:
+        outfn += '.meanplot_cutoff_%d' % int(args.meanplot_cutoff)
+
     if args.phased:
         outfn += '.phased'
 
@@ -4417,6 +4420,10 @@ def composite(args):
 
         if len(v) > median_call_count:
             cutoff = v[median_call_count]
+        
+        if args.meanplot_cutoff:
+            cutoff = int(args.meanplot_cutoff)
+
 
         logger.info('%s: median per element call count: %d' % (bam, median_call_count))
         logger.info('%s: per site call count cutoff: %d' % (bam, cutoff))
@@ -4840,6 +4847,7 @@ if __name__ == '__main__':
     parser_composite.add_argument('-l', '--lenfrac', default=0.95, help='fraction of TE length that must align (default 0.95)')
     parser_composite.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_composite.add_argument('--meanplot_ylabel', default='% methylation', help='set y-axis label on mean plot')
+    parser_composite.add_argument('--meanplot_cutoff', default=None, help='override site coverage cutoff for mean plot (see output for automatic value)')
     parser_composite.add_argument('--mod', default=None, help='modification to plot (mod codes will be listed, default: infer from sample name')
     parser_composite.add_argument('--motif', default='CG', help='modified motif to highlight (default = CG)')
     parser_composite.add_argument('--blocks', default=None, help='blocks to highlight (txt file with start, end, name, hex colour)')
