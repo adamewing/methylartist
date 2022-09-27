@@ -7,6 +7,7 @@ import gzip
 import csv
 import logging
 import multiprocessing as mp
+from tkinter import FALSE
 import matplotlib
 import random
 import itertools
@@ -1189,9 +1190,10 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
                 meth_profile.append(meth)
 
         bam_noext = '.'.join(bam.split('.')[:-1])
+        elt_info = '_'.join( map(str, (seg_chrom, seg_start, seg_end, seg_strand)))
         if phase:
             bam_noext += '.phase' + phase
-        per_bam_results[bam_noext] = (revised_coord_meth_pos, meth_profile)
+        per_bam_results[bam_noext] = (revised_coord_meth_pos, meth_profile, elt_info)
 
     return per_bam_results
 
@@ -4302,6 +4304,8 @@ def composite(args):
 
     outfn += '.composite'
 
+    table_fn = outfn + '.table.tsv'
+
     if args.svg:
         outfn += '.svg'
     else:
@@ -4354,12 +4358,12 @@ def composite(args):
             if per_bam_res[bam] is None:
                 continue
 
-            coord_meth_pos, meth_profile = per_bam_res[bam]
+            coord_meth_pos, meth_profile, elt_info = per_bam_res[bam]
 
             if len(coord_meth_pos) == 0:
                 continue
 
-            out_res[bam].append((coord_meth_pos, meth_profile))
+            out_res[bam].append((coord_meth_pos, meth_profile, elt_info))
 
     # set bounds
     mod_start = 0
@@ -4407,14 +4411,14 @@ def composite(args):
 
         per_elt_calls = []
 
-        for coord_meth_pos, meth_profile in out_res[bam]:
+        for coord_meth_pos, meth_profile, elt_info in out_res[bam]:
             per_elt_calls.append(len(coord_meth_pos))
             for c, m in zip(coord_meth_pos, meth_profile):
-                meth_by_coord[c].append(m)
+                meth_by_coord[c].append((m, elt_info))
 
         median_call_count = int(np.median(per_elt_calls))
 
-        v = sorted([len(c) for c in meth_by_coord.values()], reverse=True)
+        v = sorted([len(c[0]) for c in meth_by_coord.values()], reverse=True)
 
         cutoff = v[-1]
 
@@ -4424,14 +4428,14 @@ def composite(args):
         if args.meanplot_cutoff:
             cutoff = int(args.meanplot_cutoff)
 
-
         logger.info('%s: median per element call count: %d' % (bam, median_call_count))
         logger.info('%s: per site call count cutoff: %d' % (bam, cutoff))
 
         for c in sorted(meth_by_coord.keys()):
             if len(meth_by_coord[c]) >= cutoff:
-                for m in meth_by_coord[c]:
+                for m, elt_info in meth_by_coord[c]:
                     u = str(uuid4())
+                    meanplot_table[u]['chrom'], meanplot_table[u]['start'], meanplot_table[u]['end'], meanplot_table[u]['strand'] = elt_info.split('_')
                     if args.color_by_phase:
                         meanplot_table[u]['sample'] = bam.split('.')[-1]
                     else:    
@@ -4444,6 +4448,11 @@ def composite(args):
         sys.exit('no successful alignments!')
     
     meanplot_table = pd.DataFrame.from_dict(meanplot_table).T
+
+    if args.output_table:
+        meanplot_table.to_csv(table_fn, sep='\t', quoting=FALSE, index=False)
+        logger.info('wrote per-site table to %s' % table_fn)
+
 
     ax0 = sns.lineplot(x='coord', y='meth', data=meanplot_table, ci='sd', lw=2, hue='sample', palette=sample_color)
     ax0.set_ylabel(args.meanplot_ylabel)
@@ -4490,7 +4499,7 @@ def composite(args):
     for bam in out_res:
         if len(out_res[bam]) < int(args.outelts):
             sys.exit('fewer than --outelts (%d) usable elements (%d), giving up.' % (int(args.outelts),len(out_res[bam])))
-        for coord_meth_pos, meth_profile in random.sample(out_res[bam], int(args.outelts)):
+        for coord_meth_pos, meth_profile, elt_info in random.sample(out_res[bam], int(args.outelts)):
             if args.color_by_phase:
                 bam = bam.split('.')[-1]
 
@@ -4867,6 +4876,7 @@ if __name__ == '__main__':
     parser_composite.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
     parser_composite.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
     parser_composite.add_argument('--color_by_phase', default=False, action='store_true', help='color samples by HP value (req --phased)')
+    parser_composite.add_argument('--output_table', default=False, action='store_true', help='output per-site data to table (.tsv)')
     parser_composite.add_argument('--svg', action='store_true', default=False)
 
     # options for whole genome output
