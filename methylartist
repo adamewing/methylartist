@@ -4497,9 +4497,16 @@ def composite(args):
     g += 1
 
     for bam in out_res:
-        if len(out_res[bam]) < int(args.outelts):
-            sys.exit('fewer than --outelts (%d) usable elements (%d), giving up.' % (int(args.outelts),len(out_res[bam])))
-        for coord_meth_pos, meth_profile, elt_info in random.sample(out_res[bam], int(args.outelts)):
+        if len(out_res[bam]) < int(args.minelts):
+            sys.exit('fewer than --minelts (%d) usable elements (%d), giving up.' % (int(args.minelts),len(out_res[bam])))
+
+        sample_size = int(args.maxelts)
+        if sample_size > len(out_res[bam]):
+            sample_size = len(out_res[bam])
+
+        logger.info('sample %s has %d useable elements, will sample %d' % (bam, len(out_res[bam]), sample_size))
+
+        for coord_meth_pos, meth_profile, elt_info in random.sample(out_res[bam], sample_size):
             if args.color_by_phase:
                 bam = bam.split('.')[-1]
 
@@ -4863,8 +4870,8 @@ if __name__ == '__main__':
     parser_composite.add_argument('--start', default=None, help='start plotting at this base (default None)')
     parser_composite.add_argument('--end', default=None, help='end plotting at this base (default None)')
     parser_composite.add_argument('--mincalls', default=100, help='minimum call count to include elt (default = 100)')
-    parser_composite.add_argument('--maxsegs', default=300, help='maximum elements, if > max random.sample() (default = 300)')
-    parser_composite.add_argument('--outelts', default=100, help='maximum output elements, if > max random.sample() (default = 300)')
+    parser_composite.add_argument('--minelts', default=1, help='minimum output elements (default = 1)')
+    parser_composite.add_argument('--maxelts', default=200, help='maximum output elements, if > max random.sample() (default = 200)')
     parser_composite.add_argument('--slidingwindowsize', default=10, help='size of sliding window for meth frac (default 10)')
     parser_composite.add_argument('--slidingwindowstep', default=1, help='step size for meth frac (default 1)')
     parser_composite.add_argument('--smoothwindowsize', default=8, help='size of window for smoothing (default 8)')
