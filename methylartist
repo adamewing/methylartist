@@ -12,6 +12,7 @@ import matplotlib
 import random
 import itertools
 import sqlite3
+import warnings
 from matplotlib.colors import NoNorm
 
 # Force matplotlib to not use any Xwindows backend.
@@ -42,6 +43,9 @@ try:
 
 except ModuleNotFoundError:
     skbio_installed = False
+
+if skbio_installed:
+    warnings.filterwarnings('ignore', module='skbio')
 
 from uuid import uuid4
 from collections import defaultdict as dd
