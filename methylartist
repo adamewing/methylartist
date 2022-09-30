@@ -1641,6 +1641,9 @@ def db_guppy(args):
     if not ont_fast5_api_installed:
         sys.exit('ont_fast5_api is not installed but is required for this function. Please install e.g. via "pip install ont-fast5-api"')
 
+    if not args.force:
+        sys.exit('This function (db-guppy) is depreciated. Please use use guppy to create a .bam file with modification tags and use that as input to methylartist')
+
     assert os.path.exists(args.fast5), 'path not found: %s' % args.fast5
 
     bam_db = args.samplename + '.bamcache.db'
@@ -4943,6 +4946,7 @@ if __name__ == '__main__':
     parser_guppy.add_argument('-a', '--append', default=False, action='store_true', help='append to database')
     parser_guppy.add_argument('--include_unmatched', action='store_true', default=False, help='include sites where read base does not match genome base')
     parser_guppy.add_argument('--motifsize', default=2, help='mod motif size (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
+    parser_guppy.add_argument('--force', default=False, action='store_true')
 
     # options for nanopolish db
     parser_nanopolish.add_argument('-m', '--methdata', required=True, help='whole genome nanopolish methylation output, can be comma-delimited')
