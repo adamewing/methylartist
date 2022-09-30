@@ -592,6 +592,40 @@ def is_bam(fn):
     return True
 
 
+def bam_cover(bam_fn, chrom, start, end):
+    start = int(start)
+    end = int(end)
+    bam = pysam.AlignmentFile(bam_fn)
+
+    count = 0
+
+    for rec in bam.fetch(chrom, start, end):
+        if not rec.is_duplicate:
+            count += 1
+
+    return [start, count]
+
+
+def bam_bincover(bam_fn, chrom, w_starts, w_ends, procs=1):
+    assert len(w_starts) == len(w_ends)
+
+    pool = mp.Pool(processes=int(procs))
+    results = []
+
+    for start, end in zip(w_starts, w_ends):
+        res = pool.apply_async(bam_cover, [bam_fn, chrom, start, end])
+        results.append(res)
+
+    segs = []
+    for res in results:
+        segs.append(res.get())
+
+    segs = sorted(segs, key=itemgetter(0))
+    cover = [s[1] for s in segs]
+
+    return cover
+
+
 def mods_methbam(bam_fn):
     bam = pysam.AlignmentFile(bam_fn)
 
@@ -3537,6 +3571,7 @@ def region(args):
     if args.data is not None:
         if args.bams is not None:
             sys.exit('please specify either -d/--data or -b/--bams but not both')
+
         with open(args.data) as _:
             for line in _:
                 c = line.strip().split()
@@ -3713,6 +3748,19 @@ def region(args):
     for orig_loc, new_loc in zip(meth_segs['seg_start'], meth_segs['pos']):
         coord_to_pos[orig_loc] = new_loc
 
+    # coverage bams (if present)
+
+    cover_bams = {}
+    if args.plot_coverage:
+        for bam_fn in args.plot_coverage.split(','):
+            logger.info('gather coverage from %s...' % bam_fn)
+            cover = bam_bincover(bam_fn, chrom, w_starts, w_ends, procs=int(args.procs))
+            c_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
+            cover_bams[c_name] = smooth(np.asarray(cover), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
+
+    # ex_value = list(cover_bams.keys())[0]
+    # print(len(cover_bams[ex_value]))
+
     # highlights
 
     h_start = []
@@ -3795,7 +3843,10 @@ def region(args):
     if args.skip_align_plot:
         height_ratios = [1,0,1,4]
 
-    gs = gridspec.GridSpec(4,1,height_ratios=height_ratios, hspace=0)
+    if args.plot_coverage:
+        height_ratios.append(3)
+
+    gs = gridspec.GridSpec(len(height_ratios),1,height_ratios=height_ratios, hspace=0)
 
     img_w = 16
     img_h = 8
@@ -3814,7 +3865,11 @@ def region(args):
 
     if args.panelratios:
         p_ratios = list(map(int, args.panelratios.split(',')))
-        gs = gridspec.GridSpec(4,1,height_ratios=p_ratios, hspace=0)
+        if args.plot_coverage and len(p_ratios) < 5:
+            logger.warning('--panelratios must have 5 values if used with --plot_coverage')
+            sys.exit(1)
+
+        gs = gridspec.GridSpec(len(height_ratios),1,height_ratios=p_ratios, hspace=0)
 
     sample_order = sorted(sample_names.keys())
 
@@ -3841,6 +3896,13 @@ def region(args):
 
         else:
             logger.warning('--color_by_hp has no effect without --phase')
+
+    cover_color = {}
+
+    if args.plot_coverage:
+        for i, bam_fn in enumerate(args.plot_coverage.split(',')):
+            c_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
+            cover_color[c_name] = sns.color_palette(args.coverpalette, n_colors=len(cover_bams))[i]
 
     # plot genes
 
@@ -4182,6 +4244,33 @@ def region(args):
     for h in highlight_patches:
         ax4.add_patch(h)
 
+    # coverage plot (optional)
+
+    if args.plot_coverage:
+        logger.info('building coverage plot...')
+        ax5 = plt.subplot(gs[4])
+
+        for sample in cover_bams:
+            ax5.plot(meth_segs['pos'], cover_bams[sample], marker='', lw=4, color=cover_color[sample], zorder=3, label=sample, alpha=smoothalpha)
+
+        ax5.legend()
+        ax5.set_xlim(ax2.get_xlim())
+
+        highlight_patches = []
+
+        if args.highlight_panels:
+            a = float(args.highlight_panels)
+            if args.highlight or args.highlight_bed:
+                for h, h_s in enumerate(h_cpg_start):
+                    h_e = h_cpg_end[h]
+                    h_color = h_colors[h]
+                    ymin = min(ax5.get_ybound())
+                    yheight = max(ax5.get_ybound())-ymin
+                    highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+        for h in highlight_patches:
+            ax5.add_patch(h)
+            
     # output
 
     fn_prefix = '.%s_%d_%d.%s' % (chrom, start, end, ''.join(mods))
@@ -4833,6 +4922,7 @@ if __name__ == '__main__':
     parser_region.add_argument('-m', '--mods', default=None, help='mods to consider (comma-delimited, default = all available)')
     parser_region.add_argument('-s', '--smoothwindowsize', default=None, help='size of window for smoothing (default=auto)')
     parser_region.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
+    parser_region.add_argument('-c', '--plot_coverage', default=None, help='plot coverage from bam(s) (can be comma-delimited list)')
     parser_region.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_region.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_region.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
@@ -4846,11 +4936,12 @@ if __name__ == '__main__':
     parser_region.add_argument('--ymax', default=1.05, help='y-axis maximum for smoothed plot')
     parser_region.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_region.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
+    parser_region.add_argument('--coverpalette', default="mako", help='colour palette name for coverage plot (default = "mako")')
     parser_region.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
     parser_region.add_argument('--genepalette', default="viridis", help='colour palette name for highlights (default = "viridis")')
     parser_region.add_argument('--gene_track_height', default=None, help='maximum number of gene track layers')
     parser_region.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
-    parser_region.add_argument('--panelratios',  default=None, help='Alter panel ratios: needs to be 4 comma-seperated integers. Default: 1,5,3,3')
+    parser_region.add_argument('--panelratios',  default=None, help='Alter panel ratios: needs to be 4 (or 5 if --plot_coverage) comma-seperated integers. Default: 1,5,3,3')
     parser_region.add_argument('--nticks', default=10, help='tick count (default=10)')
     parser_region.add_argument('--skip_align_plot', default=False, action='store_true', help='blank alignment plot, useful if unneeded or for runtime.')
     parser_region.add_argument('--force_align_plot', default=False, action='store_true', help='retain alignment plot even over regions > 5Mbp where it would be disabled automatically')
