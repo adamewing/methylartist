@@ -595,6 +595,8 @@ def is_bam(fn):
 def mods_methbam(bam_fn):
     bam = pysam.AlignmentFile(bam_fn)
 
+    logger.info('fetching mod types from %s, if this take awhile MM/ML tags may be missing.' % bam_fn)
+
     mm_warned = False
 
     for rec in bam.fetch():
@@ -632,9 +634,13 @@ def mods_methbam(bam_fn):
             mod_type = mod_type.rstrip('?.')
 
             mods.append(mod_type)
-        
+
         return mods # assumes all mods are represented for each read that has an Mm tag
-        
+
+    if not mods:
+        logger.warning('no mods found in %s, missing MM/ML tags?' % bam_fn)
+        sys.exit(1)
+
 
 def split_ml(mod_strings, ml):
     mls = []
