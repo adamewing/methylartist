@@ -6,6 +6,7 @@ import argparse
 import gzip
 import csv
 import logging
+import subprocess
 import multiprocessing as mp
 from tkinter import FALSE
 import matplotlib
@@ -592,7 +593,7 @@ def is_bam(fn):
     return True
 
 
-def bam_cover(bam_fn, chrom, start, end):
+def get_bincover(bam_fn, chrom, start, end):
     start = int(start)
     end = int(end)
     bam = pysam.AlignmentFile(bam_fn)
@@ -600,20 +601,23 @@ def bam_cover(bam_fn, chrom, start, end):
     count = 0
 
     for rec in bam.fetch(chrom, start, end):
+        if rec.mapping_quality < 10:
+            continue
+
         if not rec.is_duplicate:
             count += 1
 
     return [start, count]
 
 
-def bam_bincover(bam_fn, chrom, w_starts, w_ends, procs=1):
+def bam_bincover(bam_fn, chrom, w_starts, w_ends, procs=1, log=False):
     assert len(w_starts) == len(w_ends)
 
     pool = mp.Pool(processes=int(procs))
     results = []
 
     for start, end in zip(w_starts, w_ends):
-        res = pool.apply_async(bam_cover, [bam_fn, chrom, start, end])
+        res = pool.apply_async(get_bincover, [bam_fn, chrom, start, end])
         results.append(res)
 
     segs = []
@@ -621,15 +625,55 @@ def bam_bincover(bam_fn, chrom, w_starts, w_ends, procs=1):
         segs.append(res.get())
 
     segs = sorted(segs, key=itemgetter(0))
-    cover = [s[1] for s in segs]
+    cover = np.asarray([s[1] for s in segs])
+
+    if log:
+        cover = np.log2(cover+1)
 
     return cover
 
 
+def bam_pileupcover(bam_fn, chrom, w_starts, w_ends, procs=1, log=False):
+    assert len(w_starts) == len(w_ends)
+
+    segtree = Intersecter()
+    for start, end in zip(w_starts, w_ends):
+        segtree.add_interval(Interval(start-1, end+1))
+
+    minpos = min(w_starts)
+    maxpos = max(w_ends)
+
+    region = '%s:%d-%d' % (chrom, minpos, maxpos)
+
+    segs = []
+    samtools_cmd = ['samtools', 'mpileup', '-q10', '-r', region, bam_fn]
+    FNULL = open(os.devnull, 'w')
+    p = subprocess.Popen(samtools_cmd, stdout=subprocess.PIPE, stderr=FNULL)
+
+    for pline in p.stdout:
+        pline = pline.decode()
+        chrom, pos, r, dp, seq, qual = pline.strip().split()
+
+        pos = int(pos)
+        seq = seq.upper()
+
+        if segtree.find(pos, pos):
+            base_depth = len([b for b in seq if b in ('A','T','C','G')])
+            segs.append([pos, base_depth])
+
+    segs = sorted(segs, key=itemgetter(0))
+    cover = np.asarray([s[1] for s in segs])
+
+    if log:
+        cover = np.log2(cover+1)
+
+    return cover
+    
+
 def mods_methbam(bam_fn):
     bam = pysam.AlignmentFile(bam_fn)
 
-    logger.info('fetching mod types from %s, if this take awhile MM/ML tags may be missing.' % bam_fn)
+    logger.info('fetching mod types from %s, if this takes awhile MM/ML tags may be missing.' % bam_fn)
 
     mm_warned = False
 
@@ -709,6 +753,9 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
         if rec.is_unmapped:
             continue
 
+        if rec.seq is None:
+            continue
+
         if rec.qname not in reads:
             continue
 
@@ -729,7 +776,7 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
                 mm = str(rec.get_tag('Mm')).rstrip(';')
             except:
                 if not mm_warned:
-                    logger.debug('cannot find Mm tag in at least one read, ensure this bam has MM and ML tags!')
+                    logger.debug('cannot find MM tag in at least one read, ensure this bam has MM and ML tags!')
                     mm_warned = True
                     continue
 
@@ -745,11 +792,8 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
             continue
 
         mod_strings = mm.split(';')
-        #try:
+        
         mls = split_ml(mod_strings, ml)
-        # except AssertionError:
-        #     print(rec.to_string())
-        #     sys.exit(1)
 
         seq = rec.seq
 
@@ -816,7 +860,11 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
                     methstate = -1
 
                 if None not in (restrict_motif, restrict_ref):
-                    ref_motif = restrict_ref.fetch(rec.reference_name, genome_pos, genome_pos+2)
+                    try:
+                        ref_motif = restrict_ref.fetch(rec.reference_name, genome_pos, genome_pos+2)
+                    except ValueError:
+                        logger.warning('warning, out of bounds motif in read: %s' % rec.tostring())
+
                     if ref_motif.upper() != restrict_motif.upper():
                         continue
 
@@ -1390,6 +1438,29 @@ def slide_window(meth_table, sample, width=20, slide=2):
             meth_n[midpt] = meth_count+unmeth_count
 
     return meth_frac, meth_n
+
+
+def slide_window_cover(cover_table, sample, width=20, slide=2):
+    # used for locus plots, composite plots
+    midpt_min = min(cover_table['loc'])
+    midpt_max = max(cover_table['loc'])
+
+    win_start = int(midpt_min - width/2)
+    win_end = win_start + width
+
+    cover_windows = {}
+
+    while int((win_start+win_end)/2) < midpt_max:
+        win_start += slide
+        win_end += slide
+
+        midpt = int((win_start+win_end)/2)
+
+        c = cover_table.loc[(cover_table['sample'] == sample) & (cover_table['loc'] > win_start) & (cover_table['loc'] < win_end)]
+        cover_windows[midpt] = np.mean(c['cover'])
+
+    #print(cover_windows)
+    return cover_windows
 
 
 def slide_window_phased(meth_table, phase, width=20, slide=2):
@@ -2841,6 +2912,36 @@ def locus(args):
 
         logger.info('auto set --smoothwindowsize %d' % args.smoothwindowsize)
 
+    # data for coverage plot
+
+    cover_bams = {}
+
+    if args.plot_coverage:
+        for bam_fn in args.plot_coverage.split(','):
+            logger.info('gather coverage from %s...' % bam_fn)
+
+            meth_seg_starts = deepcopy(np.asarray(meth_table['orig_loc']))
+            meth_seg_starts += elt_start
+            #meth_seg_ends = meth_seg_starts + 1
+            cover = bam_pileupcover(bam_fn, chrom, meth_seg_starts, meth_seg_starts, procs=int(args.coverprocs), log=args.logcover)
+
+            c_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
+
+            cover_table = dd(dict)
+            sorted_locs = sorted(list(set(meth_table['loc'])))
+
+            for c, loc in zip(cover, sorted_locs):
+                uuid = str(uuid4())
+                cover_table[uuid]['loc'] = loc
+                cover_table[uuid]['sample'] = c_name
+                cover_table[uuid]['cover'] = c
+            
+            cover_table = pd.DataFrame.from_dict(cover_table).T
+
+            windowed_cover = slide_window_cover(cover_table, c_name, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
+            cover_bams[c_name] = smooth(np.asarray(list(windowed_cover.values())), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
+
+
     # highlights
 
     h_start = []
@@ -2908,9 +3009,12 @@ def locus(args):
             readmask.append(list(map(int, ivl.split('-'))))
 
     # set up plot
+    p_ratios=[1,5,1,3,3]
+    if args.plot_coverage:
+        p_ratios.append(3)
 
     fig = plt.figure()
-    gs = gridspec.GridSpec(5,1,height_ratios=[1,5,1,3,3], hspace=0)
+    gs = gridspec.GridSpec(len(p_ratios),1,height_ratios=p_ratios, hspace=0)
 
     img_w = 16
     img_h = 8
@@ -2925,7 +3029,11 @@ def locus(args):
 
     if args.panelratios:
         p_ratios = list(map(int, args.panelratios.split(',')))
-        gs = gridspec.GridSpec(5,1,height_ratios=p_ratios, hspace=0)
+        if args.plot_coverage and len(p_ratios) < 5:
+            logger.warning('--panelratios must have 5 values if used with --plot_coverage')
+            sys.exit(1)
+
+        gs = gridspec.GridSpec(len(p_ratios),1,height_ratios=p_ratios, hspace=0)
 
     sample_color = {}
     for i, sample in enumerate(sample_order):
@@ -2948,6 +3056,13 @@ def locus(args):
 
         else:
             logger.warning('--color_by_hp has no effect without --phase')
+
+    cover_color = {}
+
+    if args.plot_coverage:
+        for i, bam_fn in enumerate(args.plot_coverage.split(',')):
+            c_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
+            cover_color[c_name] = sns.color_palette(args.coverpalette, n_colors=len(cover_bams))[i]
 
 
     # plot genes
@@ -3436,6 +3551,33 @@ def locus(args):
     for h in highlight_patches:
         ax5.add_patch(h)
 
+    # coverage plot (optional)
+
+    if args.plot_coverage:
+        logger.info('building coverage plot...')
+        ax6 = plt.subplot(gs[5])
+
+        for sample in cover_bams:
+            ax6.plot(list(windowed_methfrac.keys()), cover_bams[sample], marker='', lw=4, color=cover_color[sample], zorder=3, label=sample, alpha=smoothalpha)
+
+        ax6.legend()
+        ax6.set_xlim(ax2.get_xlim())
+
+        highlight_patches = []
+
+        if args.highlight_panels:
+            a = float(args.highlight_panels)
+            if args.highlight or args.highlight_bed:
+                for h, h_s in enumerate(h_cpg_start):
+                    h_e = h_cpg_end[h]
+                    h_color = h_colors[h]
+                    ymin = min(ax6.get_ybound())
+                    yheight = max(ax6.get_ybound())-ymin
+                    highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+        for h in highlight_patches:
+            ax6.add_patch(h)
+
     fn_prefix = '.%s_%d_%d.%s' % (chrom, elt_start, elt_end, ''.join(use_mods))
 
     if methbam:
@@ -3754,12 +3896,11 @@ def region(args):
     if args.plot_coverage:
         for bam_fn in args.plot_coverage.split(','):
             logger.info('gather coverage from %s...' % bam_fn)
-            cover = bam_bincover(bam_fn, chrom, w_starts, w_ends, procs=int(args.procs))
+            meth_seg_starts = [int(s.split(':')[1].split('-')[0]) for s in meth_segs.index]
+            meth_seg_ends = [int(s.split(':')[1].split('-')[1]) for s in meth_segs.index]
+            cover = bam_bincover(bam_fn, chrom, meth_seg_starts, meth_seg_ends, procs=int(args.procs), log=args.logcover)
             c_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
             cover_bams[c_name] = smooth(np.asarray(cover), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
-
-    # ex_value = list(cover_bams.keys())[0]
-    # print(len(cover_bams[ex_value]))
 
     # highlights
 
@@ -4255,6 +4396,7 @@ def region(args):
 
         ax5.legend()
         ax5.set_xlim(ax2.get_xlim())
+        ax5.set_ylim((float(args.cover_ymin), max(ax5.get_ybound())))
 
         highlight_patches = []
 
@@ -4865,8 +5007,11 @@ if __name__ == '__main__':
     parser_locus.add_argument('-t', '--slidingwindowstep', default=1, help='step size for initial sliding window (default=1)')
     parser_locus.add_argument('-p', '--panelratios',  default=None, help='Alter panel ratios: needs to be 5 comma-seperated integers. Default: 1,5,1,3,3')
     parser_locus.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
-    parser_locus.add_argument('--ref', default=None, help='reference genome .fa (build .fai index with samtools faidx) (required for mod bams)')
-    parser_locus.add_argument('--motif', default=None, help='expected modification motif (e.g. CG for 5mCpG required for mod bams)')
+    parser_locus.add_argument('-r', '--ref', default=None, help='reference genome .fa (build .fai index with samtools faidx) (required for mod bams)')
+    parser_locus.add_argument('-n', '--motif', default=None, help='expected modification motif (e.g. CG for 5mCpG required for mod bams)')
+    parser_locus.add_argument('-c', '--plot_coverage', default=None, help='plot coverage from bam(s) (can be comma-delimited list)')
+    parser_locus.add_argument('--logcover', default=False, action='store_true', help='apply log2(count+1) to coverage data (--plot_coverage)')
+    parser_locus.add_argument('--coverprocs', default=1, help='processes to use for coverage function (default=1)')
     parser_locus.add_argument('--bed', default=None, help='.bed file for additional annotations')
     parser_locus.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_locus.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
@@ -4894,11 +5039,13 @@ if __name__ == '__main__':
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
     parser_locus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_locus.add_argument('--labelgenes', default=False, action='store_true', help='plot gene names')
-    parser_locus.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot')
-    parser_locus.add_argument('--ymax', default=1.05, help='y-axis maximum for smoothed plot')
+    parser_locus.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot (default = -0.05)')
+    parser_locus.add_argument('--ymax', default=1.05, help='y-axis maximum for smoothed plot (default = 1.05)')
+    parser_locus.add_argument('--cover_ymin', default=0, help='y-axis minimum for coverage plot (default = 0)')
     parser_locus.add_argument('--nticks', default=10, help='tick count (default=10)')
     parser_locus.add_argument('--statname', default=None, help='label for raw statistic plot')
     parser_locus.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
+    parser_locus.add_argument('--coverpalette', default="mako", help='colour palette name for coverage plot (default = "mako")')
     parser_locus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
     parser_locus.add_argument('--genepalette', default="viridis", help='colour palette name for highlights (default = "viridis")')
     parser_locus.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
@@ -4923,6 +5070,7 @@ if __name__ == '__main__':
     parser_region.add_argument('-s', '--smoothwindowsize', default=None, help='size of window for smoothing (default=auto)')
     parser_region.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_region.add_argument('-c', '--plot_coverage', default=None, help='plot coverage from bam(s) (can be comma-delimited list)')
+    parser_region.add_argument('--logcover', default=False, action='store_true', help='apply log2(count+1) to coverage data (--plot_coverage)')
     parser_region.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_region.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_region.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
@@ -4932,8 +5080,9 @@ if __name__ == '__main__':
     parser_region.add_argument('--min_window_calls', default=1, help='minimum reads per window to include in plot (default = 1)')
     parser_region.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_region.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
-    parser_region.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot')
-    parser_region.add_argument('--ymax', default=1.05, help='y-axis maximum for smoothed plot')
+    parser_region.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot (default = -0.05)')
+    parser_region.add_argument('--ymax', default=1.05, help='y-axis maximum for smoothed plot (default = 1.05')
+    parser_region.add_argument('--cover_ymin', default=0, help='y-axis minimum for coverage plot (default = 0)')
     parser_region.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_region.add_argument('--samplepalette', default="tab10", help='palette for samples (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_region.add_argument('--coverpalette', default="mako", help='colour palette name for coverage plot (default = "mako")')
