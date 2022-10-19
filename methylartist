@@ -744,6 +744,10 @@ def split_ml(mod_strings, ml):
 def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, can_thresh=0.8, restrict_motif=None, restrict_ref=None, primary_only=False):
     bam = pysam.AlignmentFile(bam_fn)
 
+    if restrict_motif:
+        if len(restrict_motif) != motifsize:
+            motifsize = len(restrict_motif)
+
     if restrict_ref is not None:
         restrict_ref = pysam.Fastafile(restrict_ref)
 
@@ -861,9 +865,13 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
 
                 if None not in (restrict_motif, restrict_ref):
                     try:
-                        ref_motif = restrict_ref.fetch(rec.reference_name, genome_pos, genome_pos+2)
+                        ref_motif = restrict_ref.fetch(rec.reference_name, genome_pos, genome_pos+motifsize)
+                        if motifsize == 1 and rec.is_reverse:
+                            ref_motif = rc(ref_motif)
                     except ValueError:
                         logger.warning('warning, out of bounds motif in read: %s' % rec.tostring())
+
+                    #print(ref_motif, restrict_motif, rec.is_reverse)
 
                     if ref_motif.upper() != restrict_motif.upper():
                         continue
@@ -1290,7 +1298,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
     return per_bam_results
 
 
-def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod):
+def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod, motifsize):
     methbam = False
 
     if args.methdb is None:
@@ -1311,7 +1319,7 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
     seg_reads = {}
 
     if methbam:
-        for row in parse_methbam(bam_fn, set(reads), chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8, restrict_ref=args.ref, restrict_motif=args.motif, primary_only=args.primary_only):
+        for row in parse_methbam(bam_fn, set(reads), chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8, restrict_ref=args.ref, restrict_motif=args.motif, motifsize=motifsize, primary_only=args.primary_only):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if mod is not None and mod != modname:
@@ -4786,6 +4794,12 @@ def wgmeth(args):
             
         methbam = True
 
+    motifsize = None
+
+    if args.motif is not None:
+        motifsize = len(args.motif)
+        logger.info('motif size %d (%s)' % (motifsize, args.motif))
+
     if methbam:
         mods = sorted(mods_methbam(args.bam))
     else:
@@ -4825,7 +4839,7 @@ def wgmeth(args):
                 seg_start = int(seg_start)
                 seg_end = int(seg_end)
 
-                res = pool.apply_async(get_meth_calls_wg, [args, args.bam, args.methdb, chrom, seg_start, seg_end, args.phased, args.mod])
+                res = pool.apply_async(get_meth_calls_wg, [args, args.bam, args.methdb, chrom, seg_start, seg_end, args.phased, args.mod, motifsize])
 
                 results.append(res)
 
