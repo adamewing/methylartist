@@ -892,12 +892,15 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
                     methstate = -1
 
                 if None not in (restrict_motif, restrict_ref):
+                    if genome_pos < 0:
+                        continue
+
                     try:
                         ref_motif = restrict_ref.fetch(rec.reference_name, genome_pos, genome_pos+motifsize)
                         if motifsize == 1 and rec.is_reverse:
                             ref_motif = rc(ref_motif)
                     except ValueError:
-                        logger.warning('warning, out of bounds motif in read: %s' % rec.tostring())
+                        logger.warning('warning, out of bounds motif at position %d in read: %s' % (genome_pos, rec.tostring()))
 
                     #print(ref_motif, restrict_motif, rec.is_reverse)
 
