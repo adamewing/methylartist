@@ -578,7 +578,7 @@ def densecall_filter(reads, max_density=.7):
         else:
             filtered_count += 1
     
-    logger.info('filtered %d reads via --max_read_density %f' % (filtered_count, max_density))
+    logger.debug('filtered %d reads via --max_read_density %f' % (filtered_count, max_density))
 
     return out
 
@@ -712,6 +712,10 @@ def mods_methbam(bam_fn):
             mod_type = mod_type.rstrip('?.')
 
             mods.append(mod_type)
+
+        mods = list(set(mods))
+
+        logger.info('found mods: %s' % ','.join(mods))
 
         return mods # assumes all mods are represented for each read that has an Mm tag
 
@@ -968,7 +972,8 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
                         seg_reads[modname][index].add_mod(cg_seg_start, stat, methstate, modname)
 
     if args.max_read_density is not None:
-        seg_reads[modname] = densecall_filter(seg_reads[modname], max_density=float(args.max_read_density))
+        for modname in seg_reads:
+            seg_reads[modname] = densecall_filter(seg_reads[modname], max_density=float(args.max_read_density))
 
     seg_result = {}
     seen_reads = {}
@@ -1352,7 +1357,7 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
             if chrom != cg_chrom:
                 continue
 
-            if cg_start < seg_start or cg_start > seg_end:
+            if cg_start < seg_start or cg_start >= seg_end:
                 continue
 
             cg_seg_start = cg_start - seg_start
@@ -2972,7 +2977,17 @@ def locus(args):
     cover_bams = {}
 
     if args.plot_coverage:
-        for bam_fn in args.plot_coverage.split(','):
+        cov_bams = []
+
+        if args.plot_coverage.endswith('.bam'):
+            cov_bams = args.plot_coverage.split(',')
+
+        if args.plot_coverage.endswith('.txt'):
+            with open(args.plot_coverage) as _:
+                for fn in _:
+                    cov_bams.append(fn.strip())
+
+        for bam_fn in cov_bams:
             logger.info('gather coverage from %s...' % bam_fn)
 
             meth_seg_starts = deepcopy(np.asarray(meth_table['orig_loc']))
@@ -3115,10 +3130,8 @@ def locus(args):
     cover_color = {}
 
     if args.plot_coverage:
-        for i, bam_fn in enumerate(args.plot_coverage.split(',')):
-            c_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
+        for i, c_name in enumerate(cover_bams.keys()):
             cover_color[c_name] = sns.color_palette(args.coverpalette, n_colors=len(cover_bams))[i]
-
 
     # plot genes
 
@@ -3949,7 +3962,17 @@ def region(args):
 
     cover_bams = {}
     if args.plot_coverage:
-        for bam_fn in args.plot_coverage.split(','):
+        cov_bams = []
+
+        if args.plot_coverage.endswith('.bam'):
+            cov_bams = args.plot_coverage.split(',')
+
+        if args.plot_coverage.endswith('.txt'):
+            with open(args.plot_coverage) as _:
+                for fn in _:
+                    cov_bams.append(fn.strip())
+
+        for bam_fn in cov_bams:
             logger.info('gather coverage from %s...' % bam_fn)
             meth_seg_starts = [int(s.split(':')[1].split('-')[0]) for s in meth_segs.index]
             meth_seg_ends = [int(s.split(':')[1].split('-')[1]) for s in meth_segs.index]
@@ -4096,8 +4119,7 @@ def region(args):
     cover_color = {}
 
     if args.plot_coverage:
-        for i, bam_fn in enumerate(args.plot_coverage.split(',')):
-            c_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
+        for i, c_name in enumerate(cover_bams.keys()):
             cover_color[c_name] = sns.color_palette(args.coverpalette, n_colors=len(cover_bams))[i]
 
     # plot genes
@@ -4857,7 +4879,7 @@ def wgmeth(args):
 
     if args.mod not in mods:
         if args.mod is None:
-            logger.warning('more than one mod available, must specify which to use with --mod: %s' % ','.join(mods))
+            logger.warning('must specify which to use with --mod, available mods: %s' % ','.join(mods))
         else:
             logger.warning('mod %s not in known mods for db: %s' % (args.mod, ','.join(mods)))
         sys.exit()
