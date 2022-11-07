@@ -4,10 +4,11 @@ Tools for parsing and plotting methylation patterns from nanopore data
 
 ## Installation
 Recommended:
+
 `pip install methylartist`
 
-Or:
 Likely outdated:
+
 `conda install -c bioconda methylartist`
 
 Alternatively:
