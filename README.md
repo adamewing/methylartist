@@ -2,14 +2,12 @@
 
 Tools for parsing and plotting methylation patterns from nanopore data
 
-[![Anaconda-Server Badge](https://anaconda.org/bioconda/methylartist/badges/version.svg)](https://anaconda.org/bioconda/methylartist)
-
 ## Installation
-
+Recommended:
 `pip install methylartist`
 
 Or:
-
+Likely outdated:
 `conda install -c bioconda methylartist`
 
 Alternatively:
