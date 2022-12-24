@@ -3270,8 +3270,8 @@ def locus(args):
 
     highlight_patches = []
 
-    if args.highlight_panels:
-        a = float(args.highlight_panels)
+    if args.highlight_alpha:
+        a = float(args.highlight_alpha)
         if args.highlight or args.highlight_bed:
             for h, h_s in enumerate(h_start):
                 h_e = h_end[h]
@@ -3412,8 +3412,8 @@ def locus(args):
 
     highlight_patches = []
 
-    if args.highlight_panels:
-        a = float(args.highlight_panels)
+    if args.highlight_alpha:
+        a = float(args.highlight_alpha)
         if args.highlight or args.highlight_bed:
             for h, h_s in enumerate(h_start):
                 h_e = h_end[h]
@@ -3530,8 +3530,8 @@ def locus(args):
 
     highlight_patches = []
 
-    if args.highlight_panels:
-        a = float(args.highlight_panels)
+    if args.highlight_alpha:
+        a = float(args.highlight_alpha)
         if args.highlight or args.highlight_bed:
             for h, h_s in enumerate(h_cpg_start):
                 h_e = h_cpg_end[h]
@@ -3626,8 +3626,8 @@ def locus(args):
 
     highlight_patches = []
 
-    if args.highlight_panels:
-        a = float(args.highlight_panels)
+    if args.highlight_alpha:
+        a = float(args.highlight_alpha)
         if args.highlight or args.highlight_bed:
             for h, h_s in enumerate(h_cpg_start):
                 h_e = h_cpg_end[h]
@@ -3653,8 +3653,8 @@ def locus(args):
 
         highlight_patches = []
 
-        if args.highlight_panels:
-            a = float(args.highlight_panels)
+        if args.highlight_alpha:
+            a = float(args.highlight_alpha)
             if args.highlight or args.highlight_bed:
                 for h, h_s in enumerate(h_cpg_start):
                     h_e = h_cpg_end[h]
@@ -3718,6 +3718,12 @@ def region(args):
 
     if end-start < 500000:
         logger.warning('locus smaller than 0.5 Mbp, "methylartist locus" may yield better results')
+
+    scale_width = 1.0
+
+    if args.scale_fullwidth:
+        scale_width = (end-start)/float(args.scale_fullwidth)
+        logger.info('scale width to %.3f' % scale_width)
 
     ref = pysam.FastaFile(args.ref)
     motifs = iupac(args.motif)
@@ -4030,7 +4036,9 @@ def region(args):
             for line in h_bed:
                 c = line.strip().split()
                 assert len(c) >= 3, 'malformed line in --highlight_bed: %s' % line.strip()
-                assert c[0] == chrom, 'all entries in --highlight_bed must be on the same chromosome as -i/--interval'
+
+                if c[0] != chrom:
+                    continue
 
                 h_s, h_e = map(int, c[1:3])
 
@@ -4054,6 +4062,8 @@ def region(args):
         for i, c in enumerate(h_colors):
             if c is None:
                 h_colors[i] = more_colours.pop()
+        
+        logger.info('found %d highlights for %s' % (len(h_start), chrom))
 
     # mask
 
@@ -4099,6 +4109,9 @@ def region(args):
 
     if args.height:
         img_h = float(args.height)
+
+    if args.scale_fullwidth:
+        img_w = img_w*scale_width
 
     fig.set_size_inches(img_w, img_h)
 
@@ -4167,6 +4180,14 @@ def region(args):
     if args.genes is not None:
         genes_of_interest = args.genes.strip().split(',')
 
+        if '.' in args.genes and os.path.exists(args.genes):
+            logger.info('assuming --genes is a file, reading gene list from %s' % args.genes)
+
+            genes_of_interest = []
+            with open(args.genes) as genes_file:
+                for line in genes_file:
+                    genes_of_interest.append(line.strip())
+
     genemap = dd(Intersecter)
 
     if genes_of_interest:
@@ -4222,15 +4243,19 @@ def region(args):
 
     highlight_patches = []
 
-    if args.highlight_panels:
-        a = float(args.highlight_panels)
+    if args.highlight_alpha:
+        a = float(args.highlight_alpha)
         if args.highlight or args.highlight_bed:
             for h, h_s in enumerate(h_start):
                 h_e = h_end[h]
                 h_color = h_colors[h]
                 ymin = min(ax0.get_ybound())
                 yheight = max(ax0.get_ybound())-ymin
-                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+                if args.highlight_centerline:
+                    clw = float(args.highlight_centerline)
+                    highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], 1, yheight, lw=clw, edgecolor=h_color, facecolor=h_color, alpha=a, zorder=1))
+                else:
+                    highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
 
     for h in highlight_patches:
         ax0.add_patch(h)
@@ -4361,15 +4386,20 @@ def region(args):
 
         highlight_patches = []
 
-        if args.highlight_panels:
-            a = float(args.highlight_panels)
+        if args.highlight_alpha:
+            a = float(args.highlight_alpha)
             if args.highlight or args.highlight_bed:
                 for h, h_s in enumerate(h_start):
                     h_e = h_end[h]
                     h_color = h_colors[h]
                     ymin = min(ax1.get_ybound())
                     yheight = max(ax1.get_ybound())-ymin
-                    highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+                    if args.highlight_centerline:
+                        clw = float(args.highlight_centerline)
+                        highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], 1, yheight, lw=clw, edgecolor=h_color, facecolor=h_color, alpha=a, zorder=1))
+                        pass
+                    else:
+                        highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
 
         for h in highlight_patches:
             ax1.add_patch(h)
@@ -4403,8 +4433,16 @@ def region(args):
 
     if args.highlight or args.highlight_bed:
         for i in range(len(h_start)):
-            orig_highlight_box = matplotlib.patches.Rectangle((h_start[i],9), h_end[i]-h_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=2)
-            cpg_highlight_box = matplotlib.patches.Rectangle((h_cpg_start[i],0), h_cpg_end[i]-h_cpg_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=3)
+            orig_highlight_box = None
+            cpg_highlight_box = None
+
+            if args.highlight_centerline:
+                clw = float(args.highlight_centerline)
+                orig_highlight_box = matplotlib.patches.Rectangle((h_start[i],9), 1.0, 1.0, lw=clw, edgecolor=h_colors[i], facecolor=h_colors[i], zorder=2)
+                cpg_highlight_box = matplotlib.patches.Rectangle((h_cpg_start[i],0), 1.0, 1.0, lw=clw, edgecolor=h_colors[i], facecolor=h_colors[i], zorder=3)
+            else:
+                orig_highlight_box = matplotlib.patches.Rectangle((h_start[i],9), h_end[i]-h_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=2)
+                cpg_highlight_box = matplotlib.patches.Rectangle((h_cpg_start[i],0), h_cpg_end[i]-h_cpg_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=3)
 
             ax3.add_patch(orig_highlight_box)
             ax2.add_patch(cpg_highlight_box)
@@ -4421,6 +4459,18 @@ def region(args):
 
         con = ConnectionPatch(xyA=link_end1, xyB=link_end2, coordsA="data", coordsB="data", axesA=ax2, axesB=ax3, color=l_col)
         ax3.add_artist(con)
+    
+    if args.highlight_centerline:
+        clw = float(args.highlight_centerline)
+
+        i = 0
+        for x1_x, x2_x in zip(h_cpg_start, h_start):
+            link_end1 = (x1_x, 1)
+            link_end2 = (x2_x, 9)
+
+            con = ConnectionPatch(xyA=link_end1, xyB=link_end2, coordsA="data", coordsB="data", axesA=ax2, axesB=ax3, color=h_colors[i], lw=clw)
+            ax3.add_artist(con)
+            i += 1
 
     ax0.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
     ax1.set_xlim(ax3.get_xlim())
@@ -4469,15 +4519,19 @@ def region(args):
 
     highlight_patches = []
 
-    if args.highlight_panels:
-        a = float(args.highlight_panels)
+    if args.highlight_alpha:
+        a = float(args.highlight_alpha)
         if args.highlight or args.highlight_bed:
             for h, h_s in enumerate(h_cpg_start):
                 h_e = h_cpg_end[h]
                 h_color = h_colors[h]
                 ymin = min(ax4.get_ybound())
                 yheight = max(ax4.get_ybound())-ymin
-                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+                if args.highlight_centerline:
+                    clw = float(args.highlight_centerline)
+                    highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], 1, yheight, lw=clw, edgecolor=h_color, facecolor=h_color, alpha=a, zorder=1))
+                else:
+                    highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
 
     for h in highlight_patches:
         ax4.add_patch(h)
@@ -4497,15 +4551,19 @@ def region(args):
 
         highlight_patches = []
 
-        if args.highlight_panels:
-            a = float(args.highlight_panels)
+        if args.highlight_alpha:
+            a = float(args.highlight_alpha)
             if args.highlight or args.highlight_bed:
                 for h, h_s in enumerate(h_cpg_start):
                     h_e = h_cpg_end[h]
                     h_color = h_colors[h]
                     ymin = min(ax5.get_ybound())
                     yheight = max(ax5.get_ybound())-ymin
-                    highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+                    if args.highlight_centerline:
+                        clw = float(args.highlight_centerline)
+                        highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], 1, yheight, lw=clw, edgecolor=h_color, facecolor=h_color, alpha=a, zorder=1))
+                    else:
+                        highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
 
         for h in highlight_patches:
             ax5.add_patch(h)
@@ -4528,6 +4586,9 @@ def region(args):
 
     if args.phased:
         fn_prefix += '.phased'
+
+    if args.scale_fullwidth:
+        fn_prefix += '.scale_width.%.3f' % scale_width
 
     if args.svg:
         plt.savefig('%s.region.meth.svg' % fn_prefix, bbox_inches='tight')
@@ -5169,7 +5230,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--coverpalette', default="mako", help='colour palette name for coverage plot (default = "mako")')
     parser_locus.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
     parser_locus.add_argument('--genepalette', default="viridis", help='colour palette name for highlights (default = "viridis")')
-    parser_locus.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
+    parser_locus.add_argument('--highlight_alpha', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
     parser_locus.add_argument('--excl_ambig', action='store_true', default=False)
     parser_locus.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
     parser_locus.add_argument('--unambig_highlight', action='store_true', default=False)
@@ -5210,7 +5271,8 @@ if __name__ == '__main__':
     parser_region.add_argument('--highlightpalette', default="Blues", help='colour palette name for highlights (default = "Blues")')
     parser_region.add_argument('--genepalette', default="viridis", help='colour palette name for highlights (default = "viridis")')
     parser_region.add_argument('--gene_track_height', default=None, help='maximum number of gene track layers')
-    parser_region.add_argument('--highlight_panels', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
+    parser_region.add_argument('--highlight_alpha', default=0.25, help='alpha for highlighting in panels (between 0 and 1, default = 0.25)')
+    parser_region.add_argument('--highlight_centerline', default=None, help='change highlight to line (specify width)')
     parser_region.add_argument('--panelratios',  default=None, help='Alter panel ratios: needs to be 4 (or 5 if --plot_coverage) comma-seperated integers. Default: 1,5,3,3')
     parser_region.add_argument('--nticks', default=10, help='tick count (default=10)')
     parser_region.add_argument('--skip_align_plot', default=False, action='store_true', help='blank alignment plot, useful if unneeded or for runtime.')
@@ -5222,6 +5284,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
     parser_region.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
     parser_region.add_argument('--color_by_hp', default=False, action='store_true', help='color samples by HP value (req --phased)')
+    parser_region.add_argument('--scale_fullwidth', default=None, help='scale plot output relative to value (e.g. use length of chrom 1)')
     parser_region.add_argument('--svg', action='store_true', default=False)
 
     # options for composite plots
