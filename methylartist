@@ -4176,6 +4176,7 @@ def region(args):
     tx_lines = []
 
     genes_of_interest = []
+    gene_specific_colours = {}
 
     if args.genes is not None:
         genes_of_interest = args.genes.strip().split(',')
@@ -4186,7 +4187,10 @@ def region(args):
             genes_of_interest = []
             with open(args.genes) as genes_file:
                 for line in genes_file:
-                    genes_of_interest.append(line.strip())
+                    c = line.strip().split()
+                    genes_of_interest.append(c[0])
+                    if len(c) > 1:
+                        gene_specific_colours[c[0]] = c[1]
 
     genemap = dd(Intersecter)
 
@@ -4215,6 +4219,9 @@ def region(args):
                 if y > int(args.gene_track_height):
                     y = int(args.gene_track_height)
                     break
+        
+        if genes[ensg].name in gene_specific_colours:
+            gene_colours[i] = gene_specific_colours[genes[ensg].name]
 
         tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start, genes[ensg].tx_end], [0.4+y, 0.4+y], color=gene_colours[i], zorder=2))
 
