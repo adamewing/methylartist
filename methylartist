@@ -4864,6 +4864,10 @@ def composite(args):
         sys.exit('no successful alignments!')
     
     meanplot_table = pd.DataFrame.from_dict(meanplot_table).T
+    meanplot_table['start'] = np.array(meanplot_table['start'], dtype=int)
+    meanplot_table['end'] = np.array(meanplot_table['end'], dtype=int)
+    meanplot_table['coord'] = np.array(meanplot_table['coord'], dtype=int)
+    meanplot_table['meth'] = np.array(meanplot_table['meth'], dtype=float)
 
     #meanplot_table['meth'] = smooth(meanplot_table['meth'], window_len=int(args.smoothwindowsize)*4, window=args.smoothfunc)
 
