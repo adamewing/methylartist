@@ -2531,7 +2531,7 @@ def segplot(args):
         v = sns.__version__.split('.')
         if int(v[1]) < 11:
             sys.exit('--ridge requires seaborn 0.11.2 or later')
-        if int(v[2]) < 2:
+        elif int(v[1]) == 11 and int(v[2]) < 2:
             sys.exit('--ridge requires seaborn 0.11.2 or later')
 
     data = pd.read_csv(args.segmeth, sep='\t', header=0, index_col=0)
@@ -3012,7 +3012,7 @@ def locus(args):
 
             meth_seg_starts = deepcopy(np.asarray(meth_table['orig_loc']))
             meth_seg_starts += elt_start
-            #meth_seg_ends = meth_seg_starts + 1
+
             cover = bam_pileupcover(bam_fn, chrom, meth_seg_starts, meth_seg_starts, procs=int(args.coverprocs), log=args.logcover)
 
             c_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
@@ -3062,9 +3062,19 @@ def locus(args):
             for line in h_bed:
                 c = line.strip().split()
                 assert len(c) >= 3, 'malformed line in --highlight_bed: %s' % line.strip()
-                assert c[0] == chrom, 'all entries in --highlight_bed must be on the same chromosome as -i/--interval'
+
+                if c[0] != chrom:
+                    continue
 
                 h_s, h_e = map(int, c[1:3])
+
+                assert h_s < h_e
+
+                if h_s < elt_start:
+                    continue
+
+                if h_e > elt_end:
+                    continue
 
                 colour = None
 
@@ -3080,6 +3090,8 @@ def locus(args):
                 h_cpg_end.append(coord_to_cpg[min(meth_table['orig_loc'], key=lambda x:abs(x-h_end[-1]))])
 
                 h_colors.append(colour)
+            
+            logger.info('found %d within-interval highlight regions in %s' % (len(h_start), args.highlight_bed))
 
         more_colours = sns.color_palette(args.highlightpalette, n_colors=need_colour)
 
@@ -3202,7 +3214,7 @@ def locus(args):
         y = 1
 
         while genemap[y].find(genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start):
-            y += 1
+            y += 1.5
 
         tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [0.4+y, 0.4+y], color=gene_colours[i], zorder=2))
 
@@ -3210,8 +3222,6 @@ def locus(args):
         for exon_start, exon_end in genes[ensg].exons:
             exon_len = exon_end - exon_start
             exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, y], exon_len, 0.8, edgecolor=gene_colours[i], facecolor=gene_colours[i], zorder=3))
-
-        genemap[y].add_interval(Interval(genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start))
 
         if args.labelgenes:
             label = genes[ensg].name
@@ -3223,17 +3233,27 @@ def locus(args):
                 else:
                     label = '<<' + label
 
-            lg_x  = max(genes[ensg].tx_start-elt_start, 0)
-            gtxt  = ax0.text(lg_x, y+0.8, label, bbox=dict(boxstyle="round,pad=0.3", fc="lavender", alpha=0.5, lw=0), zorder=4)
-            bb_w  = gtxt.get_tightbbox(renderer=fig.canvas.get_renderer()).width
+            lg_x = max(genes[ensg].tx_start-elt_start, 0)
+
+            nudge_up = 0.05
+            if genes[ensg].tx_start-elt_start < 0:
+                nudge_up = 0.7
+
+            gtxt = ax0.text(lg_x, y+nudge_up, label, zorder=4, fontsize='small')
+            bb_w = gtxt.get_tightbbox(renderer=fig.canvas.get_renderer()).width
             fig_w = fig.get_size_inches()[0]*fig.dpi
             txt_w = bb_w/fig_w*(elt_end-elt_start)
-            gtxt.set_x(lg_x-txt_w/2)
+            gtxt.set_x(lg_x-txt_w*1.42)
 
-    gene_height = max(3, len(genemap))
+            genemap[y].add_interval(Interval(genes[ensg].tx_start-elt_start-(txt_w*1.5), genes[ensg].tx_end-elt_start+(txt_w*1.5)))
+
+        else:
+            genemap[y].add_interval(Interval(genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start))
+
+    gene_height = max(4, len(genemap))
 
     if args.labelgenes:
-        gene_height = max(6, len(genemap))
+        gene_height = max(8, len(genemap))
 
     if args.bed:
         logger.info('loading annotations from %s' % args.bed)
