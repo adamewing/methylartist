@@ -1721,6 +1721,9 @@ def scoredist(args):
     if args.db is None and args.bam is None:
         sys.exit('please specify either -d/--db or -b/--bam')
 
+    if args.motif is not None:
+        assert iupac(args.motif)
+
     if args.db:
         if args.bam is not None:
             sys.exit('please specify either -d/--db or -b/--bam but not both')
@@ -2327,6 +2330,9 @@ def segmeth(args):
 
     methbam = False
 
+    if args.motif is not None:
+        assert iupac(args.motif)
+
     if args.data is not None:
         if args.bams is not None:
             sys.exit('please specify either -d/--data or -b/--bams but not both')
@@ -2764,6 +2770,9 @@ def locus(args):
             if len(args.panelratios.split(',')) != 5:
                 logger.warning('locus -p/--panelratios requires 5 terms e.g. --panelratios 1,5,1,3,3') 
                 sys.exit(1)
+
+    if args.motif is not None:
+        assert iupac(args.motif)
 
     chrom, pos= args.interval.split(':')
     elt_start, elt_end = pos.split('-')
@@ -3736,6 +3745,9 @@ def region(args):
 
     assert start < end
 
+    if args.motif is not None:
+        assert iupac(args.motif)
+
     if end-start < 500000:
         logger.warning('locus smaller than 0.5 Mbp, "methylartist locus" may yield better results')
 
@@ -4648,6 +4660,9 @@ def composite(args):
     if args.color_by_phase and not args.phased:
         sys.exit('must specify --phased to use --color_by_phase')
 
+    if args.motif is not None:
+        assert iupac(args.motif)
+
     methbam = False
     user_colours = {}
 
@@ -4996,6 +5011,7 @@ def wgmeth(args):
     motifsize = None
 
     if args.motif is not None:
+        assert iupac(args.motif)
         motifsize = len(args.motif)
         logger.info('motif size %d (%s)' % (motifsize, args.motif))
 
