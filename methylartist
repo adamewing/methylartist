@@ -2364,7 +2364,7 @@ def segmeth(args):
             logger.info('assuming %s contains a list of .bams' % args.bams)
             with open(args.bams) as bam_list:
                 for line in bam_list:
-                    bams.append(line.strip())
+                    bams.append(line.strip().split()[0])
 
         for bam in bams:
             if ':' in bam:
@@ -2836,7 +2836,14 @@ def locus(args):
             logger.info('assuming %s contains a list of .bams' % args.bams)
             with open(args.bams) as bam_list:
                 for line in bam_list:
-                    bams.append(line.strip())
+                    c = line.strip().split()
+                    if len(c) == 1:
+                        bams.append(c[0])
+                    elif len(c) == 2:
+                        bams.append(c[0])
+                        user_colours[bams[-1]] = c[1]
+                    else:
+                        sys.exit(f'unparsable line in {args.bams}: {line.strip()}')
 
         for bam in bams:
             if ':' in bam:
@@ -3869,7 +3876,14 @@ def region(args):
             logger.info('assuming %s contains a list of .bams' % args.bams)
             with open(args.bams) as bam_list:
                 for line in bam_list:
-                    bams.append(line.strip())
+                    c = line.strip().split()
+                    if len(c) == 1:
+                        bams.append(c[0])
+                    elif len(c) == 2:
+                        bams.append(c[0])
+                        user_colours[bams[-1]] = c[1]
+                    else:
+                        sys.exit(f'unparsable line in {args.bams}: {line.strip()}')
 
         for bam in bams:
             if ':' in bam:
@@ -4704,7 +4718,7 @@ def composite(args):
             logger.info('assuming %s contains a list of .bams' % args.bams)
             with open(args.bams) as bam_list:
                 for line in bam_list:
-                    bams.append(line.strip())
+                    bams.append(line.strip().split()[0])
 
         for bam in bams:
             if ':' in bam:
