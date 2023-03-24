@@ -92,34 +92,6 @@ methylartist db-megalodon -m MCF7_ATCC_REP2/per_read_modified_base_calls.txt --d
 
 Input files can be uncompressed or .gzipped.
 
-
-### db-guppy
-
-Parses methylation call data from fast5 files where basecalling information has been added by running guppy. Calls are anchored to the reference genome via a user-supplied .bam file aligning the reads derived from the same .fast5 files to a referene genome.
-
-Example:
-
-```
-methylartist db-guppy -s MCF7_ATCC -f MCF7_ATCC_REP1/fast5 -p 32 -m [C]G -n 5mC -b MCF7_ATCC.bam -r Homo_sapiens_assembly38.fasta
-```
-
-Appending additional results:
-
-```
-methylartist db-guppy -s MCF7_ATCC -f MCF7_ATCC_REP2/fast5 -p 32 -m [C]G -n 5mC -b MCF7_ATCC.bam -r Homo_sapiens_assembly38.fasta -a
-```
-
-Notes:
-
-The `-f/--fast5` option should point at a folder that contains .fast5 files. Proccessing the fast5 files can be done in parallel with the `-p`/`--procs` option.
-
-Motifs (`-m`/`--motif`) are expressed by putting square brackets around the methylated base e.g. `[C]G` for 5mC and `G[A]TC` for dam-methylated 6mA.
-
-The `-n`/`--modname` option expects the 'long name' stored in the guppy metadata e.g. `5mC` or `6mA`.
-
-Read caching yields a large .db file ending with .bamcache.db. This can be deleted if you to not intend to append additional results to the methylation database (.guppy.db).
-
-
 ### db-custom
 
 This enables free-form parsing of modified basecall tables into methylartist .db files for tools where modified base .bam files are not available and certain requirements are met. The table must contain, at a minimum, the read names, genomic position (chromosome and position), strand, and probability of the target base being modified. If not specified by a column (`--modbasecol`), the modification is specified by `--modbase`. The probability is assumed to be a raw probability between 0 and 1 of a given base being modified i.e. 1-p(canonical), other schemes may be used but `--canprob` and `--mincanprob` must be specified to set a column for canoncial base scores and a cutoff for a base being canonical.
