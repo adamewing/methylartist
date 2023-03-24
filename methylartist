@@ -1794,6 +1794,9 @@ def scoredist(args):
     else:
         out_fn += '.png'
 
+    if args.outfile is not None:
+        out_fn = args.outfile
+
     logger.info('plot written to %s' % out_fn)
     plt.savefig(out_fn)
 
@@ -2414,6 +2417,9 @@ def segmeth(args):
 
     outfn += '.segmeth.tsv'
 
+    if args.outfile is not None:
+        outfn = args.outfile
+
     out = open(outfn, 'w')
 
     logger.info('segmeth output filename: %s' % outfn)
@@ -2744,12 +2750,22 @@ def segplot(args):
     if not args.ridge:
         fig.set_size_inches(float(args.width), float(args.height))
 
+    outfn = basename
+
     if args.svg:
-        fig.savefig(basename+'.segplot.svg', bbox_inches='tight')
-        logger.info('plot saved to %s.segplot.svg' % basename)
+        outfn += '.segplot.svg'
     else:
-        fig.savefig(basename+'.segplot.png', bbox_inches='tight')
-        logger.info('plot saved to %s.segplot.png' % basename)
+        outfn += '.segplot.png'
+
+    if args.outfile is not None:
+        outfn = args.outfile
+        if args.svg:
+            if outfn.split('.')[-1] != 'svg':
+                logger.warning('warning: %s does not have extension .svg, appending')
+                outfn += '.svg'
+
+    fig.savefig(outfn, bbox_inches='tight')
+    logger.info('plot saved to %s' % outfn)
 
 
 def locus(args):
@@ -3726,14 +3742,23 @@ def locus(args):
 
     if int(args.mincalls) > 0:
         fn_prefix += '.mc%d' % int(args.mincalls)
-    
-    if args.svg:
-        plt.savefig('%s.locus.meth.svg' % fn_prefix, bbox_inches='tight')
-        logger.info('plot saved to %s.locus.meth.svg' % fn_prefix)
 
+    outfn = fn_prefix
+
+    if args.svg:
+        outfn += '.locus.meth.svg'
     else:
-        plt.savefig('%s.locus.meth.png' % fn_prefix, bbox_inches='tight')
-        logger.info('plot saved to %s.locus.meth.png' % fn_prefix)
+        outfn += '.locus.meth.png'
+
+    if args.outfile is not None:
+        outfn = args.outfile
+        if args.svg:
+            if outfn.split('.')[-1] != 'svg':
+                logger.warning('warning: %s does not have extension .svg, appending')
+                outfn += '.svg'
+
+    fig.savefig(outfn, bbox_inches='tight')
+    logger.info('plot saved to %s' % outfn)
 
 
 def region(args):
@@ -4643,13 +4668,22 @@ def region(args):
     if args.scale_fullwidth:
         fn_prefix += '.scale_width.%.3f' % scale_width
 
-    if args.svg:
-        plt.savefig('%s.region.meth.svg' % fn_prefix, bbox_inches='tight')
-        logger.info('plot saved to %s.region.meth.svg' % fn_prefix)
+    outfn = fn_prefix
 
+    if args.svg:
+        outfn += '.region.meth.svg'
     else:
-        plt.savefig('%s.region.meth.png' % fn_prefix, bbox_inches='tight')
-        logger.info('plot saved to %s.region.meth.png' % fn_prefix)
+        outfn += '.region.meth.png'
+
+    if args.outfile is not None:
+        outfn = args.outfile
+        if args.svg:
+            if outfn.split('.')[-1] != 'svg':
+                logger.warning('warning: %s does not have extension .svg, appending')
+                outfn += '.svg'
+
+    fig.savefig(outfn, bbox_inches='tight')
+    logger.info('plot saved to %s' % outfn)
 
 
 def composite(args):
@@ -4779,8 +4813,6 @@ def composite(args):
     else:
         outfn += '.png'
 
-    logger.info('composite output filename: %s' % outfn)
-
     pool = mp.Pool(processes=int(args.procs))
 
     results = []
@@ -4796,7 +4828,7 @@ def composite(args):
             if c[3] in ('-', '+'):
                 str_col = 3
             
-            elif c[4] in ('-', '+'):
+            elif len(c) > 4 and c[4] in ('-', '+'):
                 str_col = 4
             
             else:
@@ -4998,6 +5030,9 @@ def composite(args):
 
     fig.set_size_inches(16, 6)
 
+    if args.outfile is not None:
+        outfn = args.outfile
+
     plt.savefig(outfn, bbox_inches='tight')
     logger.info('plotted to %s' % outfn)
 
@@ -5110,6 +5145,9 @@ def wgmeth(args):
             else:
                 outfn += '.%s.phase_%d.methyl.bed' % (str(args.mod), phase)
 
+            if args.outfile is not None:
+                outfn = args.outfile
+
             logger.info('writing %s' % outfn)
 
             if args.dss:
@@ -5142,9 +5180,14 @@ def wgmeth(args):
         else:
             outfn += '.%s.methyl.bed' % str(args.mod)
 
+        if args.outfile is not None:
+            outfn = args.outfile
+
         logger.info('writing %s' % outfn)
+
         if args.dss:
             meth_table[0].to_csv(outfn, columns=['chr','pos','N','X'], index=False, sep='\t')
+
         else:
             meth_table[0]['score']  = meth_table[0]['N']
             meth_table[0]['score']  = meth_table[0]['score'].where(meth_table[0]['score'] <= 1000, 1000)
@@ -5207,6 +5250,7 @@ if __name__ == '__main__':
     parser_segmeth.add_argument('-i', '--intervals', required=True, help='.bed file')
     parser_segmeth.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_segmeth.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
+    parser_segmeth.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_segmeth.add_argument('--ref', default=None, help='reference genome .fa (build .fai index with samtools faidx) (required for mod bams)')
     parser_segmeth.add_argument('--motif', default=None, help='expected modification motif (e.g. CG for 5mCpG required for mod bams)')
     parser_segmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
@@ -5226,6 +5270,7 @@ if __name__ == '__main__':
     parser_segplot.add_argument('-r', '--minreads', default=1, help='minimum reads in interval (default = 1)')
     parser_segplot.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_segplot.add_argument('-a', '--group_by_annotation', default=False, action='store_true', help='group plots by annotation rather than by sample')
+    parser_segplot.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_segplot.add_argument('--width', default=None, help='figure width (default = automatic)')
     parser_segplot.add_argument('--height', default=6, help='figure height (default = 6)')
     parser_segplot.add_argument('--pointsize', default=1, help='point size for scatterplot (default = 1)')
@@ -5253,6 +5298,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('-r', '--ref', default=None, help='reference genome .fa (build .fai index with samtools faidx) (required for mod bams)')
     parser_locus.add_argument('-n', '--motif', default=None, help='expected modification motif (e.g. CG for 5mCpG required for mod bams)')
     parser_locus.add_argument('-c', '--plot_coverage', default=None, help='plot coverage from bam(s) (can be comma-delimited list)')
+    parser_locus.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_locus.add_argument('--logcover', default=False, action='store_true', help='apply log2(count+1) to coverage data (--plot_coverage)')
     parser_locus.add_argument('--coverprocs', default=1, help='processes to use for coverage function (default=1)')
     parser_locus.add_argument('--bed', default=None, help='.bed file for additional annotations')
@@ -5313,6 +5359,7 @@ if __name__ == '__main__':
     parser_region.add_argument('-s', '--smoothwindowsize', default=None, help='size of window for smoothing (default=auto)')
     parser_region.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_region.add_argument('-c', '--plot_coverage', default=None, help='plot coverage from bam(s) (can be comma-delimited list)')
+    parser_region.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_region.add_argument('--logcover', default=False, action='store_true', help='apply log2(count+1) to coverage data (--plot_coverage)')
     parser_region.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_region.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
@@ -5360,6 +5407,7 @@ if __name__ == '__main__':
     parser_composite.add_argument('-w', '--linewidth', default=1, help='line width (default: 1)')
     parser_composite.add_argument('-l', '--lenfrac', default=0.95, help='fraction of TE length that must align (default 0.95)')
     parser_composite.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
+    parser_composite.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_composite.add_argument('--meanplot_ylabel', default='% methylation', help='set y-axis label on mean plot')
     parser_composite.add_argument('--meanplot_cutoff', default=None, help='override site coverage cutoff for mean plot (see output for automatic value)')
     parser_composite.add_argument('--mod', default=None, help='modification to plot (mod codes will be listed, default: infer from sample name')
@@ -5394,6 +5442,7 @@ if __name__ == '__main__':
     parser_wgmeth.add_argument('-c', '--chrom', default=None, help='limit analysis to one chromosome')
     parser_wgmeth.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_wgmeth.add_argument('-r', '--ref', default=None, help='reference genome .fa (build .fai index with samtools faidx) (required for mod bams)')
+    parser_wgmeth.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_wgmeth.add_argument('--motif', default=None, help='expected modification motif (e.g. CG for 5mCpG required for mod bams)')
     parser_wgmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_wgmeth.add_argument('--dss', default=False, action='store_true', help='output in DSS format (default = bedMethyl)')
@@ -5460,6 +5509,7 @@ if __name__ == '__main__':
     parser_scoredist.add_argument('-n', '--n', default=1000000, help='sample size (default = 1000000)')
     parser_scoredist.add_argument('-m', '--mod', required=True, help='modification to plot (will list for user if incorrect)')
     parser_scoredist.add_argument('-r', '--ref', default=None, help='reference genome fasta (samtools faidx indexed)')
+    parser_scoredist.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_scoredist.add_argument('--motif', default=None, help='modified motif to highlight (e.g. CG)')
     parser_scoredist.add_argument('--xmin', default=None)
     parser_scoredist.add_argument('--xmax', default=None)
