@@ -138,7 +138,7 @@ class Gene:
     def add_exon(self, block):
         assert len(block) == 2
 
-        if block[0] < block[1]:
+        if block[0] > block[1]:
             block[0], block[1] = block[1], block[0]
 
         self.exons.append(block)
