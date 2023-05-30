@@ -184,8 +184,7 @@ class Gene:
 
             else:
                 new_exons.append(last_block)
-
-            last_block = block
+                last_block = block
 
         new_exons.append(last_block)
 
