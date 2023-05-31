@@ -1377,7 +1377,7 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
             cg_seg_start = cg_start - seg_start
 
             if index not in seg_reads:
-                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
+                seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname, phase=reads[index])
             else:
                 seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
@@ -5121,11 +5121,14 @@ def wgmeth(args):
             seg_meth_table_store[0].append(pd.DataFrame.from_dict(seg_meth_table[0]).T)
 
     if args.phased:
+        print(seg_meth_table_store)
         for phase in (0,1):
             meth_table[phase] = pd.concat(seg_meth_table_store[phase])
 
     else:
         meth_table[0] = pd.concat(seg_meth_table_store[0])
+    
+    print(meth_table[0])
 
     if args.phased:
         for phase in (0,1):
