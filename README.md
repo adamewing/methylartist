@@ -7,17 +7,10 @@ Recommended:
 
 `pip install methylartist`
 
-Likely outdated:
-
-`conda install -c bioconda methylartist`
-
 Alternatively:
 
 `git clone https://github.com/adamewing/methylartist.git` or download a .zip file from GitHub.
 
-install methylartist and dependencies via:
-
-`python setup.py install`
 
 Tests/examples:
 
