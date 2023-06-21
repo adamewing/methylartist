@@ -523,7 +523,7 @@ def iupac(motif):
 
     for ib in list(motif):
         if ib not in iupac:
-            sys.exit('base %s not an IUPAC base, please modify --motif' % b)
+            sys.exit('base %s not an IUPAC base, please modify --motif' % ib)
 
         if len(motifs) == 0:
             for bp in iupac[ib]:
