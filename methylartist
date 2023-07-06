@@ -876,7 +876,13 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
                 genome_pos = None
 
                 if rec.is_reverse:
-                    genome_pos = ap[len(rec.seq)-base_pos[i]-1]
+                    try:
+                        genome_pos = ap[len(rec.seq)-base_pos[i]-1]
+                    except IndexError:
+                        if i >= len(base_pos):
+                            genome_pos = None
+                        else:
+                            raise IndexError(".bam parsing error: position not in aligned pairs")
 
                     if genome_pos is None:
                         continue
@@ -884,7 +890,14 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
                     genome_pos -= (int(motifsize)-1)
 
                 else:
-                    genome_pos = ap[base_pos[i]]
+                    try:
+                        genome_pos = ap[base_pos[i]]
+
+                    except IndexError:
+                        if i >= len(base_pos):
+                            genome_pos = None
+                        else:
+                            raise IndexError(".bam parsing error: position not in aligned pairs")
 
                 if genome_pos is None:
                     continue
