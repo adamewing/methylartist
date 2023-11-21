@@ -2675,9 +2675,9 @@ def segplot(args):
 
     if args.violin:
         if args.group_by_annotation:
-            sns_plot = sns.violinplot(x='group', y='modbase', data=plot_data, hue='sample', dodge=True, jitter=True, order=order, hue_order=samples_mods, palette=args.palette)
+            sns_plot = sns.violinplot(x='group', y='modbase', data=plot_data, hue='sample', dodge=True, order=order, hue_order=samples_mods, palette=args.palette)
         else:
-            sns_plot = sns.violinplot(x='sample', y='modbase', data=plot_data, hue='group', dodge=True, jitter=True, hue_order=order, palette=args.palette)
+            sns_plot = sns.violinplot(x='sample', y='modbase', data=plot_data, hue='group', dodge=True, hue_order=order, palette=args.palette)
 
         basename += '.violin'
 
