@@ -1697,7 +1697,7 @@ def build_genes(gtf, chrom, start, end, tx=False):
         if tx:
             if 'transcript_id' not in attr_dict:
                 continue
-            
+
             if 'transcript_name' not in attr_dict:
                 attr_dict['transcript_name'] = attr_dict['transcript_id']
 
@@ -3271,14 +3271,16 @@ def locus(args):
         y = 1
 
         while genemap[y].find(genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start):
-            y += 1.5
+            y += (float(args.exonheight)+0.7)
 
-        tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [0.4+y, 0.4+y], color=gene_colours[i], zorder=2))
+        tx_offset = float(args.exonheight)/2.0
+
+        tx_lines.append(matplotlib.lines.Line2D([genes[ensg].tx_start-elt_start, genes[ensg].tx_end-elt_start], [tx_offset+y, tx_offset+y], color=gene_colours[i], zorder=2))
 
         genes[ensg].merge_exons()
         for exon_start, exon_end in genes[ensg].exons:
             exon_len = exon_end - exon_start
-            exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, y], exon_len, 0.8, edgecolor=gene_colours[i], facecolor=gene_colours[i], zorder=3))
+            exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, y], exon_len, float(args.exonheight), edgecolor=gene_colours[i], facecolor=gene_colours[i], zorder=3))
 
         if args.labelgenes:
             label = genes[ensg].name
@@ -3292,9 +3294,9 @@ def locus(args):
 
             lg_x = max(genes[ensg].tx_start-elt_start, 0)
 
-            nudge_up = 0.05
+            nudge_up = 0.0
             if genes[ensg].tx_start-elt_start < 0:
-                nudge_up = 0.7
+                nudge_up = tx_offset+0.1
 
             gtxt = ax0.text(lg_x, y+nudge_up, label, zorder=4, fontsize='small')
             bb_w = gtxt.get_tightbbox(renderer=fig.canvas.get_renderer()).width
@@ -3327,7 +3329,7 @@ def locus(args):
             if ann.colour is not None:
                 bed_colour = ann.colour
 
-            exon_patches.append(matplotlib.patches.Rectangle([ann.start-elt_start, y], (ann.end-ann.start), 1.0, edgecolor=bed_colour, facecolor=bed_colour, zorder=3))
+            exon_patches.append(matplotlib.patches.Rectangle([ann.start-elt_start, y], (ann.end-ann.start), float(args.exonheight), edgecolor=bed_colour, facecolor=bed_colour, zorder=3))
 
             if ann.label is not None:
                 lg_x  = max(ann.start-elt_start, 0)
@@ -4324,7 +4326,7 @@ def region(args):
         genes[ensg].merge_exons()
         for exon_start, exon_end in genes[ensg].exons:
             exon_len = exon_end - exon_start
-            exon_patches.append(matplotlib.patches.Rectangle([exon_start, y], exon_len, 0.8, edgecolor=gene_colours[i], facecolor=gene_colours[i], zorder=3))
+            exon_patches.append(matplotlib.patches.Rectangle([exon_start, y], exon_len, float(args.exonheight), edgecolor=gene_colours[i], facecolor=gene_colours[i], zorder=3))
 
         genemap[y].add_interval(Interval(genes[ensg].tx_start, genes[ensg].tx_end))
 
@@ -5353,6 +5355,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
     parser_locus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_locus.add_argument('--labelgenes', default=False, action='store_true', help='plot gene names')
+    parser_locus.add_argument('--exonheight', default=0.8, help='set exon height (default=0.8)')
     parser_locus.add_argument('--show_transcripts', default=False, action='store_true', help='plot all transcripts, use transcript_id/transcript_name attrs')
     parser_locus.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot (default = -0.05)')
     parser_locus.add_argument('--ymax', default=1.05, help='y-axis maximum for smoothed plot (default = 1.05)')
@@ -5414,6 +5417,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_region.add_argument('--labelgenes', default=False, action='store_true', help='plot gene names')
     parser_region.add_argument('--show_transcripts', default=False, action='store_true', help='plot all transcripts, use transcript_id/transcript_name attrs')
+    parser_region.add_argument('--exonheight', default=0.8, help='set exon height (default=0.8)')
     parser_region.add_argument('--width', default=16, help='image width (inches, default=16)')
     parser_region.add_argument('--height', default=8, help='image width (inches, default=8)')
     parser_region.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
