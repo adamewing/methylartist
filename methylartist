@@ -1664,7 +1664,7 @@ def get_bed_annotations(fn, chrom, elt_start, elt_end):
     return ann
 
 
-def build_genes(gtf, chrom, start, end):
+def build_genes(gtf, chrom, start, end, tx=False):
     # used for locus plots
     genes = {}
 
@@ -1693,6 +1693,16 @@ def build_genes(gtf, chrom, start, end):
 
         ensg = attr_dict['gene_id']
         name = attr_dict['gene_name']
+
+        if tx:
+            if 'transcript_id' not in attr_dict:
+                continue
+            
+            if 'transcript_name' not in attr_dict:
+                attr_dict['transcript_name'] = attr_dict['transcript_id']
+
+            ensg = attr_dict['transcript_id']
+            name = attr_dict['transcript_name']
 
         if ensg not in genes:
             genes[ensg] = Gene(ensg, name, strand)
@@ -3227,7 +3237,7 @@ def locus(args):
     if args.gtf is not None:
         logger.info('building genes plot...')
         gtf = pysam.Tabixfile(args.gtf)
-        genes = build_genes(gtf, chrom, elt_start, elt_end)
+        genes = build_genes(gtf, chrom, elt_start, elt_end, tx=args.show_transcripts)
 
     exon_patches = []
     tx_lines = []
@@ -4256,7 +4266,7 @@ def region(args):
     if args.gtf is not None:
         logger.info('building genes plot...')
         gtf = pysam.Tabixfile(args.gtf)
-        genes = build_genes(gtf, chrom, start, end)
+        genes = build_genes(gtf, chrom, start, end, tx=args.show_transcripts)
 
     exon_patches = []
     tx_lines = []
@@ -5343,6 +5353,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
     parser_locus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_locus.add_argument('--labelgenes', default=False, action='store_true', help='plot gene names')
+    parser_locus.add_argument('--show_transcripts', default=False, action='store_true', help='plot all transcripts, use transcript_id/transcript_name attrs')
     parser_locus.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot (default = -0.05)')
     parser_locus.add_argument('--ymax', default=1.05, help='y-axis maximum for smoothed plot (default = 1.05)')
     parser_locus.add_argument('--cover_ymin', default=0, help='y-axis minimum for coverage plot (default = 0)')
@@ -5402,6 +5413,7 @@ if __name__ == '__main__':
     parser_region.add_argument('--force_align_plot', default=False, action='store_true', help='retain alignment plot even over regions > 5Mbp where it would be disabled automatically')
     parser_region.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_region.add_argument('--labelgenes', default=False, action='store_true', help='plot gene names')
+    parser_region.add_argument('--show_transcripts', default=False, action='store_true', help='plot all transcripts, use transcript_id/transcript_name attrs')
     parser_region.add_argument('--width', default=16, help='image width (inches, default=16)')
     parser_region.add_argument('--height', default=8, help='image width (inches, default=8)')
     parser_region.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
