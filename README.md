@@ -7,12 +7,16 @@ Recommended:
 
 `pip install methylartist`
 
+or
+
+`conda install -c bioconda methylartist`
+
 Alternatively:
 
 `git clone https://github.com/adamewing/methylartist.git` or download a .zip file from GitHub.
 
 
-Tests/examples:
+Various tests/examples are availble at [methylartists-tests](https://github.com/adamewing/methylartist-tests):
 
 ```
 git clone https://github.com/adamewing/methylartist-tests.git
