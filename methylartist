@@ -3635,10 +3635,17 @@ def locus(args):
         logger.warning('--smoothalpha must be between 0 and 1, set to 1.0')
         smoothalpha = 1.0
 
+    smoothed_values = dd(dict)
+
     for sample in sample_order:
         windowed_methfrac, meth_n = slide_window(meth_table, sample, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
 
         smoothed_methfrac = smooth(np.asarray(list(windowed_methfrac.values())), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
+
+        ix = np.asarray(list(windowed_methfrac.keys()))
+
+        for i, smooth_val in enumerate(smoothed_methfrac):
+            smoothed_values[sample][ix[i]] = smooth_val
 
         masked_segs = mask_methfrac(list(meth_n.values()), cutoff=args.maskcutoff)
 
@@ -3666,6 +3673,10 @@ def locus(args):
                     ax5.plot(pos_seg, mf_seg, marker='', lw=4, color='#ffffff', alpha=0.8, zorder=order_stack)
 
                     order_stack += 1
+
+    if args.smoothed_csv:
+        smoothed_df = pd.DataFrame(smoothed_values).T
+        smoothed_df.to_csv(args.smoothed_csv)
 
     ax4.set_zorder(order_stack)  # adjust z-level of legend after smoothed plot is finished
 
@@ -5242,7 +5253,7 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers(title="tool", dest="tool")
     subparsers.required = True
 
-    __version__ = "1.2.7"
+    __version__ = "1.2.8"
     parser.add_argument('-v', '--version', action='version', version='%(prog)s {version}'.format(version=__version__))
 
     parser_nanopolish    = subparsers.add_parser('db-nanopolish')
@@ -5347,6 +5358,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--slidingwindowsize', default=2, help='size of initial sliding window for coverage check (default=2)')
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_locus.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
+    parser_locus.add_argument('--smoothed_csv', default=None, help='output values from smoothed plot to specified filename in CSV format (default=None)')
     parser_locus.add_argument('--maskcutoff', default=1, help='read count masking cutoff (default=1)')
     parser_locus.add_argument('--maxmaskedfrac', default=1.0, help='skip smoothed plot if fraction of sample masked (--maskcutoff) > this value (default = 1.0)')
     parser_locus.add_argument('--nomask', default=False, action='store_true', help='skip drawing segment masks')
