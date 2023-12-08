@@ -3198,6 +3198,23 @@ def locus(args):
     for i, sample in enumerate(sample_order):
         sample_color[sample] = sns.color_palette(args.samplepalette, n_colors=len(sample_order))[i]
 
+    if args.color_by_phase:
+        if args.phased:
+            basenames = ['.'.join(sample.split('.')[:-2]) for sample in sample_color]
+
+            base_colors = {}
+
+            for i, basename in enumerate(basenames):
+                base_colors[basename] = sns.color_palette(args.samplepalette, n_colors=len(basenames))[i]
+
+            for sample in sample_color:
+                basename = '.'.join(sample.split('.')[:-2])
+                sample_color[sample] = base_colors[basename]
+        
+        else:
+            logger.warning('--color_by_phase has no effect without --phased')
+
+
     for sample in sample_color:
         if orig_bam[sample] in user_colours:
             sample_color[sample] = user_colours[orig_bam[sample]]
@@ -3214,7 +3231,7 @@ def locus(args):
                 sample_color[sample] = hp_color[hp]
 
         else:
-            logger.warning('--color_by_hp has no effect without --phase')
+            logger.warning('--color_by_hp has no effect without --phased')
 
     cover_color = {}
 
@@ -5346,6 +5363,7 @@ if __name__ == '__main__':
     parser_locus.add_argument('--phased', default=False, action='store_true', help='split samples into phases')
     parser_locus.add_argument('--ignore_ps', default=False, action='store_true', help='do not use phase set (PS) when plotting phased data (HP only)')
     parser_locus.add_argument('--color_by_hp', default=False, action='store_true', help='color samples by HP value (req --phased)')
+    parser_locus.add_argument('--color_by_phase', default=False, action='store_true', help='color samples by phase (req --phased)')
     parser_locus.add_argument('--phase_labels', default=None, help='if --color_by_hp substitute HP tags for labels. Format HP:Label comma-delimited e.g.: 1:Father,2:Mother')
     parser_locus.add_argument('--include_unphased', default=False, action='store_true', help='include an "unphased" category if called with --phased')
     parser_locus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
