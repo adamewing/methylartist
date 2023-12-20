@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "methylartist"
+version = "1.2.9"
+authors = [
+  { name="Adam Ewing", email="adam.ewing@gmail.com" },
+]
+description = "Tools for parsing and plotting nanopore methylation data"
+readme = "README.md"
+dependencies = [
+    'cython',
+    'pysam',
+    'numpy',
+    'scipy',
+    'pandas',
+    'matplotlib',
+    'seaborn',
+    'bx-python',
+]
+license = {file = "LICENSE"}
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.scripts]
+methylartist = 'methylartist:main'
+
+[project.urls]
+Homepage = "https://github.com/adamewing/methylartist"
+Issues = "https://github.com/adamewing/methylartist/issues"
