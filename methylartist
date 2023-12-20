@@ -645,7 +645,8 @@ def bam_pileupcover(bam_fn, chrom, w_starts, w_ends, procs=1, log=False):
     region = '%s:%d-%d' % (chrom, minpos, maxpos)
 
     segs = []
-    samtools_cmd = ['samtools', 'mpileup', '-a', '-q10', '-r', region, bam_fn]
+    samtools_cmd = ['samtools', 'mpileup', '-aa', '-q10', '-r', region, bam_fn]
+    
     FNULL = open(os.devnull, 'w')
     p = subprocess.Popen(samtools_cmd, stdout=subprocess.PIPE, stderr=FNULL)
 
@@ -1509,6 +1510,7 @@ def slide_window(meth_table, sample, width=20, slide=2):
 
 def slide_window_cover(cover_table, sample, width=20, slide=2):
     # used for locus plots, composite plots
+
     midpt_min = min(cover_table['loc'])
     midpt_max = max(cover_table['loc'])
 
@@ -3753,7 +3755,10 @@ def locus(args):
         ax6 = plt.subplot(gs[5])
 
         for sample in cover_bams:
-            ax6.plot(list(windowed_methfrac.keys()), cover_bams[sample], marker='', lw=4, color=cover_color[sample], zorder=3, label=sample, alpha=smoothalpha)
+            offset = list(windowed_methfrac.keys())[0]
+            matched_cover = [cover_bams[sample][i-offset] for i in windowed_methfrac.keys()]
+            
+            ax6.plot(list(windowed_methfrac.keys()), matched_cover, marker='', lw=4, color=cover_color[sample], zorder=3, label=sample, alpha=smoothalpha)
 
         ax6.legend()
         ax6.set_xlim(ax2.get_xlim())
