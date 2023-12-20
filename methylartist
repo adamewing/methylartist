@@ -5265,17 +5265,19 @@ def wgmeth(args):
 
             meth_table[0].to_csv(outfn, columns=['chr','start','end','name', 'score', 'strand', 'start', 'end', 'colour', 'N', 'pct'], header=False, index=False, sep='\t')
 
-def main(args):
+
+def main():
     logger.info('starting methylartist with command: %s' % ' '.join(sys.argv))
+    args = parse_args()
     args.func(args)
 
 
-if __name__ == '__main__':
+def parse_args():
     parser = argparse.ArgumentParser(description='methylartist: tools for exploring nanopore modified base data')
     subparsers = parser.add_subparsers(title="tool", dest="tool")
     subparsers.required = True
 
-    __version__ = "1.2.8"
+    __version__ = "1.2.9"
     parser.add_argument('-v', '--version', action='version', version='%(prog)s {version}'.format(version=__version__))
 
     parser_nanopolish    = subparsers.add_parser('db-nanopolish')
@@ -5583,6 +5585,8 @@ if __name__ == '__main__':
     parser_scoredist.add_argument('--palette', default="tab10", help='palette for phases (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_scoredist.add_argument('--svg', action='store_true', default=False)
 
-
     args = parser.parse_args()
-    main(args)
+    return args
+
+if __name__ == '__main__':
+    main()
