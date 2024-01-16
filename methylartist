@@ -2400,8 +2400,9 @@ def segmeth(args):
             if ':' in bam:
                 bam, _ = bam.split(':')
 
-            if not os.path.exists(bam+'.bai'):
-                sys.exit('bam not indexed: %s' % bam)
+            with pysam.AlignmentFile(bam) as fh:
+                if not fh.check_index():
+                    sys.exit('bam not indexed: %s' % bam)
 
             data[bam] = None
 
@@ -2893,8 +2894,9 @@ def locus(args):
                 bam, ucol = bam.split(':')
                 user_colours[bam] = ucol
 
-            if not os.path.exists(bam+'.bai'):
-                sys.exit('bam not indexed: %s' % bam)
+            with pysam.AlignmentFile(bam) as fh:
+                if not fh.check_index():
+                    sys.exit('bam not indexed: %s' % bam)
 
             data[bam] = None
 
@@ -3975,8 +3977,9 @@ def region(args):
                 bam, ucol = bam.split(':')
                 user_colours[bam] = ucol
 
-            if not os.path.exists(bam+'.bai'):
-                sys.exit('bam not indexed: %s' % bam)
+            with pysam.AlignmentFile(bam) as fh:
+                if not fh.check_index():
+                    sys.exit('bam not indexed: %s' % bam)
 
             data[bam] = None
 
@@ -4818,8 +4821,9 @@ def composite(args):
             if ':' in bam:
                 bam, _ = bam.split(':')
 
-            if not os.path.exists(bam+'.bai'):
-                sys.exit('bam not indexed: %s' % bam)
+            with pysam.AlignmentFile(bam) as fh:
+                if not fh.check_index():
+                    sys.exit('bam not indexed: %s' % bam)
 
             data[bam] = None
 
