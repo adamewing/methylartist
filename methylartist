@@ -2712,6 +2712,11 @@ def segplot(args):
         if args.group_by_annotation:
             plot_data = plot_data.sort_values(['group','sample'])
 
+        ridge_min = float(args.min)
+        ridge_max = float(args.max)
+
+        plot_data = plot_data.query('@ridge_min <= modbase <= @ridge_max')
+
         sns_plot = sns.FacetGrid(plot_data, row='samplegroup', hue='sample', aspect=15, height=.5, palette=args.palette)
         sns_plot.map(sns.kdeplot, 'modbase', bw_adjust=float(args.ridge_smoothing), clip_on=False, fill=True, alpha=float(args.ridge_alpha), linewidth=1.5)
         sns_plot.map(sns.kdeplot, 'modbase', clip_on=False, color='w', lw=2, bw_adjust=float(args.ridge_smoothing), alpha=float(args.ridge_alpha))
@@ -2770,7 +2775,7 @@ def segplot(args):
         if args.tiltlabel:
             sns_plot.set_xticklabels(sns_plot.get_xticklabels(), rotation=45)
 
-        sns_plot.set_ylim(float(args.ymin),float(args.ymax))
+        sns_plot.set_ylim(float(args.min),float(args.max))
 
         if args.width is None:
             args.width = 1 + len(order) * len(samples_mods)
@@ -4832,7 +4837,7 @@ def composite(args):
 
             if not os.path.exists(bam):
                 sys.exit(f'.bam file not found: {bam}')
-                
+
             with pysam.AlignmentFile(bam) as fh:
                 if not fh.check_index():
                     sys.exit('bam not indexed: %s' % bam)
@@ -5337,7 +5342,7 @@ def parse_args():
     parser_segmeth.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
     parser_segmeth.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
 
-    # options for methylation strip / violin plots
+    # options for methylation strip / violin / ridge plots
     parser_segplot.add_argument('-s', '--segmeth', required=True, help='output from segmeth.py')
     parser_segplot.add_argument('-m', '--samples', default=None, help='samples, comma delimited')
     parser_segplot.add_argument('-d', '--mods', default=None, help='mods, comma delimited')
@@ -5352,8 +5357,8 @@ def parse_args():
     parser_segplot.add_argument('--width', default=None, help='figure width (default = automatic)')
     parser_segplot.add_argument('--height', default=6, help='figure height (default = 6)')
     parser_segplot.add_argument('--pointsize', default=1, help='point size for scatterplot (default = 1)')
-    parser_segplot.add_argument('--ymin', default=-0.15, help='ymin (default = -0.15)')
-    parser_segplot.add_argument('--ymax', default=1.15, help='ymax (default = 1.15)')
+    parser_segplot.add_argument('--min', default=-0.15, help='min (default = -0.15)')
+    parser_segplot.add_argument('--max', default=1.15, help='max (default = 1.15)')
     parser_segplot.add_argument('--ylabel', default='pct methylation', help='set label for y-axis (default: pct methylation)')
     parser_segplot.add_argument('--tiltlabel', default=False, action='store_true')
     parser_segplot.add_argument('--palette', default="tab10", help='palette for phases (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
