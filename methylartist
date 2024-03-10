@@ -4207,6 +4207,9 @@ def region(args):
 
                 h_s, h_e = map(int, c[1:3])
 
+                if h_e < start or h_s > end:
+                    continue
+
                 colour = None
 
                 if len(c) > 3:
