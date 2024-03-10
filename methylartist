@@ -4096,6 +4096,23 @@ def region(args):
                 else:
                     meth_segs[seg_id][sample_name + '_frac'] = meth_calls/float(meth_calls+unmeth_calls)
 
+    if args.eff:
+        for sample_eff in args.eff.split(','):
+            if ':' not in sample_eff:
+                logger.warning(f'malformed --eff argument: {args.eff}')
+                continue
+            
+            eff_samplename, eff_value = sample_eff.split(':')
+
+            if eff_samplename in sample_names:
+                for seg_id in meth_segs:
+                    meth_segs[seg_id][eff_samplename + '_frac'] = meth_segs[seg_id][eff_samplename + '_frac']*float(eff_value)
+
+                logger.info(f'adjusted sample {eff_samplename}, efficiency: {eff_value}')
+
+            else:
+                logger.warning(f'samplename from --eff not found: {eff_samplename}')
+
     for mod in mods: # TODO phase aware
         shallow_frac = len(shallow_windows[mod])/len(w_starts)*100.0
         if shallow_frac > 0.0:
@@ -4741,6 +4758,9 @@ def region(args):
 
     if args.phased:
         fn_prefix += '.phased'
+
+    if args.eff:
+        fn_prefix += '.eff'
 
     if args.scale_fullwidth:
         fn_prefix += '.scale_width.%.3f' % scale_width
@@ -5457,6 +5477,7 @@ def parse_args():
     parser_region.add_argument('--min_window_calls', default=1, help='minimum reads per window to include in plot (default = 1)')
     parser_region.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_region.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
+    parser_region.add_argument('--eff', default=None, help='conversion efficiency (for e.g. bs-seq or em-seq), input as comma-delimited sample:eff e.g. MySample1.m:0.9,MySample2.m:0.8')
     parser_region.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot (default = -0.05)')
     parser_region.add_argument('--ymax', default=1.05, help='y-axis maximum for smoothed plot (default = 1.05')
     parser_region.add_argument('--cover_ymin', default=0, help='y-axis minimum for coverage plot (default = 0)')
