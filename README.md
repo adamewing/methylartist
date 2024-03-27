@@ -98,6 +98,16 @@ For example, modified basecalls from [deepsignal-plant](https://github.com/PengN
 
 `/home/taewing/methylartist/methylartist db-custom -m deepsignal_example.C.call_mods.tsv --readname 4 --chrom 0 --pos 1 --strand 2 --modprob 7 --modbase m -d deepsignal_example.db`
 
+### db-sub
+
+As of 1.3.0, methylartist supports display of C/U base substitution data (i.e. WGBS or EM-seq data) via creation of a methylartist .db file, simply pass the .bam file as input and specify an output file:
+
+```
+methylartist db-sub -b NA12878.EMSEQ.GAPDH.bam -d NA12878.EMSEQ.GAPDH.db
+```
+
+Note that the .bam file has to include the `MD` tag  (aligners for bisulfite/em-seq data should do this).
+
 
 ### segmeth
 
@@ -248,6 +258,19 @@ chr17 39698981 39707766
 ```
 
 ![locus plot 2](https://github.com/adamewing/methylartist/blob/main/docs/ERBB2.MCF7_data_megalodon.colours.chr17_39677914-39738361.m.ms1.smw38.locus.meth.png?raw=true)
+
+
+#### Short-read data
+
+Since WGBS/EM-seq data is supported via `db-sub`, this data can be displayed via any of the other methylartist commands, e.g.:
+
+```
+methylartist locus -d sub_test.data.txt -i chr12:6,517,169-6,555,718 -g data/Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --labelgenes --panelratios 5,5,1,3,3
+```
+
+![locus plot ct](https://github.com/adamewing/methylartist/blob/main/docs/sub_test.data.chr12_6517169_6555718.m.ms1.smw34.locus.meth.png?raw=true)
+
+Note `locus` may take a long time to plot short read alignments, a fix is pending.
 
 
 #### phasing

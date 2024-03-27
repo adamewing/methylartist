@@ -4,13 +4,13 @@ from setuptools import setup, find_packages
 
 setup(
     name='methylartist',
-    version='1.2.11',
+    version='1.3.0',
     author='Adam Ewing',
     author_email='adam.ewing@gmail.com',
     description=("Tools for parsing and plotting nanopore methylation data"),
     license='MIT',
     url='https://github.com/adamewing/methylartist',
-    download_url='https://github.com/adamewing/methylartist/archive/refs/tags/1.2.11.tar.gz',
+    download_url='https://github.com/adamewing/methylartist/archive/refs/tags/1.3.0.tar.gz',
     scripts=['methylartist'],
     packages=find_packages(),
     install_requires = [
@@ -22,6 +22,7 @@ setup(
         'matplotlib',
         'seaborn',
         'bx-python',
+        'tqdm',
     ],
     classifiers=[
         'Development Status :: 4 - Beta',
