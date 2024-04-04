@@ -1397,7 +1397,12 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
             cg_seg_start = cg_start - seg_start
 
             if index not in seg_reads:
+                if index not in reads:
+                    logger.warning(f'warning, read {index} not found in prefetched reads, skipped')
+                    continue
+
                 seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname, phase=reads[index])
+
             else:
                 seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
 
@@ -3723,7 +3728,7 @@ def locus(args):
         ax0.set_xticklabels(xt_labels, rotation=45)
     else:
         ax0.set_xticklabels(xt_labels)
-
+    
     # llr plot
 
     logger.info('building llr plot...')
@@ -3915,7 +3920,10 @@ def locus(args):
         fn_prefix = '_'.join(args.genes.split(',')) + '.' + fn_prefix
 
     if args.phased:
-        fn_prefix += '.phased'
+        if args.phasediff:
+            fn_prefix += '.phasediff'
+        else:
+            fn_prefix += '.phased'
 
     param_str = '.ms%d.smw%d' % (args.modspace, int(args.smoothwindowsize))
 
@@ -5525,6 +5533,7 @@ def parse_args():
     parser_locus.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
     parser_locus.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_locus.add_argument('--phased', default=False, action='store_true', help='split samples into phases')
+    parser_locus.add_argument('--phasediff', default=False, action='store_true', help='use absolute difference between phases as output')
     parser_locus.add_argument('--ignore_ps', default=False, action='store_true', help='do not use phase set (PS) when plotting phased data (HP only)')
     parser_locus.add_argument('--color_by_hp', default=False, action='store_true', help='color samples by HP value (req --phased)')
     parser_locus.add_argument('--color_by_phase', default=False, action='store_true', help='color samples by phase (req --phased)')
@@ -5673,6 +5682,7 @@ def parse_args():
     parser_wgmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_wgmeth.add_argument('--dss', default=False, action='store_true', help='output in DSS format (default = bedMethyl)')
     parser_wgmeth.add_argument('--phased', action='store_true', default=False, help='split output into phases (currently just 1,2)')
+    parser_wgmeth.add_argument('--phasediff', default=False, action='store_true', help='use absolute difference between phases as output')
     parser_wgmeth.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
 
     # options for custom db
