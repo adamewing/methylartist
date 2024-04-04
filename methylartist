@@ -1391,16 +1391,12 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
             if cg_start < seg_start or cg_start >= seg_end:
                 continue
 
-            if phased and index not in reads:
+            if index not in reads:
                 continue
 
             cg_seg_start = cg_start - seg_start
 
             if index not in seg_reads:
-                if index not in reads:
-                    logger.warning(f'warning, read {index} not found in prefetched reads, skipped')
-                    continue
-
                 seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname, phase=reads[index])
 
             else:
