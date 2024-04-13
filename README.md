@@ -1,6 +1,6 @@
 ## methylartist
 
-Tools for parsing and plotting methylation patterns from nanopore data
+Tools for parsing and plotting methylation patterns
 
 ## Installation
 Available through pip and conda:
