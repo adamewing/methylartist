@@ -34,7 +34,7 @@ Alignments stored in .bam format should be sorted and indexed and should use the
 
 The easiest way to provide modified basecall data is through .bam files with the `MM` and `ML` tags for modified base calling such as those produced by guppy or dorado. Note that the `mod_mappings.bam` file output by megalodon will work for modified base calling, but is unsuitable for downstream applications involving sequence variation, including phasing.
 
-If .bam files with modified base calls are not available, methylartist has functions for loading methylation data can from nanopolish, megalodon, or basecalled guppy fast5s, using the appropriate function below.
+If .bam files with modified base calls are not available, methylartist has functions for loading methylation data can from nanopolish, megalodon, or basecalled guppy fast5s, using the appropriate function below. Assays that use C/U conversion for methylation inference are also supported through the `db-sub` command as noted below.
 
 Once coverted, the sqlite .db file can be input to methylartist functions (e.g. `segplot`, `locus`, etc).
 
