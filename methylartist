@@ -3936,10 +3936,13 @@ def locus(args):
         pd_colors = {}
 
         for i, sample in enumerate(samples):
-            pd_colors[sample] = sns.color_palette(args.samplepalette, n_colors=len(samples))[i]
+            sample_orig = '.'.join(sample.split('.')[:-1]) + '.bam'
+            if sample_orig in user_colours:
+                pd_colors[sample] = user_colours[sample_orig]
+            else:
+                pd_colors[sample] = sns.color_palette(args.samplepalette, n_colors=len(samples))[i]
 
         phase_diffs = smoothed_values[samples]
-        print(phase_diffs)
 
         ax7 = sns.lineplot(data=phase_diffs, lw=4, palette=pd_colors, dashes=False, zorder=2)
 
