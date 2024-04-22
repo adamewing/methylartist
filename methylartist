@@ -3935,10 +3935,12 @@ def locus(args):
 
         pd_colors = {}
 
+        user_colours_nopath = dict([(os.path.basename(s), user_colours[s]) for s in user_colours])
+
         for i, sample in enumerate(samples):
             sample_orig = '.'.join(sample.split('.')[:-1]) + '.bam'
-            if sample_orig in user_colours:
-                pd_colors[sample] = user_colours[sample_orig]
+            if sample_orig in user_colours_nopath:
+                pd_colors[sample] = user_colours_nopath[sample_orig]
             else:
                 pd_colors[sample] = sns.color_palette(args.samplepalette, n_colors=len(samples))[i]
 
