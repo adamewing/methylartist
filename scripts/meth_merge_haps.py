@@ -56,51 +56,20 @@ def smooth(seg, hap, x, window_len=8, window='hanning'):
 
 
 def get_modnames(meth_db):
-    if not os.path.exists(meth_db):
-        sys.exit('methylartist database (%s) does not exist, check that full path is included if not in current working directory.' % meth_db)
-
-    conn = sqlite3.connect(meth_db)
-    c = conn.cursor()
+    bam = pysam.AlignmentFile(meth_db)
+    logger.info(f'searching for mod names in {meth_db}, if this takes a long time please ensure MM/ML tags are present')
 
     mod_names = []
 
-    for row in c.execute("SELECT DISTINCT mod FROM modnames"):
-        mod_names.append(row[0])
+    for read in bam.fetch():
+        if read.modified_bases is not None:
+            for k in read.modified_bases.keys():
+                mod_names.append(k[2])
+
+        if len(mod_names) > 0:
+            break
 
     return mod_names
-
-
-def get_mod_sites(dbs, hap_reads, mod, start, end):
-    c_lookup = {}
-
-    for db in dbs:
-        conn = sqlite3.connect(db)
-        c_lookup[db] = conn.cursor()
-
-    mod_sites = dd(dict)
-
-    for hap in hap_reads:
-        for readname in hap_reads[hap]:
-            read_start, read_end = hap_reads[hap][readname]
-            for db in dbs:
-                c = c_lookup[db]
-                for row in c.execute("SELECT chrom, pos, stat, methstate, modname FROM methdata WHERE readname='%s' ORDER BY pos" % readname):
-
-                    mod_chrom, mod_start, stat, methstate, modname = row
-
-                    if modname != mod:
-                        continue
-                    
-                    if mod_start < start or mod_start > end:
-                        continue
-
-                    if mod_start < read_start or mod_start > read_end:
-                        continue
-
-                    if methstate in (1,-1): # unambiguous only
-                        mod_sites[readname][int(mod_start)] = methstate
-
-    return mod_sites
 
 
 def map_hap_ends(hap_reads, mod_sites, chrom, start, end, min_ext_count=200):
@@ -540,7 +509,6 @@ def check_compat_ccs(cc1, cc2):
     return ic
         
 
-
 def meth_profile(seg, hap, hap_reads, mod_sites, start, end):
     meth_table = dd(dict) # site-->read-->call
 
@@ -568,19 +536,23 @@ def meth_profile(seg, hap, hap_reads, mod_sites, start, end):
     return sm_profile
 
 
-def hap_read_dict(bam_fn, chrom, start, end, pad=10000):
+def hap_read_dict(bam_fn, mod, chrom, start, end, pad=10000):
     bam = pysam.AlignmentFile(bam_fn)
 
     start = int(start + pad)
     end = int(end - pad)
 
     haps = dd(dict)
+    mod_sites = dd(dict)
 
     for read in bam.fetch(chrom, start, end):
         HP = None
         PS = None
 
         if read.is_supplementary or read.is_secondary or read.is_duplicate:
+            continue
+
+        if read.modified_bases is None:
             continue
 
         for tag in read.get_tags():
@@ -607,15 +579,38 @@ def hap_read_dict(bam_fn, chrom, start, end, pad=10000):
 
             else:
                 haps[hap][read.query_name] = [read.reference_start, read.reference_end]
-    
-    return haps
+
+        for modtype in read.modified_bases:
+            if mod != modtype[2]:
+                continue
+
+            ref_map = dict(read.get_aligned_pairs(matches_only=True))
+
+            for (read_bp, score) in read.modified_bases[modtype]:
+                if read_bp not in ref_map:
+                    continue
+
+                ref_bp = ref_map[read_bp]
+
+                if ref_bp < start or ref_bp > end:
+                    continue
+
+                methstate = 0
+                if score/255 > 0.8:
+                    methstate = 1
+
+                if score/255 < 0.2:
+                    methstate = -1
+
+                mod_sites[read.query_name][ref_bp] = methstate
+
+    return haps, mod_sites
 
 
 def match_hap_ends(args, chrom, start, end):
-    hap_reads = hap_read_dict(args.bam, chrom, start, end)
+    hap_reads, mod_sites = hap_read_dict(args.bam, args.mod, chrom, start, end)
 
     if len(hap_reads) > 2:
-        mod_sites = get_mod_sites(args.db.split(','), hap_reads, args.mod, start, end)
         return map_hap_ends(hap_reads, mod_sites, chrom, start, end)
 
     return None, None
@@ -662,18 +657,12 @@ def rehap_bam(args, hapmap):
 
 
 def main(args):
-    dbs = args.db.split(',')
-
-    avail_mods = []
-
-    for db in dbs:
-        avail_mods += get_modnames(db)
+    avail_mods = get_modnames(args.bam)
     
     if args.mod not in avail_mods:
         logger.error('--mod %s not available. Possible options: %s' % (args.mod, ','.join(list(set(avail_mods)))))
         sys.exit(1)
     
-
     chromlen = {}
     with open(args.fai) as fai:
         for line in fai:
@@ -713,8 +702,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='methylartist: tools for exploring nanopore modified base data')
-    parser.add_argument('-b', '--bam', required=True, help='indexed sorted bam file')
-    parser.add_argument('-d', '--db', required=True, help='methylartist db(s) (can be comma-delimited list)')
+    parser.add_argument('-b', '--bam', required=True, help='indexed sorted bam file with MM/ML tags')
     parser.add_argument('-m', '--mod', required=True, help='modificaiton (if not sure, guess and then select from list if error)')
     parser.add_argument('-f', '--fai', required=True, help='.fai file from "samtools faidx" or equivalent')
     parser.add_argument('-p', '--procs', default=4, help='number of processes (chromosomes) to run concurrently (default = 4)')

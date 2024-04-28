@@ -447,11 +447,15 @@ def get_reads(fn, chrom, start, end, min_mapq=10, spanning_only=False, primary_o
     return reads
 
 
-def get_phased_reads(fn, chrom, start, end, min_mapq=10, tag_untagged=False, ignore_tags=False, HP_only=False):
+def get_phased_reads(fn, chrom, start, end, min_mapq=10, tag_untagged=False, ignore_tags=False, HP_only=False, primary_only=False):
     reads = {}
 
     bam = pysam.AlignmentFile(fn)
     for read in bam.fetch(chrom, start, end):
+        if primary_only:
+            if read.is_secondary or read.is_supplementary:
+                continue
+            
         if read.mapq >= min_mapq:    
             phase = None
 
@@ -3040,7 +3044,7 @@ def locus(args):
 
     if args.phased:
         for bam in data:
-            phased_reads = get_phased_reads(bam, chrom, elt_start, elt_end, tag_untagged=args.include_unphased, min_mapq=int(args.min_mapq), HP_only=args.ignore_ps)
+            phased_reads = get_phased_reads(bam, chrom, elt_start, elt_end, tag_untagged=args.include_unphased, min_mapq=int(args.min_mapq), HP_only=args.ignore_ps, primary_only=args.primary_only)
             phases[bam] = list(set([p for p in phased_reads.values() if p]))
             logger.info('phases for bam %s: %s' % (bam, ','.join(phases[bam])))
 
@@ -3749,7 +3753,11 @@ def locus(args):
         ax4.axhline(y=upper, c='k', linestyle='--',lw=1)
         ax4.axhline(y=lower, c='k', linestyle='--',lw=1)
 
-    ax4 = sns.lineplot(x='loc', y='modstat', hue='sample', data=meth_table, palette=sample_color, zorder=2)
+    legend='auto'
+    if args.hidelegend:
+        legend=False
+
+    ax4 = sns.lineplot(x='loc', y='modstat', hue='sample', data=meth_table, palette=sample_color, zorder=2, legend=legend)
     
     if args.statname:
         ax4.set_ylabel(args.statname)
@@ -3946,7 +3954,11 @@ def locus(args):
 
         phase_diffs = smoothed_values[samples]
 
-        ax7 = sns.lineplot(data=phase_diffs, lw=4, palette=pd_colors, dashes=False, zorder=2)
+        legend='auto'
+        if args.hidelegend:
+            legend=False
+
+        ax7 = sns.lineplot(data=phase_diffs, lw=4, palette=pd_colors, dashes=False, zorder=2, legend=legend)
 
         ax7.set_xlim(ax2.get_xlim())
         ax7.set_ylim((float(args.ymin),float(args.ymax)))
@@ -5619,6 +5631,7 @@ def parse_args():
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
     parser_locus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
     parser_locus.add_argument('--labelgenes', default=False, action='store_true', help='plot gene names')
+    parser_locus.add_argument('--hidelegend', default=False, action='store_true', help='hide legends')
     parser_locus.add_argument('--exonheight', default=0.8, help='set exon height (default=0.8)')
     parser_locus.add_argument('--show_transcripts', default=False, action='store_true', help='plot all transcripts, use transcript_id/transcript_name attrs')
     parser_locus.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot (default = -0.05)')
