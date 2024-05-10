@@ -2891,6 +2891,9 @@ def segplot(args):
         if args.tiltlabel:
             sns_plot.set_xticklabels(sns_plot.get_xticklabels(), rotation=45)
 
+        if args.vertlabel:
+            sns_plot.set_xticklabels(sns_plot.get_xticklabels(), rotation=90)
+
         sns_plot.set_ylim(float(args.min),float(args.max))
 
         if args.width is None:
@@ -2930,7 +2933,7 @@ def locus(args):
     assert '-' in args.interval
 
     if args.panelratios:
-        if args.plot_coverage:
+        if args.plot_coverage or args.phasediff:
             if len(args.panelratios.split(',')) != 6:
                 logger.warning('locus -p/--panelratios requires 6 terms e.g. --panelratios 1,5,1,3,3,3') 
                 sys.exit(1)
@@ -5578,7 +5581,8 @@ def parse_args():
     parser_segplot.add_argument('--max', default=1.15, help='max (default = 1.15)')
     parser_segplot.add_argument('--ylabel', default='pct methylation', help='set label for y-axis (default: pct methylation)')
     parser_segplot.add_argument('--tiltlabel', default=False, action='store_true')
-    parser_segplot.add_argument('--palette', default="tab10", help='palette for phases (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
+    parser_segplot.add_argument('--vertlabel', default=False, action='store_true')
+    parser_segplot.add_argument('--palette', default="tab10", help='palette (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_segplot.add_argument('--ridge_alpha', default=1.0, help='alpha (tranparency) for ridge plot fills (default = 1.0)')
     parser_segplot.add_argument('--ridge_spacing', default=-0.25, help='ridge plot spacing (generally negative, default = -0.25)')
     parser_segplot.add_argument('--ridge_smoothing', default=0.5, help='smoothing parameter for ridge plot, bigger is smoother (default=0.5)')
