@@ -3961,7 +3961,7 @@ def locus(args):
         if args.hidelegend:
             legend=False
 
-        ax7 = sns.lineplot(data=phase_diffs, lw=4, palette=pd_colors, dashes=False, zorder=2, legend=legend)
+        ax7 = sns.lineplot(data=phase_diffs, lw=4, palette=pd_colors, dashes=False, zorder=2, legend=legend, alpha=smoothalpha)
 
         ax7.set_xlim(ax2.get_xlim())
         ax7.set_ylim((float(args.ymin),float(args.ymax)))
