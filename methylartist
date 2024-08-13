@@ -3392,7 +3392,7 @@ def locus(args):
 
     if args.gtf is not None:
         logger.info('building genes plot...')
-        gtf = pysam.Tabixfile(args.gtf)
+        gtf = pysam.Tabixfile(args.gtf, index=args.csi)
         genes = build_genes(gtf, chrom, elt_start, elt_end, tx=args.show_transcripts)
 
     exon_patches = []
@@ -4532,7 +4532,7 @@ def region(args):
 
     if args.gtf is not None:
         logger.info('building genes plot...')
-        gtf = pysam.Tabixfile(args.gtf)
+        gtf = pysam.Tabixfile(args.gtf, index=args.csi)
         genes = build_genes(gtf, chrom, start, end, tx=args.show_transcripts)
 
     exon_patches = []
@@ -5632,6 +5632,7 @@ def parse_args():
     parser_locus.add_argument('-b', '--bams', default=None, help='one or more .bams with MM and ML tags for modification calls (see samtags spec)')
     parser_locus.add_argument('-i', '--interval', required=True, help='chrom:start-end')
     parser_locus.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
+    parser_locus.add_argument('-C', '--csi', default=None, help='csi index for the gtf, optional')
     parser_locus.add_argument('-l', '--highlight', default=None, help='format: start-end, (can be chrom:start-end but chrom is ignored) can comma-delimit multiple highlights')
     parser_locus.add_argument('-m', '--mods', default=None, help='mods, comma-delimited for >1 (default to all available mods)')
     parser_locus.add_argument('-s', '--smoothwindowsize', default=None, help='size of window for smoothing (default=auto)')
@@ -5702,6 +5703,7 @@ def parse_args():
     parser_region.add_argument('-n', '--motif', required=True, help='normalise window sizes to motif occurance')
     parser_region.add_argument('-r', '--ref', required=True, help='ref genome fasta, required if normalising windows with -n/--norm_motif')
     parser_region.add_argument('-g', '--gtf', default=None, help='genes or intervals to display in gtf format')
+    parser_region.add_argument('-C', '--csi', default=None, help='csi index for the gtf, optional')
     parser_region.add_argument('-l', '--highlight', default=None, help='format: start-end, (can be chrom:start-end but chrom is ignored) can comma-delimit multiple highlights')
     parser_region.add_argument('-w', '--windows', default=None, help='set window count, default=auto')
     parser_region.add_argument('-p', '--procs', default=1, help='multiprocessing')
