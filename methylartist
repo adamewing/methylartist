@@ -3240,6 +3240,23 @@ def locus(args):
                 h = h.split(':')[-1]
                 
             h_s, h_e = map(int, h.split('-'))
+            
+            if h_s > h_e:
+                logger.warning(f'highlight {h} end < start, skipped')
+                continue
+
+            if h_e < elt_start or h_s > elt_end:
+                logger.warning(f'highlight {h} out of plotting region, skipped')
+                continue
+
+            if h_s < elt_start:
+                logger.warning(f'highlight position {h_s} outside region, adjusted to {elt_start}')
+                h_s = elt_start
+
+            if h_e > elt_end:
+                logger.warning(f'highlight position {h_e} outside region, adjusted to {elt_end}')
+                h_e = elt_end
+
             h_start.append(h_s - elt_start)
             h_end.append(h_e - elt_start)
 
