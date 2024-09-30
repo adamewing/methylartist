@@ -4938,6 +4938,10 @@ def region(args):
 
     for sample in sample_order:
         ax4.plot(meth_segs['pos'], meth_segs[sample], marker='', lw=4, color=sample_color[sample], zorder=2, label=sample, alpha=smoothalpha)
+    
+    if args.segment_csv:
+        outcols = ['pos'] + sample_order
+        meth_segs[outcols].to_csv(args.segment_csv)
 
     ax4.legend()
     ax4.set_xlim(ax2.get_xlim())
@@ -5741,6 +5745,7 @@ def parse_args():
     parser_region.add_argument('--min_window_calls', default=1, help='minimum reads per window to include in plot (default = 1)')
     parser_region.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_region.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
+    parser_region.add_argument('--segment_csv', default=None, help='output values from smoothed segment plot to specified filename in CSV format (default=None)')
     parser_region.add_argument('--eff', default=None, help='conversion efficiency (for e.g. bs-seq or em-seq), input as comma-delimited sample:eff e.g. MySample1.m:0.9,MySample2.m:0.8')
     parser_region.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot (default = -0.05)')
     parser_region.add_argument('--ymax', default=1.05, help='y-axis maximum for smoothed plot (default = 1.05')
