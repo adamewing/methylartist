@@ -4938,10 +4938,6 @@ def region(args):
 
     for sample in sample_order:
         ax4.plot(meth_segs['pos'], meth_segs[sample], marker='', lw=4, color=sample_color[sample], zorder=2, label=sample, alpha=smoothalpha)
-    
-    if args.segment_csv:
-        outcols = ['pos'] + sample_order
-        meth_segs[outcols].to_csv(args.segment_csv)
 
     ax4.legend()
     ax4.set_xlim(ax2.get_xlim())
@@ -5022,6 +5018,13 @@ def region(args):
 
     if args.scale_fullwidth:
         fn_prefix += '.scale_width.%.3f' % scale_width
+
+    if args.segment_csv:
+        if args.segment_csv == 'auto':
+            args.segment_csv = fn_prefix + '.segments.csv'
+
+        meth_segs[sample_order].to_csv(args.segment_csv, index_label='seg')
+        logger.info(f'wrote segment data to {args.segment_csv}')
 
     outfn = fn_prefix
 
