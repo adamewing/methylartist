@@ -3966,7 +3966,8 @@ def locus(args):
         user_colours_nopath = dict([(os.path.basename(s), user_colours[s]) for s in user_colours])
 
         for i, sample in enumerate(samples):
-            sample_orig = '.'.join(sample.split('.')[:-1]) + '.bam'
+            #sample_orig = '.'.join(sample.split('.')[:-1]) + '.bam'
+            sample_orig = sample + '.bam'
             if sample_orig in user_colours_nopath:
                 pd_colors[sample] = user_colours_nopath[sample_orig]
             else:
