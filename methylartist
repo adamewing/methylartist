@@ -1902,6 +1902,9 @@ def bs_parse_reads(bam_fn, db_fn):
         if read.is_duplicate:
             continue
 
+        if read.query_qualities is None:
+            continue
+
         strand = '+'
         if read.is_reverse:
             strand = '-'
