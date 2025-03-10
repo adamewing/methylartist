@@ -486,6 +486,18 @@ def get_phased_reads(fn, chrom, start, end, min_mapq=10, tag_untagged=False, ign
     return reads
 
 
+def check_variants(variants, read):
+    alt_sites = []
+
+    for q, r in read.get_aligned_pairs():
+        if q is not None and r in variants:
+            vref, valt = variants[r]
+            if read.seq[q].upper() == valt.upper():
+                alt_sites.append(r)
+
+    return alt_sites
+
+
 def single_seq_fa(fn):
     with open(fn, 'r') as fa:
         seq   = ''
@@ -2967,6 +2979,21 @@ def locus(args):
 
     methbam = False
 
+    variants = {} # pos --> [ref, alt]
+
+    if args.variants is not None:
+        with open(args.variants) as _:
+            for line in _:
+                # first 5 VCF fields
+                vchrom, vpos, vid, vref, valt = line.strip().split()[:5]
+                vpos = int(vpos)-1  # VCF is 1-based, BAM is 0-based
+                if vchrom == chrom and vpos >= elt_start and vpos <= elt_end:
+                    # just monoallelic SNPs for now
+                    if vref != valt and vref in ('A', 'T', 'C', 'G') and valt in ('A', 'T', 'G', 'C'):
+                        variants[vpos] = [vref, valt]
+
+        logger.info(f'found {len(variants)} variants in {args.variants}')
+
     if args.data is not None:
         if args.bams is not None:
             sys.exit('please specify either -d/--data or -b/--bams but not both')
@@ -3552,6 +3579,7 @@ def locus(args):
     ax1.set_yticks([])
 
     readstack = dd(list)
+    varcache = dd(list)
 
     max_y  = 1
     pack_y = 1
@@ -3586,6 +3614,10 @@ def locus(args):
             else:
                 pos_cache[read.query_name][0].append(read.reference_start)
                 pos_cache[read.query_name][1].append(read.reference_end)
+
+            if args.variants:
+                varcache[read.query_name] = check_variants(variants, read)
+                
 
         for readname, read in reads[bamname].items():
             if readname not in pos_cache:
@@ -3664,6 +3696,10 @@ def locus(args):
                 readline_end   = min(read.ends[i], elt_end) - elt_start
 
                 ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos, read.ypos], lw=lw, zorder=2, color=sample_color[bamname], alpha=la))
+
+                if args.variants and read.read_name in varcache:
+                    for alt_site in varcache[read.read_name]:
+                        ax1.plot(alt_site-elt_start, read.ypos, marker='v', fillstyle='full', mec='red', mfc='red', markersize=4, zorder=4, alpha=1)
 
     highlight_patches = []
 
@@ -5676,6 +5712,7 @@ def parse_args():
     parser_locus.add_argument('--bed', default=None, help='.bed file for additional annotations (BED3+3: chrom, start, end, label, strand, color)')
     parser_locus.add_argument('--hidebedlabel', default=False, action='store_true', help='hide lables from .bed track')
     parser_locus.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
+    parser_locus.add_argument('--variants', default=None, help='variants to highlight, uses 1st 5 cols from VCF (1-based: chrom, pos, id, ref, alt)')
     parser_locus.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
     parser_locus.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_locus.add_argument('--phased', default=False, action='store_true', help='split samples into phases')
