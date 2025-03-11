@@ -2991,8 +2991,10 @@ def locus(args):
                     # just monoallelic SNPs for now
                     if vref != valt and vref in ('A', 'T', 'C', 'G') and valt in ('A', 'T', 'G', 'C'):
                         variants[vpos] = [vref, valt]
-
+                        
         logger.info(f'found {len(variants)} variants in {args.variants}')
+
+        var_colours = {varpos:vcol for (varpos,vcol) in zip(variants, sns.color_palette('cubehelix', n_colors=len(variants)))}
 
     if args.data is not None:
         if args.bams is not None:
@@ -3699,7 +3701,8 @@ def locus(args):
 
                 if args.variants and read.read_name in varcache:
                     for alt_site in varcache[read.read_name]:
-                        ax1.plot(alt_site-elt_start, read.ypos, marker='v', fillstyle='full', mec='red', mfc='red', markersize=4, zorder=4, alpha=1)
+                        vcol = var_colours[alt_site]
+                        ax1.plot(alt_site-elt_start, read.ypos, marker='v', fillstyle='full', mec='black', mfc=vcol, markersize=6, zorder=4, alpha=1)
 
     highlight_patches = []
 
