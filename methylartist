@@ -2981,9 +2981,9 @@ def locus(args):
 
     variants = {} # pos --> [ref, alt]
 
-    var_tbx = pysam.Tabixfile(args.variants)
-
     if args.variants is not None:
+        var_tbx = pysam.Tabixfile(args.variants)
+
         with open(args.variants) as _:
             for rec in var_tbx.fetch(chrom, elt_start, elt_end):
                 vchrom, vpos, vid, vref, valt, vqual, vfilt = rec.strip().split()[:7]
