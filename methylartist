@@ -486,16 +486,52 @@ def get_phased_reads(fn, chrom, start, end, min_mapq=10, tag_untagged=False, ign
     return reads
 
 
-def check_variants(variants, read):
-    alt_sites = []
+def get_variant_reads(fn, chrom, start, end, variants, min_mapq=10, primary_only=False):
+    reads = {}
+
+    assert len(variants) == 1
+
+    bam = pysam.AlignmentFile(fn)
+    for read in bam.fetch(chrom, start, end):
+        if primary_only:
+            if read.is_secondary or read.is_supplementary:
+                continue
+            
+        if read.mapq >= min_mapq:    
+            allele = None
+
+            alt_sites = check_variants(variants, read, allele='alt')
+            if len(alt_sites) > 0:
+                allele = 'alt'
+
+            else:
+                ref_sites = check_variants(variants, read, allele='ref')
+                if len(ref_sites) > 0:
+                    allele = 'ref'
+
+            reads[read.query_name] = allele
+
+    return reads
+
+
+def check_variants(variants, read, vartype='SNV', allele=None):
+    sites = []
+
+    assert vartype in ('SNV', 'SV', 'INDEL')
+    assert allele in ('ref', 'alt')
 
     for q, r in read.get_aligned_pairs():
         if q is not None and r in variants:
             vref, valt = variants[r]
-            if read.seq[q].upper() == valt.upper():
-                alt_sites.append(r)
+            if allele == 'alt':
+                if read.seq[q].upper() == valt.upper():
+                    sites.append(r)
 
-    return alt_sites
+            if allele == 'ref':
+                if read.seq[q].upper() == vref.upper():
+                    sites.append(r)
+
+    return sites
 
 
 def single_seq_fa(fn):
@@ -1042,7 +1078,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
     return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, read_count)
 
 
-def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False, HP_only=False, restrict_motif=None, restrict_ref=None):
+def get_meth_locus(args, bam, meth_dbs, mod, allele=None, variant=None, phase=None, methbam=False, HP_only=False, restrict_motif=None, restrict_ref=None):
     # used for locus plots
 
     if phase:
@@ -1081,6 +1117,10 @@ def get_meth_locus(args, bam, meth_dbs, mod, phase=None, methbam=False, HP_only=
     if phase:
         phased_reads_dict = get_phased_reads(bam, chrom, elt_start, elt_end, tag_untagged=(phase=='unphased'), min_mapq=int(args.min_mapq), HP_only=HP_only)
         reads = [r for r in reads if r in phased_reads_dict and phased_reads_dict[r] == phase]
+
+    if variant:
+        var_reads_dict = get_variant_reads(bam, chrom, elt_start, elt_end, variant, min_mapq=int(args.min_mapq))
+        reads = [r for r in reads if r in var_reads_dict and var_reads_dict[r] == allele]
 
     if hasattr(args, 'unambig_highlight') and hasattr(args, 'highlight'): 
         if args.unambig_highlight and args.highlight:
@@ -2980,6 +3020,14 @@ def locus(args):
     methbam = False
 
     variants = {} # pos --> [ref, alt]
+    split_vid = None
+
+    if args.splitvar:
+        split_vid = args.splitvar
+        if args.phased:
+            logger.warning('calling both --phased and --splitvar is not currently supported')
+            sys.exit(1)
+
 
     if args.variants is not None:
         var_tbx = pysam.Tabixfile(args.variants)
@@ -2992,9 +3040,19 @@ def locus(args):
                 if vfilt not in ('PASS', '.'):
                     continue
 
+                if split_vid:
+                    if split_vid == vid:
+                        logger.info(f'found variant ID {split_vid} for sample split')
+                    else:
+                        continue
+
                 if vref != valt and vref in ('A', 'T', 'C', 'G') and valt in ('A', 'T', 'G', 'C'):
                     variants[vpos] = [vref, valt]
-                        
+        
+        if split_vid and len(variants) == 0:
+            logger.warning(f'ID {split_vid} not found in {args.variants}, insure ID is present and variant is not filtered')
+            sys.exit(1)
+
         logger.info(f'found {len(variants)} variants in {args.variants} for region {args.interval}')
 
         var_colours = {varpos:vcol for (varpos,vcol) in zip(variants, sns.color_palette(args.variantpalette, n_colors=len(variants)))}
@@ -3086,6 +3144,12 @@ def locus(args):
             phases[bam] = list(set([p for p in phased_reads.values() if p]))
             logger.info('phases for bam %s: %s' % (bam, ','.join(phases[bam])))
 
+    if args.splitvar:
+        for bam in data:
+            phased_reads = get_variant_reads(bam, chrom, elt_start, elt_end, variants, min_mapq=int(args.min_mapq), primary_only=args.primary_only)
+            phases[bam] = list(set([p for p in phased_reads.values() if p]))
+            logger.info('splitvar phases for bam %s: %s' % (bam, ','.join(phases[bam])))
+
     for bam, meth_dbs in data.items():
         if meth_dbs is None:
             mods = mods_methbam(bam)
@@ -3109,6 +3173,23 @@ def locus(args):
                     bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + phase + '.' + mod
                     orig_bam[bamname] = bam
                     reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam, HP_only=args.ignore_ps, restrict_motif=args.motif, restrict_ref=args.ref)
+
+                    for name, read in reads[bamname].items():
+                        for loc in read.llrs.keys():
+                            uuid = str(uuid4())
+                            meth_table[uuid]['loc'] = loc
+                            meth_table[uuid]['modstat'] = read.llrs[loc]
+                            meth_table[uuid]['read'] = name
+                            meth_table[uuid]['sample'] = bamname
+                            meth_table[uuid]['call'] = read.meth_calls[loc]
+
+                            if bamname not in sample_order:
+                                sample_order.append(bamname)
+            elif args.splitvar:
+                for allele in ('ref', 'alt'):
+                    bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + allele + '.' + mod
+                    orig_bam[bamname] = bam
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, allele=allele, variant=variants, methbam=methbam, HP_only=args.ignore_ps, restrict_motif=args.motif, restrict_ref=args.ref)
 
                     for name, read in reads[bamname].items():
                         for loc in read.llrs.keys():
@@ -3621,7 +3702,7 @@ def locus(args):
                 pos_cache[read.query_name][1].append(read.reference_end)
 
             if args.variants:
-                varcache[read.query_name] = check_variants(variants, read)
+                varcache[read.query_name] = check_variants(variants, read, allele='alt')
                 
 
         for readname, read in reads[bamname].items():
@@ -4064,6 +4145,9 @@ def locus(args):
             fn_prefix += '.phasediff'
         else:
             fn_prefix += '.phased'
+
+    if args.splitvar:
+        fn_prefix += f'.split_{args.splitvar}'
 
     param_str = '.ms%d.smw%d' % (args.modspace, int(args.smoothwindowsize))
 
@@ -5720,6 +5804,7 @@ def parse_args():
     parser_locus.add_argument('--hidebedlabel', default=False, action='store_true', help='hide lables from .bed track')
     parser_locus.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
     parser_locus.add_argument('--variants', default=None, help='variants to highlight, bgzipped/tabix VCF')
+    parser_locus.add_argument('--splitvar', default=None, help='split variant on variant with ID (uses ID field from --variants VCF)')
     parser_locus.add_argument('--variantpalette', default='Set1', help='colour palette for variant ticks (default = Set1)')
     parser_locus.add_argument('--variantsize', default=6, help='size of variant ticks (default = 6)')
     parser_locus.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')

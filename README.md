@@ -289,6 +289,26 @@ methylartist locus -d MCF7_data_megalodon.txt -i chr19:56810076-56870725 -l 5683
 
 Note the apparent differential imprinting between the ATCC and ECACC MCF7 lines.
 
+#### variant highlighting
+
+The `--variants` option can be used with a VCF file (bgzipped, tabix-indexed) to highlight variants in the reads:
+
+```
+methylartist locus -b sample.bam -i chr19:56800082-56860726 -m m --motif CG --ref hg38.fasta --nomask --gtf Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --variants sample.phased.vcf.gz --phased
+```
+![variant highlighting](https://github.com/adamewing/methylartist/blob/main/docs/sample.chr19_56800082_56860726.m.phased.ms1.smw30.locus.meth.png?raw=true)
+
+#### split samples by a variant
+
+Using `--variants` and specify a specific variant ID via the `--splitvar` option:
+
+```
+methylartist locus -b sample.bam -i chr19:56800082-56860726 -m m --motif CG --ref hg38.fasta --nomask --gtf Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --variants example_variant.txt.gz --splitvar mysnpid
+```
+
+![variant highlighting](https://github.com/adamewing/methylartist/blob/main/docs/sample.chr19_56800082_56860726.m.split_mysnpid.ms1.smw30.locus.meth.png?raw=true)
+
+
 ### region
 
 More tractable than "locus" for larger regions using binned methylation.
