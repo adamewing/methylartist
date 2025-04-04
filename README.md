@@ -306,7 +306,17 @@ Using `--variants` and specify a specific variant ID via the `--splitvar` option
 methylartist locus -b sample.bam -i chr19:56800082-56860726 -m m --motif CG --ref hg38.fasta --nomask --gtf Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --variants example_variant.txt.gz --splitvar mysnpid
 ```
 
-![variant highlighting](https://github.com/adamewing/methylartist/blob/main/docs/sample.chr19_56800082_56860726.m.split_mysnpid.ms1.smw30.locus.meth.png?raw=true)
+![split on variant](https://github.com/adamewing/methylartist/blob/main/docs/sample.chr19_56800082_56860726.m.split_mysnpid.ms1.smw30.locus.meth.png?raw=true)
+
+Contents of `example_variant.txt.gz`:
+
+```
+chr19   56827839        mysnpid C       A       25.11   PASS    P       GT:GQ:DP:AD:AF:PS       1|0:25:29:13,15:0.5172:54626833
+```
+
+Same region, without `--splitvar mysnpid`:
+
+![single variant](https://github.com/adamewing/methylartist/blob/main/docs/sample.chr19_56800082_56860726.m.ms1.smw30.locus.meth.png?raw=true)
 
 
 ### region
