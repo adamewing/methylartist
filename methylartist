@@ -514,24 +514,99 @@ def get_variant_reads(fn, chrom, start, end, variants, min_mapq=10, primary_only
     return reads
 
 
-def check_variants(variants, read, vartype='SNV', allele=None):
+def check_variants(variants, read, allele=None):
     sites = []
 
-    assert vartype in ('SNV', 'SV', 'INDEL')
     assert allele in ('ref', 'alt')
-
+    
     for q, r in read.get_aligned_pairs():
         if q is not None and r in variants:
-            vref, valt = variants[r]
-            if allele == 'alt':
-                if read.seq[q].upper() == valt.upper():
-                    sites.append(r)
+            vref, valt, vartype, varlen = variants[r]
 
-            if allele == 'ref':
-                if read.seq[q].upper() == vref.upper():
-                    sites.append(r)
+            if vartype == 'SNV':
+                if allele == 'alt':
+                    if read.seq[q].upper() == valt.upper():
+                        sites.append(r)
 
+                if allele == 'ref':
+                    if read.seq[q].upper() == vref.upper():
+                        sites.append(r)
+            
+            elif vartype in ('INS', 'DEL'):
+                sv_gt = has_sv(read, r, variants[r])
+
+                if allele == sv_gt:
+                    sites.append(r)
+                    
     return sites
+
+
+def has_sv(read, bnd, variant, window=100):
+    if read.seq is None:
+        return None
+
+    svtype = variant[2]
+    svlen = abs(variant[3])
+
+    assert svtype in ('DEL', 'INS')
+
+    ap = {}
+
+    ap = dict(read.get_aligned_pairs())
+
+    best_rpos = None
+    best_gpos = None
+
+    for rpos, gpos in ap.items():
+        if gpos is None:
+            continue
+
+        if best_gpos is None:
+            best_gpos = gpos
+            best_rpos = rpos
+
+        else:
+            if abs(bnd-gpos) < abs(bnd-best_gpos):
+                best_gpos = gpos
+                best_rpos = rpos
+
+    if best_rpos < window:
+        return None
+
+    if len(read.seq)-best_rpos < window:
+        return None
+
+    bnd_right = 0
+    bnd_left = 0
+    prev_rp = 0
+
+    for rp in range(best_rpos-1, best_rpos+window):
+        if rp in ap:
+            if ap[rp] is None:
+                bnd_right += 1
+            elif None not in (ap[rp], ap[prev_rp]) and abs(abs(ap[rp]-ap[prev_rp]) - svlen) < window:
+                bnd_right += svlen
+            if ap[rp] is not None:
+                prev_rp = rp
+
+    prev_rp = 0
+
+    for rp in range(best_rpos-window, best_rpos+1):
+        if rp in ap:
+            if ap[rp] is None:
+                bnd_left += 1
+            elif None not in (ap[rp], ap[prev_rp]) and abs(abs(ap[rp]-ap[prev_rp]) - svlen) < window:
+                bnd_left += svlen
+            if ap[rp] is not None:
+                prev_rp = rp
+
+    if svtype == 'INS' and max(bnd_left, bnd_right)*1.25 > window:
+        return 'alt'
+
+    if svtype == 'DEL' and max(bnd_left, bnd_right)*1.25 > svlen:
+        return 'alt'
+    
+    return 'ref'
 
 
 def single_seq_fa(fn):
@@ -3034,23 +3109,42 @@ def locus(args):
 
         with open(args.variants) as _:
             for rec in var_tbx.fetch(chrom, elt_start, elt_end):
-                vchrom, vpos, vid, vref, valt, vqual, vfilt = rec.strip().split()[:7]
+                vchrom, vpos, vid, vref, valt, vqual, vfilt, vinfo = rec.strip().split()[:8]
                 vpos = int(vpos)-1  # VCF is 1-based, BAM is 0-based
 
                 if vfilt not in ('PASS', '.'):
                     continue
+
+                if ',' in valt:
+                    logger.warning(f'{args.variants}: multiple ALT alleles not supported')
+                    continue
+
+                vtype = None
+                vlen = None
+
+                if vref != valt and vref in ('A', 'T', 'C', 'G') and valt in ('A', 'T', 'G', 'C'):
+                    vtype = 'SNV'
+                    vlen = 1
+                
+                for info_field in vinfo.split(';'):
+                    if '=' in info_field:
+                        i = info_field.split('=')
+                        if i[0] == 'SVTYPE':
+                            vtype = i[1]
+                        if i[0] == 'SVLEN':
+                            vlen = int(i[1])
 
                 if split_vid:
                     if split_vid == vid:
                         logger.info(f'found variant ID {split_vid} for sample split')
                     else:
                         continue
-
-                if vref != valt and vref in ('A', 'T', 'C', 'G') and valt in ('A', 'T', 'G', 'C'):
-                    variants[vpos] = [vref, valt]
+                
+                if vtype in ('SNV', 'INS', 'DEL'):
+                    variants[vpos] = [vref, valt, vtype, vlen]
         
         if split_vid and len(variants) == 0:
-            logger.warning(f'ID {split_vid} not found in {args.variants}, insure ID is present and variant is not filtered')
+            logger.warning(f'ID {split_vid} not found in {args.variants}, ensure ID is present and variant is not filtered')
             sys.exit(1)
 
         logger.info(f'found {len(variants)} variants in {args.variants} for region {args.interval}')
