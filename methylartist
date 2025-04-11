@@ -537,7 +537,7 @@ def check_variants(variants, read, allele=None):
 
                 if allele == sv_gt:
                     sites.append(r)
-                    
+
     return sites
 
 
@@ -4447,6 +4447,14 @@ def region(args):
 
     logger.info('using mods %s' % ','.join(mods))
 
+    if end-start > 500000:
+        logger.info('region size %s greater than 0.5 Mbp, setting --skip_align_plot True' % (end-start))
+        args.skip_align_plot = True
+    
+    if args.force_align_plot == args.skip_align_plot == True:
+        logger.info('--skip_align_plot overridden via --force_align_plot')
+        args.skip_align_plot = False
+
     reads = {}
     orig_bam = {}
 
@@ -4463,7 +4471,9 @@ def region(args):
                     bamname += '.' + phase
 
                 orig_bam[bamname] = bam
-                reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam, restrict_motif=args.motif, restrict_ref=args.ref)
+
+                if not args.skip_align_plot:
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam, restrict_motif=args.motif, restrict_ref=args.ref)
 
     pool = mp.Pool(processes=int(args.procs))
 
@@ -4682,14 +4692,6 @@ def region(args):
             readmask.append(list(map(int, ivl.split('-'))))
 
     # set up plot
-
-    if end-start > 500000:
-        logger.info('region size %s greater than 0.5 Mbp, setting --skip_align_plot True' % (end-start))
-        args.skip_align_plot = True
-    
-    if args.force_align_plot == args.skip_align_plot == True:
-        logger.info('--skip_align_plot overridden via --force_align_plot')
-        args.skip_align_plot = False
 
     fig = plt.figure()
     height_ratios = [1,5,1,3]
