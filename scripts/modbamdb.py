@@ -6,6 +6,7 @@ import pysam
 import argparse
 import logging
 import sqlite3
+from tqdm import tqdm
 
 FORMAT = '%(asctime)s %(message)s'
 logging.basicConfig(format=FORMAT)
@@ -75,16 +76,15 @@ def main(args):
     minprob = float(args.minprob)
     mod_types = []
 
-    for rec in bam.fetch(until_eof=True):
+    for rec in tqdm(bam.fetch(until_eof=True), total=bam.mapped+bam.unmapped):
         if rec.is_unmapped:
             continue
 
         ap = dict([(k, v) for (k, v) in rec.get_aligned_pairs() if k is not None])
 
-        mm = str(rec.get_tag('Mm')).rstrip(';')
-
         try:
-            ml = rec.get_tag('Ml')
+            mm = str(rec.get_tag('MM')).rstrip(';')
+            ml = rec.get_tag('ML')
         except KeyError:
             continue
 
