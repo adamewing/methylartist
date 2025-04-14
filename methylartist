@@ -4838,7 +4838,7 @@ def region(args):
 
         gs = gridspec.GridSpec(len(height_ratios),1,height_ratios=p_ratios, hspace=0)
 
-    sample_order = sorted(sample_names.keys())
+    sample_order = sample_names.keys()
 
     logger.info('sample order: %s' % ','.join(sample_order))
 
