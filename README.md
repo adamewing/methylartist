@@ -100,6 +100,8 @@ For example, modified basecalls from [deepsignal-plant](https://github.com/PengN
 
 ### db-sub
 
+#### methylartist now supports C/T data if the .bam file is noted as being C/T substitution data via `--ctbam` (works for locus, region, segmeth, wgmeth)
+
 As of 1.3.0, methylartist supports display of C/U base substitution data (i.e. WGBS or EM-seq data) via creation of a methylartist .db file, simply pass the .bam file as input and specify an output file:
 
 ```
@@ -262,10 +264,10 @@ chr17 39698981 39707766
 
 #### Short-read data
 
-Since WGBS/EM-seq data is supported via `db-sub`, this data can be displayed via any of the other methylartist commands, e.g.:
+Since WGBS/EM-seq data is supported by specifying that the .bam is C/T substitution data via `--ctbam`, this data can be displayed via any of the other methylartist commands, e.g.:
 
 ```
-methylartist locus -d sub_test.data.txt -i chr12:6,517,169-6,555,718 -g data/Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --labelgenes --panelratios 5,5,1,3,3
+methylartist locus -b NA12878.EMSEQ.GAPDH.bam --ctbam NA12878.EMSEQ.GAPDH.bam -i chr12:6,517,169-6,555,718 -g data/Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --labelgenes --panelratios 5,5,1,3,3 --ref data/Homo_sapiens_assembly38.fasta.gz --motif CG
 ```
 
 ![locus plot ct](https://github.com/adamewing/methylartist/blob/main/docs/sub_test.data.chr12_6517169_6555718.m.ms1.smw34.locus.meth.png?raw=true)

@@ -1103,135 +1103,7 @@ def parse_ctbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, 
                 yield (read.qname, read.reference_name, pos, mod_prob, methcall, 'm')
 
 
-        # ap = dict([(k, v) for (k, v) in rec.get_aligned_pairs() if k is not None])
-
-        # mm = None
-        # ml = None
-
-        # try:
-        #     mm = str(rec.get_tag('MM')).rstrip(';')
-
-        # except KeyError:
-        #     try:
-        #         mm = str(rec.get_tag('Mm')).rstrip(';')
-        #     except:
-        #         if not mm_warned:
-        #             logger.debug('cannot find MM tag in at least one read, ensure this bam has MM and ML tags!')
-        #             mm_warned = True
-        #             continue
-
-        # try:
-        #     ml = rec.get_tag('ML')
-        # except KeyError:
-        #     try:
-        #         ml = rec.get_tag('Ml')
-        #     except KeyError:
-        #         continue
-
-        # if None in (mm, ml):
-        #     continue
-
-        # mod_strings = mm.split(';')
-        
-        # mls = split_ml(mod_strings, ml)
-
-        # seq = rec.seq
-
-        # if rec.is_reverse:
-        #     seq = rc(seq)
-
-        # for mod_string, scores in zip(mod_strings, mls):
-        #     m = mod_string.split(',')
-        #     mod_info = m[0]
-
-        #     mod_relpos = list(map(int, m[1:]))
-
-        #     mod_strand = '+'
-
-        #     if '-' in mod_info:
-        #         mod_strand = '-'
-
-        #     try:
-        #         mod_base, mod_type = mod_info.split(mod_strand)
-        #         mod_type = mod_type.rstrip('?.')
-        #     except ValueError:
-        #         logger.debug('%s: malformed mod string for read %s (%s) skipped.' % (bam_fn, rec.qname, mod_info))
-        #         continue
-
-        #     assert len(mod_type) == 1, 'multiple modfications listed this way: %s is not yet supported, please send me an example!' % mod_info
-
-        #     base_pos = [i for i, b in enumerate(seq) if b == mod_base]
-
-        #     i = -1
-
-        #     for skip, score in zip(mod_relpos, scores):
-        #         i += 1
-
-        #         if skip > 0:
-        #             i += skip
-
-        #         genome_pos = None
-
-        #         if rec.is_reverse:
-        #             try:
-        #                 genome_pos = ap[len(rec.seq)-base_pos[i]-1]
-        #             except IndexError:
-        #                 if i >= len(base_pos):
-        #                     genome_pos = None
-        #                 else:
-        #                     raise IndexError(".bam parsing error: position not in aligned pairs")
-
-        #             if genome_pos is None:
-        #                 continue
-
-        #             genome_pos -= (int(motifsize)-1)
-
-        #         else:
-        #             try:
-        #                 genome_pos = ap[base_pos[i]]
-
-        #             except IndexError:
-        #                 if i >= len(base_pos):
-        #                     genome_pos = None
-        #                 else:
-        #                     raise IndexError(".bam parsing error: position not in aligned pairs")
-
-        #         if genome_pos is None:
-        #             continue
-
-        #         p_mod = score/255
-        #         p_can = 1-p_mod
-
-        #         assert p_mod <= 1.0
-
-        #         methstate = 0
-
-        #         if p_mod > meth_thresh:
-        #             methstate = 1
-
-        #         if p_can > can_thresh:
-        #             methstate = -1
-
-        #         if None not in (restrict_motif, restrict_ref):
-        #             if genome_pos < 0:
-        #                 continue
-
-        #             try:
-        #                 ref_motif = restrict_ref.fetch(rec.reference_name, genome_pos, genome_pos+motifsize)
-        #                 if motifsize == 1 and rec.is_reverse:
-        #                     ref_motif = rc(ref_motif)
-        #             except ValueError:
-        #                 logger.warning('warning, out of bounds motif at position %d in read: %s' % (genome_pos, rec.tostring()))
-
-        #             #print(ref_motif, restrict_motif, rec.is_reverse)
-
-        #             if ref_motif.upper() != restrict_motif.upper():
-        #                 continue
-
-                
-
-
-def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam):
+def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, ct_bams):
     c_lookup = {}
 
     if not methbam:
@@ -1258,7 +1130,12 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
     seg_reads = dd(dict)
 
     if methbam:
-        for row in parse_methbam(bam_fn, reads, chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8, restrict_ref=args.ref, restrict_motif=args.motif, primary_only=args.primary_only):
+        parse_func = parse_methbam
+
+        if ct_bams is not None and bam_fn in ct_bams:
+            parse_func = parse_ctbam
+
+        for row in parse_func(bam_fn, reads, chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8, restrict_ref=args.ref, restrict_motif=args.motif, primary_only=args.primary_only):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if chrom != cg_chrom:
@@ -1662,7 +1539,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
     return per_bam_results
 
 
-def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod, motifsize):
+def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod, motifsize, ct_bams):
     methbam = False
 
     if args.methdb is None:
@@ -1683,7 +1560,12 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
     seg_reads = {}
 
     if methbam:
-        for row in parse_methbam(bam_fn, set(reads), chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8, restrict_ref=args.ref, restrict_motif=args.motif, motifsize=motifsize, primary_only=args.primary_only):
+        parse_func = parse_methbam
+
+        if ct_bams is not None:
+            parse_func = parse_ctbam
+
+        for row in parse_func(bam_fn, set(reads), chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8, restrict_ref=args.ref, restrict_motif=args.motif, motifsize=motifsize, primary_only=args.primary_only):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if mod is not None and mod != modname:
@@ -2795,6 +2677,8 @@ def segmeth(args):
                     for m in get_modnames(m_db):
                         mod_names.append(m)
 
+    ct_bams = None
+
     if args.bams is not None:
         if None in (args.ref, args.motif):
             logger.warning('--ref and --motif are required when using --bams')
@@ -2815,6 +2699,18 @@ def segmeth(args):
                 for line in bam_list:
                     bams.append(line.strip().split()[0])
 
+        ct_bams = []
+
+        if args.ctbam is not None:
+            for ctbam_fn in args.ctbam.split(','):
+                if ctbam_fn not in bams:
+                    sys.exit(f'{ctbam_fn} passed to --ctbam has no corresponding .bam passed to -b/--bam')
+                
+                ct_bams.append(ctbam_fn)
+                logger.info(f'Noted C/T substitution .bam: {ctbam_fn}')
+
+        ct_bams = set(ct_bams)
+
         for bam in bams:
             if ':' in bam:
                 bam, _ = bam.split(':')
@@ -2828,7 +2724,11 @@ def segmeth(args):
 
             data[bam] = None
 
-        mod_names = mods_methbam(bam)
+        if bam in ct_bams:
+            logger.info(f'Assuming modtype m for C/T substitution bam {bam}')
+            mod_names = ['m']
+        else:
+            mod_names = mods_methbam(bam)
 
     mod_names = list(set(mod_names))
 
@@ -2890,8 +2790,8 @@ def segmeth(args):
             if phase is not None:
                 base_name += '_ph' + phase
 
-            with open(args.intervals) as _:
-                for line in _:
+            with open(args.intervals) as seg_ivls:
+                for line in seg_ivls:
                     c = line.strip().split()
                     chrom, seg_start, seg_end = c[:3]
 
@@ -2907,14 +2807,15 @@ def segmeth(args):
                     seg_start = int(seg_start)
                     seg_end = int(seg_end)
 
-                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam])
+                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, ct_bams])
 
                     results.append((res, base_name))
 
+    logger.info('building results table')
 
     meth_segs = dd(dict)
 
-    for res, base_name in results:
+    for res, base_name in tqdm(results):
         meth_result, seg = res.get()
 
         if meth_result is None:
@@ -3432,10 +3333,11 @@ def locus(args):
     for bam, meth_dbs in data.items():
         if meth_dbs is None:
             if bam in ct_bams:
-                continue
-
-            mods = mods_methbam(bam)
-            logger.info('found mods: %s in bam %s' % (','.join(mods), bam))
+                logger.info(f'Assuming modtype m for C/T substitution bam {bam}')
+                mods = ['m']
+            else:
+                mods = mods_methbam(bam)
+                logger.info('found mods: %s in bam %s' % (','.join(mods), bam))
 
         else:
             for meth_db in meth_dbs:
@@ -4585,6 +4487,8 @@ def region(args):
                 if len(c) == 3:
                     user_colours[bam] = c[2]
 
+    ct_bams = None
+
     if args.bams is not None:
         methbam = True
         bams = []
@@ -4608,6 +4512,18 @@ def region(args):
                     else:
                         sys.exit(f'unparsable line in {args.bams}: {line.strip()}')
 
+        ct_bams = []
+
+        if args.ctbam is not None:
+            for ctbam_fn in args.ctbam.split(','):
+                if ctbam_fn not in bams:
+                    sys.exit(f'{ctbam_fn} passed to --ctbam has no corresponding .bam passed to -b/--bam')
+                
+                ct_bams.append(ctbam_fn)
+                logger.info(f'Noted C/T substitution .bam: {ctbam_fn}')
+
+        ct_bams = set(ct_bams)
+
         for bam in bams:
             if ':' in bam:
                 bam, ucol = bam.split(':')
@@ -4622,7 +4538,11 @@ def region(args):
 
             data[bam] = None
 
-        mods = mods_methbam(bam)
+        if bam in ct_bams:
+            logger.info(f'Assuming modtype m for C/T substitution bam {bam}')
+            mods = ['m']
+        else:
+            mods = mods_methbam(bam)
 
     mods = list(set(mods))
 
@@ -4661,7 +4581,7 @@ def region(args):
                 orig_bam[bamname] = bam
 
                 if not args.skip_align_plot:
-                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam, restrict_motif=args.motif, restrict_ref=args.ref)
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
 
     pool = mp.Pool(processes=int(args.procs))
 
@@ -4677,12 +4597,12 @@ def region(args):
             for bam_fn, meth_dbs in data.items():
                 seg_strand = '.'
                 seg_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
-                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam])
+                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, ct_bams])
                 results.append(res)
 
         logger.info('parsing segments (phase %s)...' % str(phase))
 
-        for res in results:
+        for res in tqdm(results):
             meth_result, seg = res.get()
             if meth_result is None:
                 continue
@@ -5842,7 +5762,11 @@ def wgmeth(args):
         logger.info('motif size %d (%s)' % (motifsize, args.motif))
 
     if methbam:
-        mods = sorted(mods_methbam(args.bam))
+        if args.ctbam is not None:
+            logger.info(f'Assuming modtype m for C/T substitution bam {args.bam}')
+            mods = ['m']
+        else:
+            mods = sorted(mods_methbam(args.bam))
     else:
         mods = sorted(get_modnames(args.methdb))
 
@@ -5867,11 +5791,16 @@ def wgmeth(args):
             chrom, chrlen = line.strip().split()[:2]
             chrlen = int(chrlen)
 
+            if chrlen < int(args.minlen):
+                continue
+
+            logger.info(f'processing chromosome {chrom}, len = {chrlen} bp')
+
             if args.chrom:
                 if args.chrom != chrom:
                     continue
 
-            for seg_start in range(0, chrlen, bin_size):
+            for seg_start in tqdm(range(0, chrlen, bin_size)):
                 seg_end = seg_start + bin_size
 
                 if seg_end > chrlen:
@@ -5880,7 +5809,7 @@ def wgmeth(args):
                 seg_start = int(seg_start)
                 seg_end = int(seg_end)
 
-                res = pool.apply_async(get_meth_calls_wg, [args, args.bam, args.methdb, chrom, seg_start, seg_end, args.phased, args.mod, motifsize])
+                res = pool.apply_async(get_meth_calls_wg, [args, args.bam, args.methdb, chrom, seg_start, seg_end, args.phased, args.mod, motifsize, args.ctbam])
 
                 results.append(res)
 
@@ -5944,6 +5873,8 @@ def wgmeth(args):
 
 
     else:
+        if len(meth_table[0]) == 0:
+            sys.exit('no calls, potential data formatting issue?')
         meth_table[0]['pos'] = meth_table[0].index
         meth_table[0] = meth_table[0].sort_values(['chr', 'pos'])
 
@@ -6247,6 +6178,8 @@ def parse_args():
     parser_wgmeth.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_wgmeth.add_argument('-r', '--ref', default=None, help='reference genome .fa (build .fai index with samtools faidx) (required for mod bams)')
     parser_wgmeth.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
+    parser_wgmeth.add_argument('-l', '--minlen', default=0, help='minimum chromosome length (default = 0)')
+    parser_wgmeth.add_argument('--ctbam', default=None, help='specify which .bam(s) are C/T substitution data (can be comma-delimited)')
     parser_wgmeth.add_argument('--motif', default=None, help='expected modification motif (e.g. CG for 5mCpG required for mod bams)')
     parser_wgmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_wgmeth.add_argument('--dss', default=False, action='store_true', help='output in DSS format (default = bedMethyl)')
