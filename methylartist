@@ -2732,7 +2732,17 @@ def segmeth(args):
 
     mod_names = list(set(mod_names))
 
-    logger.info('found mod names: %s' % ','.join(mod_names))
+    if args.mods:
+        user_mod_names = []
+        for mod in args.mods.split(','):
+            if mod not in mod_names:
+                sys.exit(f'mod {mod} not found in data!')
+            
+            user_mod_names.append(mod)
+
+        mod_names = list(set(user_mod_names))
+
+    logger.info('using mods: %s' % ','.join(mod_names))
 
     base_names = ['.'.join(bam.split('.')[:-1]) for bam in data]
 
@@ -5963,6 +5973,7 @@ def parse_args():
     parser_segmeth.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_segmeth.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_segmeth.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
+    parser_segmeth.add_argument('-m', '--mods', default=None, help='mods, comma-delimited for >1 (default to all available mods)')
     parser_segmeth.add_argument('--ctbam', default=None, help='specify which .bam(s) are C/T substitution data (can be comma-delimited)')
     parser_segmeth.add_argument('--ref', default=None, help='reference genome .fa (build .fai index with samtools faidx) (required for mod bams)')
     parser_segmeth.add_argument('--motif', default=None, help='expected modification motif (e.g. CG for 5mCpG required for mod bams)')
