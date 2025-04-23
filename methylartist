@@ -8,7 +8,6 @@ import csv
 import logging
 import subprocess
 import multiprocessing as mp
-from tkinter import FALSE
 import matplotlib
 import random
 import itertools
@@ -5667,7 +5666,7 @@ def composite(args):
     #meanplot_table['meth'] = smooth(meanplot_table['meth'], window_len=int(args.smoothwindowsize)*4, window=args.smoothfunc)
 
     if args.output_table:
-        meanplot_table.to_csv(table_fn, sep='\t', quoting=FALSE, index=False)
+        meanplot_table.to_csv(table_fn, sep='\t', quoting=False, index=False)
         logger.info('wrote per-site table to %s' % table_fn)
 
 
