@@ -1102,7 +1102,7 @@ def parse_ctbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, 
                 yield (read.qname, read.reference_name, pos, mod_prob, methcall, 'm')
 
 
-def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, ct_bams):
+def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, ct_bams, meth_thresh, can_thresh):
     c_lookup = {}
 
     if not methbam:
@@ -1134,7 +1134,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
         if ct_bams is not None and bam_fn in ct_bams:
             parse_func = parse_ctbam
 
-        for row in parse_func(bam_fn, reads, chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8, restrict_ref=args.ref, restrict_motif=args.motif, primary_only=args.primary_only):
+        for row in parse_func(bam_fn, reads, chrom, seg_start, seg_end, meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_ref=args.ref, restrict_motif=args.motif, primary_only=args.primary_only):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if chrom != cg_chrom:
@@ -1195,9 +1195,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
     return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, read_count)
 
 
-
-
-def get_meth_locus(args, bam, meth_dbs, mod, allele=None, variant=None, phase=None, methbam=False, HP_only=False, restrict_motif=None, restrict_ref=None, ct_bams=None):
+def get_meth_locus(args, bam, meth_dbs, mod, meth_thresh=0.8, can_thresh=0.8, allele=None, variant=None, phase=None, methbam=False, HP_only=False, restrict_motif=None, restrict_ref=None, ct_bams=None):
     # used for locus plots
 
     if phase:
@@ -1271,7 +1269,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, allele=None, variant=None, phase=No
         if ct_bams is not None and bam in ct_bams:
             parse_func = parse_ctbam
 
-        for row in parse_func(bam, reads, chrom, elt_start, elt_end, motifsize=args.motifsize, meth_thresh=0.8, can_thresh=0.8, restrict_motif=restrict_motif, restrict_ref=restrict_ref, primary_only=args.primary_only):
+        for row in parse_func(bam, reads, chrom, elt_start, elt_end, motifsize=args.motifsize, meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_motif=restrict_motif, restrict_ref=restrict_ref, primary_only=args.primary_only):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if methstate == 0:
@@ -1538,7 +1536,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
     return per_bam_results
 
 
-def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod, motifsize, ct_bams):
+def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod, motifsize, ct_bams, meth_thresh, can_thresh):
     methbam = False
 
     if args.methdb is None:
@@ -1564,7 +1562,7 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
         if ct_bams is not None:
             parse_func = parse_ctbam
 
-        for row in parse_func(bam_fn, set(reads), chrom, seg_start, seg_end, meth_thresh=0.8, can_thresh=0.8, restrict_ref=args.ref, restrict_motif=args.motif, motifsize=motifsize, primary_only=args.primary_only):
+        for row in parse_func(bam_fn, set(reads), chrom, seg_start, seg_end, meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_ref=args.ref, restrict_motif=args.motif, motifsize=motifsize, primary_only=args.primary_only):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if mod is not None and mod != modname:
@@ -2754,6 +2752,18 @@ def segmeth(args):
 
     data_basename = None
 
+    meth_thresh = 0.8
+    can_thresh = 0.8
+
+    if args.meth_thresh:
+        meth_thresh = float(args.meth_thresh)
+
+    if args.can_thresh:
+        can_thresh = float(args.can_thresh)
+
+    logger.info(f'methylated base threshold: {meth_thresh}')
+    logger.info(f'canonical base threshold: {can_thresh}')
+
     if methbam:
         data_basename = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1])
         if len(args.bams.split(',')) > 1:
@@ -2816,7 +2826,7 @@ def segmeth(args):
                     seg_start = int(seg_start)
                     seg_end = int(seg_end)
 
-                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, ct_bams])
+                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, ct_bams, meth_thresh, can_thresh])
 
                     results.append((res, base_name))
 
@@ -3164,6 +3174,18 @@ def locus(args):
     elt_start = int(elt_start.replace(',',''))
     elt_end = int(elt_end.replace(',',''))
     
+    meth_thresh = 0.8
+    can_thresh = 0.8
+
+    if args.meth_thresh:
+        meth_thresh = float(args.meth_thresh)
+
+    if args.can_thresh:
+        can_thresh = float(args.can_thresh)
+
+    logger.info(f'methylated base threshold: {meth_thresh}')
+    logger.info(f'canonical base threshold: {can_thresh}')
+
     data = dd(list)
     user_colours = {}
 
@@ -3185,7 +3207,6 @@ def locus(args):
         if args.phased:
             logger.warning('calling both --phased and --splitvar is not currently supported')
             sys.exit(1)
-
 
     if args.variants is not None:
         var_tbx = pysam.Tabixfile(args.variants)
@@ -3365,7 +3386,7 @@ def locus(args):
                 for phase in phases[bam]:
                     bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + phase + '.' + mod
                     orig_bam[bamname] = bam
-                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam, HP_only=args.ignore_ps, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, meth_thresh=meth_thresh, can_thresh=can_thresh, phase=phase, methbam=methbam, HP_only=args.ignore_ps, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
 
                     for name, read in reads[bamname].items():
                         for loc in read.llrs.keys():
@@ -3382,7 +3403,7 @@ def locus(args):
                 for allele in ('ref', 'alt'):
                     bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + allele + '.' + mod
                     orig_bam[bamname] = bam
-                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, allele=allele, variant=variants, methbam=methbam, HP_only=args.ignore_ps, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, meth_thresh=meth_thresh, can_thresh=can_thresh, allele=allele, variant=variants, methbam=methbam, HP_only=args.ignore_ps, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
 
                     for name, read in reads[bamname].items():
                         for loc in read.llrs.keys():
@@ -3399,7 +3420,7 @@ def locus(args):
             else:
                 bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + mod
                 orig_bam[bamname] = bam
-                reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, methbam=methbam, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
+                reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, meth_thresh=meth_thresh, can_thresh=can_thresh, methbam=methbam, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
 
                 for name, read in reads[bamname].items():
                     for loc in read.llrs.keys():
@@ -4475,6 +4496,18 @@ def region(args):
     if args.data is None and args.bams is None:
         sys.exit('please specify either -d/--data or -b/--bams')
 
+    meth_thresh = 0.8
+    can_thresh = 0.8
+
+    if args.meth_thresh:
+        meth_thresh = float(args.meth_thresh)
+
+    if args.can_thresh:
+        can_thresh = float(args.can_thresh)
+
+    logger.info(f'methylated base threshold: {meth_thresh}')
+    logger.info(f'canonical base threshold: {can_thresh}')
+
     methbam = False
 
     if args.data is not None:
@@ -4590,7 +4623,7 @@ def region(args):
                 orig_bam[bamname] = bam
 
                 if not args.skip_align_plot:
-                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, phase=phase, methbam=methbam, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, meth_thresh=meth_thresh, can_thresh=can_thresh, phase=phase, methbam=methbam, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
 
     pool = mp.Pool(processes=int(args.procs))
 
@@ -4606,7 +4639,7 @@ def region(args):
             for bam_fn, meth_dbs in data.items():
                 seg_strand = '.'
                 seg_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
-                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, ct_bams])
+                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, ct_bams, meth_thresh, can_thresh])
                 results.append(res)
 
         logger.info('parsing segments (phase %s)...' % str(phase))
@@ -5490,6 +5523,18 @@ def composite(args):
         if use_mod not in mod_names:
             sys.exit('please specify a modification via --mod\navailable mods are: %s' % ','.join(mod_names))
 
+    meth_thresh = 0.8
+    can_thresh = 0.8
+
+    if args.meth_thresh:
+        meth_thresh = float(args.meth_thresh)
+
+    if args.can_thresh:
+        can_thresh = float(args.can_thresh)
+
+    logger.info(f'methylated base threshold: {meth_thresh}')
+    logger.info(f'canonical base threshold: {can_thresh}')
+
     data_basename = None
 
     if methbam:
@@ -5547,11 +5592,11 @@ def composite(args):
 
             if args.phased:
                 for phase in ('1','2'):
-                    res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, phase])
+                    res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, phase, meth_thresh, can_thresh])
                     results.append(res)
 
             else:
-                res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, None])
+                res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, None, meth_thresh, can_thresh])
                 results.append(res)
 
     # collect mod data
@@ -5793,6 +5838,18 @@ def wgmeth(args):
         logger.warning('more than one mod exists, need to pick one with -m/--mod: %s' % ','.join(mods))
         sys.exit()
 
+    meth_thresh = 0.8
+    can_thresh = 0.8
+
+    if args.meth_thresh:
+        meth_thresh = float(args.meth_thresh)
+
+    if args.can_thresh:
+        can_thresh = float(args.can_thresh)
+
+    logger.info(f'methylated base threshold: {meth_thresh}')
+    logger.info(f'canonical base threshold: {can_thresh}')
+
     results = []
 
     with open(args.fai) as fai:
@@ -5818,7 +5875,7 @@ def wgmeth(args):
                 seg_start = int(seg_start)
                 seg_end = int(seg_end)
 
-                res = pool.apply_async(get_meth_calls_wg, [args, args.bam, args.methdb, chrom, seg_start, seg_end, args.phased, args.mod, motifsize, args.ctbam])
+                res = pool.apply_async(get_meth_calls_wg, [args, args.bam, args.methdb, chrom, seg_start, seg_end, args.phased, args.mod, motifsize, args.ctbam, meth_thresh, can_thresh])
 
                 results.append(res)
 
@@ -5973,6 +6030,8 @@ def parse_args():
     parser_segmeth.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_segmeth.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_segmeth.add_argument('-m', '--mods', default=None, help='mods, comma-delimited for >1 (default to all available mods)')
+    parser_segmeth.add_argument('--meth_thresh', default=0.8, help='modified base threshold (default=0.8)')
+    parser_segmeth.add_argument('--can_thresh', default=0.8, help='canonical base threshold (default=0.8)')
     parser_segmeth.add_argument('--ctbam', default=None, help='specify which .bam(s) are C/T substitution data (can be comma-delimited)')
     parser_segmeth.add_argument('--ref', default=None, help='reference genome .fa (build .fai index with samtools faidx) (required for mod bams)')
     parser_segmeth.add_argument('--motif', default=None, help='expected modification motif (e.g. CG for 5mCpG required for mod bams)')
@@ -6024,6 +6083,8 @@ def parse_args():
     parser_locus.add_argument('-n', '--motif', default=None, help='expected modification motif (e.g. CG for 5mCpG required for mod bams)')
     parser_locus.add_argument('-c', '--plot_coverage', default=None, help='plot coverage from bam(s) (can be comma-delimited list)')
     parser_locus.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
+    parser_locus.add_argument('--meth_thresh', default=0.8, help='modified base threshold (default=0.8)')
+    parser_locus.add_argument('--can_thresh', default=0.8, help='canonical base threshold (default=0.8)')
     parser_locus.add_argument('--ctbam', default=None, help='specify which .bam(s) are C/T substitution data (can be comma-delimited)')
     parser_locus.add_argument('--logcover', default=False, action='store_true', help='apply log2(count+1) to coverage data (--plot_coverage)')
     parser_locus.add_argument('--coverprocs', default=1, help='processes to use for coverage function (default=1)')
@@ -6098,6 +6159,8 @@ def parse_args():
     parser_region.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_region.add_argument('-c', '--plot_coverage', default=None, help='plot coverage from bam(s) (can be comma-delimited list)')
     parser_region.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
+    parser_region.add_argument('--meth_thresh', default=0.8, help='modified base threshold (default=0.8)')
+    parser_region.add_argument('--can_thresh', default=0.8, help='canonical base threshold (default=0.8)')
     parser_region.add_argument('--ctbam', default=None, help='specify which .bam(s) are C/T substitution data (can be comma-delimited)')
     parser_region.add_argument('--bed', default=None, help='.bed file for additional annotations (BED3+3: chrom, start, end, label, strand, color)')
     parser_region.add_argument('--hidebedlabel', default=False, action='store_true', help='hide lables from .bed track')
@@ -6153,6 +6216,8 @@ def parse_args():
     parser_composite.add_argument('-l', '--lenfrac', default=0.95, help='fraction of TE length that must align (default 0.95)')
     parser_composite.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_composite.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
+    parser_composite.add_argument('--meth_thresh', default=0.8, help='modified base threshold (default=0.8)')
+    parser_composite.add_argument('--can_thresh', default=0.8, help='canonical base threshold (default=0.8)')
     parser_composite.add_argument('--meanplot_ylabel', default='% methylation', help='set y-axis label on mean plot')
     parser_composite.add_argument('--meanplot_cutoff', default=None, help='override site coverage cutoff for mean plot (see output for automatic value)')
     parser_composite.add_argument('--mod', default=None, help='modification to plot (mod codes will be listed, default: infer from sample name')
@@ -6189,6 +6254,8 @@ def parse_args():
     parser_wgmeth.add_argument('-r', '--ref', default=None, help='reference genome .fa (build .fai index with samtools faidx) (required for mod bams)')
     parser_wgmeth.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_wgmeth.add_argument('-l', '--minlen', default=0, help='minimum chromosome length (default = 0)')
+    parser_wgmeth.add_argument('--meth_thresh', default=0.8, help='modified base threshold (default=0.8)')
+    parser_wgmeth.add_argument('--can_thresh', default=0.8, help='canonical base threshold (default=0.8)')
     parser_wgmeth.add_argument('--ctbam', default=None, help='specify which .bam(s) are C/T substitution data (can be comma-delimited)')
     parser_wgmeth.add_argument('--motif', default=None, help='expected modification motif (e.g. CG for 5mCpG required for mod bams)')
     parser_wgmeth.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
@@ -6255,7 +6322,7 @@ def parse_args():
     parser_adjustcutoffs.add_argument('-m', '--methylated', required=True, help='mark as methylated above cutoff value')
     parser_adjustcutoffs.add_argument('-u', '--unmethylated', required=True, help='mark as unmethylated below cutoff value')
 
-    # options for score distribution exploration funciton
+    # options for score distribution exploration function
     parser_scoredist.add_argument('-d', '--db', default=None, help='methylartist database(s), can be comma-delimited')
     parser_scoredist.add_argument('-b', '--bam', default=None, help='one or more .bam files with MM and ML tags for modification calls (see samtags spec)')
     parser_scoredist.add_argument('-n', '--n', default=1000000, help='sample size (default = 1000000)')
