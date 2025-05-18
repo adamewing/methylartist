@@ -3658,6 +3658,9 @@ def locus(args):
 
     if args.skip_align_plot:
         p_ratios[1] = 0
+    
+    if args.skip_raw_plot:
+        p_ratios[3] = 0
 
     fig = plt.figure()
     gs = gridspec.GridSpec(len(p_ratios),1,height_ratios=p_ratios, hspace=0)
@@ -4103,48 +4106,50 @@ def locus(args):
     
     # llr plot
 
-    logger.info('building llr plot...')
     ax4 = plt.subplot(gs[3])
     ax4.set_xticks([])
     ax4.yaxis.tick_right()
 
-    ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
+    if not args.skip_raw_plot:
+        logger.info('building llr plot...')
 
-    for mod in use_mods:
-        upper = 1.0
-        lower = 0.0
+        ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
 
-        if not methbam:
-            upper, lower = get_cutoffs(list(data.values())[0][0], mod)
+        for mod in use_mods:
+            upper = 1.0
+            lower = 0.0
 
-        ax4.axhline(y=upper, c='k', linestyle='--',lw=1)
-        ax4.axhline(y=lower, c='k', linestyle='--',lw=1)
+            if not methbam:
+                upper, lower = get_cutoffs(list(data.values())[0][0], mod)
 
-    legend='auto'
-    if args.hidelegend:
-        legend=False
+            ax4.axhline(y=upper, c='k', linestyle='--',lw=1)
+            ax4.axhline(y=lower, c='k', linestyle='--',lw=1)
 
-    ax4 = sns.lineplot(x='loc', y='modstat', hue='sample', data=meth_table, palette=sample_color, zorder=2, legend=legend)
-    
-    if args.statname:
-        ax4.set_ylabel(args.statname)
+        legend='auto'
+        if args.hidelegend:
+            legend=False
 
-    ax4.set_xlim(ax2.get_xlim())
+        ax4 = sns.lineplot(x='loc', y='modstat', hue='sample', data=meth_table, palette=sample_color, zorder=2, legend=legend)
+        
+        if args.statname:
+            ax4.set_ylabel(args.statname)
 
-    highlight_patches = []
+        ax4.set_xlim(ax2.get_xlim())
 
-    if args.highlight_alpha:
-        a = float(args.highlight_alpha)
-        if args.highlight or args.highlight_bed:
-            for h, h_s in enumerate(h_cpg_start):
-                h_e = h_cpg_end[h]
-                h_color = h_colors[h]
-                ymin = min(ax4.get_ybound())
-                yheight = max(ax4.get_ybound())-ymin
-                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+        highlight_patches = []
 
-    for h in highlight_patches:
-        ax4.add_patch(h)
+        if args.highlight_alpha:
+            a = float(args.highlight_alpha)
+            if args.highlight or args.highlight_bed:
+                for h, h_s in enumerate(h_cpg_start):
+                    h_e = h_cpg_end[h]
+                    h_color = h_colors[h]
+                    ymin = min(ax4.get_ybound())
+                    yheight = max(ax4.get_ybound())-ymin
+                    highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+        for h in highlight_patches:
+            ax4.add_patch(h)
 
     # meth frac plot
 
@@ -6090,6 +6095,7 @@ def parse_args():
     parser_locus.add_argument('-c', '--plot_coverage', default=None, help='plot coverage from bam(s) (can be comma-delimited list)')
     parser_locus.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_locus.add_argument('--skip_align_plot', default=False, action='store_true', help='do not plot alignments')
+    parser_locus.add_argument('--skip_raw_plot', default=False, action='store_true', help='do not plot raw signal')
     parser_locus.add_argument('--meth_thresh', default=0.8, help='modified base threshold (default=0.8)')
     parser_locus.add_argument('--can_thresh', default=0.8, help='canonical base threshold (default=0.8)')
     parser_locus.add_argument('--ctbam', default=None, help='specify which .bam(s) are C/T substitution data (can be comma-delimited)')
