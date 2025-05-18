@@ -3656,6 +3656,9 @@ def locus(args):
     if args.phased and args.phasediff:
         p_ratios.append(3)
 
+    if args.skip_align_plot:
+        p_ratios[1] = 0
+
     fig = plt.figure()
     gs = gridspec.GridSpec(len(p_ratios),1,height_ratios=p_ratios, hspace=0)
 
@@ -3873,150 +3876,153 @@ def locus(args):
 
     # per-read plot
 
-    logger.info('building read alignment plot...')
     ax1 = plt.subplot(gs[1])
     ax1.set_xticks([])
     ax1.set_yticks([])
 
-    readstack = dd(list)
-    varcache = dd(list)
+    if not args.skip_align_plot:
 
-    max_y  = 1
-    pack_y = 1
+        logger.info('building read alignment plot...')
 
-    masked_count = 0
+        readstack = dd(list)
+        varcache = dd(list)
 
-    for bamname in reads:
-        fetch_reads_bam = pysam.AlignmentFile(orig_bam[bamname])
-        pos_cache = {}
+        max_y  = 1
+        pack_y = 1
 
-        for read in fetch_reads_bam.fetch(chrom, elt_start, elt_end):
-            if read.mapq < int(args.min_mapq):
-                continue
+        masked_count = 0
 
-            if read.is_supplementary or read.is_secondary or read.is_duplicate:
-                if not args.allreads:
+        for bamname in reads:
+            fetch_reads_bam = pysam.AlignmentFile(orig_bam[bamname])
+            pos_cache = {}
+
+            for read in fetch_reads_bam.fetch(chrom, elt_start, elt_end):
+                if read.mapq < int(args.min_mapq):
                     continue
 
-            masked = False
-            if len(readmask) > 0:
-                for mask_start, mask_end in readmask:
-                    if read.reference_start >= mask_start and read.reference_end <= mask_end:
-                        logger.debug('masked read: %s' % read.query_name)
-                        masked_count += 1
-                        masked = True
-            
-            if masked:
-                continue
+                if read.is_supplementary or read.is_secondary or read.is_duplicate:
+                    if not args.allreads:
+                        continue
 
-            if read.query_name not in pos_cache:
-                pos_cache[read.query_name] = ([read.reference_start], [read.reference_end])
-            else:
-                pos_cache[read.query_name][0].append(read.reference_start)
-                pos_cache[read.query_name][1].append(read.reference_end)
-
-            if args.variants:
-                varcache[read.query_name] = check_variants(variants, read, allele='alt')
+                masked = False
+                if len(readmask) > 0:
+                    for mask_start, mask_end in readmask:
+                        if read.reference_start >= mask_start and read.reference_end <= mask_end:
+                            logger.debug('masked read: %s' % read.query_name)
+                            masked_count += 1
+                            masked = True
                 
-
-        for readname, read in reads[bamname].items():
-            if readname not in pos_cache:
-                logger.debug('read %s not found in %s (skipped)' % (readname, bamname))
-                continue
-
-            if read.call_count == 0:
-                continue
-
-            read.ypos = max_y
-            max_y += 1
-
-            read.starts, read.ends = pos_cache[readname]
-            readstack[bamname].append(read)
-
-        fetch_reads_bam.close()
-
-    if args.readmask:
-        logger.info('masked %d reads due to --readmask' % masked_count)
-
-    # read packing
-
-    for bamname in readstack:
-        reads = readstack[bamname]
-
-        y = dd(list)
-
-        for read in readstack[bamname]:
-            y[read.ypos].append(read)
-
-        for p in y:
-            for q in y:
-                if p == q:
+                if masked:
                     continue
 
-                for read_q in y[q]:
-                        move = True
+                if read.query_name not in pos_cache:
+                    pos_cache[read.query_name] = ([read.reference_start], [read.reference_end])
+                else:
+                    pos_cache[read.query_name][0].append(read.reference_start)
+                    pos_cache[read.query_name][1].append(read.reference_end)
 
-                        for read_p in y[p]:
-                            if read_q.overlap(read_p):
-                                move = False
+                if args.variants:
+                    varcache[read.query_name] = check_variants(variants, read, allele='alt')
+                    
 
-                        if move:
-                            y[p].append(read_q)
-                            y[q].remove(read_q)
+            for readname, read in reads[bamname].items():
+                if readname not in pos_cache:
+                    logger.debug('read %s not found in %s (skipped)' % (readname, bamname))
+                    continue
 
-        for p in y:
-            if len(y[p]) > 0:
-                for read in sorted(y[p], key=lambda r: min(r.starts)):
-                    read.ypos = pack_y
-                pack_y += 1
+                if read.call_count == 0:
+                    continue
 
-    ax1.set_ylim(0,pack_y+1)
+                read.ypos = max_y
+                max_y += 1
 
-    for bamname in readstack:
-        for read in readstack[bamname]:
-            rm = args.readmarker
-            ms = float(args.readmarkersize)
-            lw = float(args.readlinewidth)
-            la = float(args.readlinealpha)
-            ma = float(args.markeralpha)
-            uec = sample_color[bamname]
+                read.starts, read.ends = pos_cache[readname]
+                readstack[bamname].append(read)
 
-            if args.readopenmarkeredgecolor is not None:
-                uec = args.readopenmarkeredgecolor
+            fetch_reads_bam.close()
 
-            for call_pos, call in read.meth_calls.items():
-                if call == -1:
-                    ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec=uec, mfc='white', markersize=ms, zorder=3, alpha=ma)
+        if args.readmask:
+            logger.info('masked %d reads due to --readmask' % masked_count)
 
-                if call == 1:
-                    ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec='black', mfc='black', markersize=ms, zorder=3, alpha=ma)
+        # read packing
 
-            for i in range(len(read.starts)):
-                readline_start = max(read.starts[i], elt_start) - elt_start
-                readline_end   = min(read.ends[i], elt_end) - elt_start
+        for bamname in readstack:
+            reads = readstack[bamname]
 
-                ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos, read.ypos], lw=lw, zorder=2, color=sample_color[bamname], alpha=la))
+            y = dd(list)
 
-                if args.variants and read.read_name in varcache:
-                    for alt_site in varcache[read.read_name]:
-                        vcol = var_colours[alt_site]
-                        vsize = int(args.variantsize)
-                        ax1.plot(alt_site-elt_start, read.ypos, marker='v', fillstyle='full', mec='black', mfc=vcol, markersize=vsize, zorder=4, alpha=1)
+            for read in readstack[bamname]:
+                y[read.ypos].append(read)
 
-    highlight_patches = []
+            for p in y:
+                for q in y:
+                    if p == q:
+                        continue
 
-    if args.highlight_alpha:
-        a = float(args.highlight_alpha)
-        if args.highlight or args.highlight_bed:
-            for h, h_s in enumerate(h_start):
-                h_e = h_end[h]
-                h_color = h_colors[h]
-                ymin = min(ax1.get_ybound())
-                yheight = max(ax1.get_ybound())-ymin
-                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+                    for read_q in y[q]:
+                            move = True
 
-    for h in highlight_patches:
-        ax1.add_patch(h)
+                            for read_p in y[p]:
+                                if read_q.overlap(read_p):
+                                    move = False
+
+                            if move:
+                                y[p].append(read_q)
+                                y[q].remove(read_q)
+
+            for p in y:
+                if len(y[p]) > 0:
+                    for read in sorted(y[p], key=lambda r: min(r.starts)):
+                        read.ypos = pack_y
+                    pack_y += 1
+
+        ax1.set_ylim(0,pack_y+1)
+
+        for bamname in readstack:
+            for read in readstack[bamname]:
+                rm = args.readmarker
+                ms = float(args.readmarkersize)
+                lw = float(args.readlinewidth)
+                la = float(args.readlinealpha)
+                ma = float(args.markeralpha)
+                uec = sample_color[bamname]
+
+                if args.readopenmarkeredgecolor is not None:
+                    uec = args.readopenmarkeredgecolor
+
+                for call_pos, call in read.meth_calls.items():
+                    if call == -1:
+                        ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec=uec, mfc='white', markersize=ms, zorder=3, alpha=ma)
+
+                    if call == 1:
+                        ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec='black', mfc='black', markersize=ms, zorder=3, alpha=ma)
+
+                for i in range(len(read.starts)):
+                    readline_start = max(read.starts[i], elt_start) - elt_start
+                    readline_end   = min(read.ends[i], elt_end) - elt_start
+
+                    ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos, read.ypos], lw=lw, zorder=2, color=sample_color[bamname], alpha=la))
+
+                    if args.variants and read.read_name in varcache:
+                        for alt_site in varcache[read.read_name]:
+                            vcol = var_colours[alt_site]
+                            vsize = int(args.variantsize)
+                            ax1.plot(alt_site-elt_start, read.ypos, marker='v', fillstyle='full', mec='black', mfc=vcol, markersize=vsize, zorder=4, alpha=1)
+
+        highlight_patches = []
+
+        if args.highlight_alpha:
+            a = float(args.highlight_alpha)
+            if args.highlight or args.highlight_bed:
+                for h, h_s in enumerate(h_start):
+                    h_e = h_end[h]
+                    h_color = h_colors[h]
+                    ymin = min(ax1.get_ybound())
+                    yheight = max(ax1.get_ybound())-ymin
+                    highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+
+        for h in highlight_patches:
+            ax1.add_patch(h)
 
     # plot correspondence between genome space and cpg space
 
@@ -6083,6 +6089,7 @@ def parse_args():
     parser_locus.add_argument('-n', '--motif', default=None, help='expected modification motif (e.g. CG for 5mCpG required for mod bams)')
     parser_locus.add_argument('-c', '--plot_coverage', default=None, help='plot coverage from bam(s) (can be comma-delimited list)')
     parser_locus.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
+    parser_locus.add_argument('--skip_align_plot', default=False, action='store_true', help='do not plot alignments')
     parser_locus.add_argument('--meth_thresh', default=0.8, help='modified base threshold (default=0.8)')
     parser_locus.add_argument('--can_thresh', default=0.8, help='canonical base threshold (default=0.8)')
     parser_locus.add_argument('--ctbam', default=None, help='specify which .bam(s) are C/T substitution data (can be comma-delimited)')
