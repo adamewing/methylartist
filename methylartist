@@ -3884,29 +3884,27 @@ def locus(args):
     ax1.set_yticks([])
 
     if not args.skip_align_plot:
-
         logger.info('building read alignment plot...')
 
         readstack = dd(list)
-        varcache = dd(list)
-
-        max_y  = 1
-        pack_y = 1
-
+        varcache = {}
+        pos_cache = {}
         masked_count = 0
 
+        # Process all BAM files first to collect position and variant data
         for bamname in reads:
             fetch_reads_bam = pysam.AlignmentFile(orig_bam[bamname])
-            pos_cache = {}
-
+            
+            # Pre-filter reads that match our criteria
+            filtered_reads = []
             for read in fetch_reads_bam.fetch(chrom, elt_start, elt_end):
                 if read.mapq < int(args.min_mapq):
                     continue
 
-                if read.is_supplementary or read.is_secondary or read.is_duplicate:
-                    if not args.allreads:
-                        continue
+                if not args.allreads and (read.is_supplementary or read.is_secondary or read.is_duplicate):
+                    continue
 
+                # Check if read is masked
                 masked = False
                 if len(readmask) > 0:
                     for mask_start, mask_end in readmask:
@@ -3914,103 +3912,139 @@ def locus(args):
                             logger.debug('masked read: %s' % read.query_name)
                             masked_count += 1
                             masked = True
+                            break
                 
                 if masked:
                     continue
-
+                
+                filtered_reads.append(read)
+            
+            # Process filtered reads in batch
+            for read in filtered_reads:
                 if read.query_name not in pos_cache:
                     pos_cache[read.query_name] = ([read.reference_start], [read.reference_end])
                 else:
                     pos_cache[read.query_name][0].append(read.reference_start)
                     pos_cache[read.query_name][1].append(read.reference_end)
 
-                if args.variants:
+                # Process variants if needed
+                if args.variants and read.query_name not in varcache:
                     varcache[read.query_name] = check_variants(variants, read, allele='alt')
-                    
+            
+            fetch_reads_bam.close()
 
+        # Build readstack with position data
+        max_y = 1
+        for bamname in reads:
             for readname, read in reads[bamname].items():
-                if readname not in pos_cache:
-                    logger.debug('read %s not found in %s (skipped)' % (readname, bamname))
-                    continue
-
-                if read.call_count == 0:
+                if readname not in pos_cache or read.call_count == 0:
                     continue
 
                 read.ypos = max_y
                 max_y += 1
-
                 read.starts, read.ends = pos_cache[readname]
                 readstack[bamname].append(read)
-
-            fetch_reads_bam.close()
 
         if args.readmask:
             logger.info('masked %d reads due to --readmask' % masked_count)
 
-        # read packing
-
+        # Process each sample separately to maintain sample grouping
+        pack_y = 1
         for bamname in readstack:
-            reads = readstack[bamname]
-
-            y = dd(list)
-
+            # Group reads by y-position
+            y_groups = dd(list)
             for read in readstack[bamname]:
-                y[read.ypos].append(read)
+                y_groups[read.ypos].append(read)
+            
+            # Sort reads by start position for better packing
+            sorted_reads = []
+            for y_pos in y_groups:
+                sorted_reads.extend(sorted(y_groups[y_pos], key=lambda r: min(r.starts)))
+            
+            # Pack reads for this sample only
+            packed_rows = []
+            for read in sorted_reads:
+                # Try to place read in an existing row
+                placed = False
+                for row_idx, row in enumerate(packed_rows):
+                    can_place = True
+                    for existing_read in row:
+                        if read.overlap(existing_read):
+                            can_place = False
+                            break
+                    
+                    if can_place:
+                        row.append(read)
+                        read.ypos = pack_y + row_idx
+                        placed = True
+                        break
+                
+                # If can't place in existing rows, create a new row
+                if not placed:
+                    packed_rows.append([read])
+                    read.ypos = pack_y + len(packed_rows) - 1
+            
+            # Update pack_y for the next sample
+            if packed_rows:
+                pack_y += len(packed_rows)
+            else:
+                pack_y += 1
 
-            for p in y:
-                for q in y:
-                    if p == q:
-                        continue
+        ax1.set_ylim(0, pack_y+1)
 
-                    for read_q in y[q]:
-                            move = True
-
-                            for read_p in y[p]:
-                                if read_q.overlap(read_p):
-                                    move = False
-
-                            if move:
-                                y[p].append(read_q)
-                                y[q].remove(read_q)
-
-            for p in y:
-                if len(y[p]) > 0:
-                    for read in sorted(y[p], key=lambda r: min(r.starts)):
-                        read.ypos = pack_y
-                    pack_y += 1
-
-        ax1.set_ylim(0,pack_y+1)
-
+        # Batch plotting for better performance - process each sample separately
         for bamname in readstack:
+            rm = args.readmarker
+            ms = float(args.readmarkersize)
+            lw = float(args.readlinewidth)
+            la = float(args.readlinealpha)
+            ma = float(args.markeralpha)
+            uec = sample_color[bamname]
+            
+            if args.readopenmarkeredgecolor is not None:
+                uec = args.readopenmarkeredgecolor
+            
+            # Collect all plotting data first for this sample
+            unmeth_markers = []
+            meth_markers = []
+            read_lines = []
+            variant_markers = []
+            
             for read in readstack[bamname]:
-                rm = args.readmarker
-                ms = float(args.readmarkersize)
-                lw = float(args.readlinewidth)
-                la = float(args.readlinealpha)
-                ma = float(args.markeralpha)
-                uec = sample_color[bamname]
-
-                if args.readopenmarkeredgecolor is not None:
-                    uec = args.readopenmarkeredgecolor
-
+                # Collect methylation markers
                 for call_pos, call in read.meth_calls.items():
                     if call == -1:
-                        ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec=uec, mfc='white', markersize=ms, zorder=3, alpha=ma)
-
-                    if call == 1:
-                        ax1.plot(call_pos, read.ypos, marker=rm, fillstyle='full', mec='black', mfc='black', markersize=ms, zorder=3, alpha=ma)
-
+                        unmeth_markers.append((call_pos, read.ypos))
+                    elif call == 1:
+                        meth_markers.append((call_pos, read.ypos))
+                
+                # Collect read lines
                 for i in range(len(read.starts)):
                     readline_start = max(read.starts[i], elt_start) - elt_start
-                    readline_end   = min(read.ends[i], elt_end) - elt_start
-
-                    ax1.add_line(matplotlib.lines.Line2D([readline_start, readline_end], [read.ypos, read.ypos], lw=lw, zorder=2, color=sample_color[bamname], alpha=la))
-
-                    if args.variants and read.read_name in varcache:
-                        for alt_site in varcache[read.read_name]:
-                            vcol = var_colours[alt_site]
-                            vsize = int(args.variantsize)
-                            ax1.plot(alt_site-elt_start, read.ypos, marker='v', fillstyle='full', mec='black', mfc=vcol, markersize=vsize, zorder=4, alpha=1)
+                    readline_end = min(read.ends[i], elt_end) - elt_start
+                    read_lines.append(((readline_start, read.ypos), (readline_end, read.ypos)))
+                
+                # Collect variant markers
+                if args.variants and read.read_name in varcache:
+                    for alt_site in varcache[read.read_name]:
+                        variant_markers.append((alt_site-elt_start, read.ypos, var_colours[alt_site]))
+            
+            # Plot in batches for this sample
+            if unmeth_markers:
+                x, y = zip(*unmeth_markers)
+                ax1.scatter(x, y, marker=rm, edgecolor=uec, facecolor='white', s=ms**2, zorder=3, alpha=ma)
+            
+            if meth_markers:
+                x, y = zip(*meth_markers)
+                ax1.scatter(x, y, marker=rm, edgecolor='black', facecolor='black', s=ms**2, zorder=3, alpha=ma)
+            
+            # Plot read lines for this sample
+            for (x1, y1), (x2, y2) in read_lines:
+                ax1.add_line(matplotlib.lines.Line2D([x1, x2], [y1, y2], lw=lw, zorder=2, color=sample_color[bamname], alpha=la))
+            
+            # Plot variant markers for this sample
+            for x, y, color in variant_markers:
+                ax1.plot(x, y, marker='v', fillstyle='full', mec='black', mfc=color, markersize=int(args.variantsize), zorder=4, alpha=1)
 
         highlight_patches = []
 
