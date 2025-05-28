@@ -142,7 +142,7 @@ def effsize(args):
     
 
 def cohen_d(m1, m2):
-    return (np.mean(m1) - np.mean(m2))/np.var(pd.concat([m1, m2]))
+    return (np.mean(m1) - np.mean(m2))/np.std(pd.concat([m1, m2]))
 
 
 def main():
