@@ -93,7 +93,8 @@ def kruskal(args):
         h_stat, p_value = ss.kruskal(*[subdata[col].dropna() for col in subdata.columns])
 
         if args.posthoc:
-            print('Annotation\tH_Stat\tP_Value')
+            with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+                print('Annotation\tH_Stat\tP_Value')
 
 
         print(f'{ann}\t{h_stat}\t{p_value}')
@@ -136,13 +137,22 @@ def effsize(args):
         subdata = subdata[cols]
 
         for c1, c2 in combinations(cols, 2):
-            d = cohen_d(subdata[c1], subdata[c2])
+            d = cohen_d(subdata[[c1, c2]])
             d = '%.3f' % d
             print(f'{ann}\t{c1}\t{c2}\t{d}')
     
 
-def cohen_d(m1, m2):
-    return (np.mean(m1) - np.mean(m2))/np.std(pd.concat([m1, m2]))
+def cohen_d(df):
+    return (df.iloc[:,0].mean()-df.iloc[:,1].mean()) / pooled_std(df)
+
+
+def pooled_std(df):
+    variances = df.var()
+    sizes = df.size
+    degrees_of_freedom = sizes - 1
+    pooled_variance = np.sum(variances * degrees_of_freedom) / np.sum(degrees_of_freedom)
+    pooled_std = np.sqrt(pooled_variance)
+    return pooled_std
 
 
 def main():
