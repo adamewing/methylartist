@@ -1669,29 +1669,33 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
 
 
 def slide_window(meth_table, sample, width=20, slide=2):
-    # used for locus plots, composite plots
-    midpt_min = min(meth_table['loc'])
-    midpt_max = max(meth_table['loc'])
-
+    sample_data = meth_table[meth_table['sample'] == sample]
+    
+    midpt_min = sample_data['loc'].min()
+    midpt_max = sample_data['loc'].max()
+    
+    meth_data = sample_data[sample_data['call'] == 1]['loc'].values
+    unmeth_data = sample_data[sample_data['call'] == -1]['loc'].values
+    
     win_start = int(midpt_min - width/2)
     win_end = win_start + width
-
+    
     meth_frac = {}
     meth_n = {}
-
+    
     while int((win_start+win_end)/2) < midpt_max:
         win_start += slide
         win_end += slide
-
-        meth_count = len(meth_table.loc[(meth_table['sample'] == sample) & (meth_table['loc'] > win_start) & (meth_table['loc'] < win_end) & (meth_table['call'] == 1)])
-        unmeth_count = len(meth_table.loc[(meth_table['sample'] == sample) & (meth_table['loc'] > win_start) & (meth_table['loc'] < win_end) & (meth_table['call'] == -1)])
-
+        
+        meth_count = np.sum((meth_data > win_start) & (meth_data < win_end))
+        unmeth_count = np.sum((unmeth_data > win_start) & (unmeth_data < win_end))
+        
         midpt = int((win_start+win_end)/2)
-
+        
         if meth_count + unmeth_count > 0:
             meth_frac[midpt] = meth_count/(meth_count+unmeth_count)
             meth_n[midpt] = meth_count+unmeth_count
-
+    
     return meth_frac, meth_n
 
 
@@ -1719,58 +1723,35 @@ def slide_window_cover(cover_table, sample, width=20, slide=2):
     return cover_windows
 
 
-def slide_window_phased(meth_table, phase, width=20, slide=2):
-    midpt_min = min(meth_table['loc'])
-    midpt_max = max(meth_table['loc'])
-
-    win_start = int(midpt_min - width/2)
-    win_end = win_start + width
-
-    meth_frac = {}
-    meth_n = {}
-
-    while int((win_start+win_end)/2) < midpt_max:
-        win_start += slide
-        win_end += slide
-
-        meth_count = len(meth_table.loc[(meth_table['phase'] == phase) & (meth_table['loc'] > win_start) & (meth_table['loc'] < win_end) & (meth_table['call'] == 1)])
-        unmeth_count = len(meth_table.loc[(meth_table['phase'] == phase) & (meth_table['loc'] > win_start) & (meth_table['loc'] < win_end) & (meth_table['call'] == -1)])
-
-        midpt = int((win_start+win_end)/2)
-
-        if meth_count + unmeth_count > 0:
-            meth_frac[midpt] = meth_count/(meth_count+unmeth_count)
-            meth_n[midpt] = meth_count+unmeth_count
-
-    return meth_frac, meth_n
-
-
 def smooth(x, window_len=8, window='hanning'):
-    # used for locus plots
-    ''' modified from scipy cookbook: https://scipy-cookbook.readthedocs.io/items/SignalSmooth.html '''
-
-    assert window_len % 2 == 0, '--smoothwindowsize must be an even number'
-    assert x.ndim == 1
-
     if x.size < window_len:
         logger.warning('cannot smooth segment: fewer data points than window_len')
         return x
 
-    if window_len<3:
+    if window_len < 3:
         return x
-
-    assert window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']
-
-    s=np.r_[x[window_len-1:0:-1],x,x[-2:-window_len-1:-1]]
     
-    if window == 'flat': #moving average
-        w=np.ones(window_len,'d')
-    else:
-        w=eval('np.'+window+'(window_len)')
-
-    y=np.convolve(w/w.sum(),s,mode='valid')
-
-    return y[(int(window_len/2)-1):-(int(window_len/2))]
+    if window_len % 2 != 0:
+        window_len += 1  # Make it even
+    
+    window_functions = {
+        'flat': lambda size: np.ones(size, 'd'),
+        'hanning': np.hanning,
+        'hamming': np.hamming,
+        'bartlett': np.bartlett,
+        'blackman': np.blackman
+    }
+    
+    # Use np.pad instead of np.r_ for better performance
+    s = np.pad(x, (window_len-1, window_len-1), mode='reflect')
+    
+    w = window_functions.get(window, np.hanning)(window_len)
+    w = w / w.sum()
+    y = np.convolve(w, s, mode='valid')
+    
+    half_window = int(window_len/2)
+    
+    return y[half_window-1:-(half_window)]
 
 
 def mask_methfrac(data, cutoff=20):
@@ -1851,6 +1832,35 @@ def get_bed_annotations(fn, chrom, elt_start, elt_end):
             ann.append(BED(start=bed_start, end=bed_end, label=bed_label, strand=strand, colour=bed_colour))
     
     return ann
+
+
+def find_motif_windows(region_seq, motifs, start, end, motifs_per_window):
+    w_starts = [start]
+    w_ends = []
+    
+    motif_len = len(motifs[0])  # Assuming all motifs have the same length
+    
+    motif_set = set(motifs)
+    rc_motif_set = set(rc(m) for m in motifs)
+    
+    motif_count = 0
+    seq_len = len(region_seq)
+    
+    for i in range(seq_len - motif_len + 1):
+        site_fwd = region_seq[i:i+motif_len]
+        
+        if site_fwd in motif_set or site_fwd in rc_motif_set:
+            motif_count += 1
+            
+            if motif_count == motifs_per_window:
+                position = start + i + 1  # +1 because we've just processed this position
+                w_starts.append(position)
+                w_ends.append(position)
+                motif_count = 0
+    
+    w_ends.append(end)
+    
+    return w_starts, w_ends
 
 
 def build_genes(gtf, chrom, start, end, tx=False):
@@ -4145,7 +4155,7 @@ def locus(args):
     ax4.yaxis.tick_right()
 
     if not args.skip_raw_plot:
-        logger.info('building llr plot...')
+        logger.info('building llr plot... (if this is slow and/or raw signal is not helpful, try --skip_raw_plot)')
 
         ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
 
@@ -4200,10 +4210,18 @@ def locus(args):
 
     smoothed_values = dd(dict)
 
+    sample_filtered_data = {}
     for sample in sample_order:
-        windowed_methfrac, meth_n = slide_window(meth_table, sample, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
+        sample_filtered_data[sample] = meth_table[meth_table['sample'] == sample]
 
-        smoothed_methfrac = smooth(np.asarray(list(windowed_methfrac.values())), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
+
+    for sample in sample_order:
+        sample_data = sample_filtered_data[sample]
+
+        windowed_methfrac, meth_n = slide_window(sample_data, sample, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
+        methfrac_values = np.asarray(list(windowed_methfrac.values()))
+
+        smoothed_methfrac = smooth(methfrac_values, window_len=int(args.smoothwindowsize), window=args.smoothfunc)
 
         ix = np.asarray(list(windowed_methfrac.keys()))
 
@@ -4489,29 +4507,7 @@ def region(args):
 
     logger.info('motif count: %d, per window: %d' % (motif_count, motifs_per_window))
 
-    w_starts = [start]
-    w_ends = []
-
-    i = 0
-    motif_count = 0
-
-    while i < len(region_seq) - len(motif):
-        site_fwd = region_seq[i:i+len(motif)]
-        site_rev = rc(site_fwd)
-
-        for motif in motifs:
-            if motif in (site_fwd, site_rev):
-                motif_count += 1
-
-        i += 1
-
-        if motif_count == motifs_per_window:
-            w_starts.append(start+i)
-            w_ends.append(start+i)
-            motif_count = 0
-
-    w_ends.append(end)
-
+    w_starts, w_ends = find_motif_windows(region_seq, motifs, start, end, motifs_per_window)
     assert len(w_starts) == len(w_ends)
     logger.info('using %d windows normalised for %s content' % (len(w_starts), args.motif))
 
