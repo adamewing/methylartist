@@ -1102,7 +1102,33 @@ def parse_ctbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, 
                 yield (read.qname, read.reference_name, pos, mod_prob, methcall, 'm')
 
 
-def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, ct_bams, meth_thresh, can_thresh):
+def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, bedmethyl, ct_bams, meth_thresh, can_thresh):
+    if bedmethyl:
+        seg_result = {}
+        seg_meth_calls = dd(int)
+        call_count = 0
+
+        bed = pysam.Tabixfile(bam_fn)
+
+        if chrom in bed.contigs:
+            for rec in bed.fetch(chrom, seg_start, seg_end):
+                c = rec.strip().split('\t')
+                assert len(c) >= 11
+                methfrac = float(c[10])
+                numsites = int(c[9])
+
+                call_count += numsites
+                meth_count = int(numsites*methfrac)
+                unmeth_count = numsites-meth_count
+                assert unmeth_count >= 0
+
+                seg_meth_calls[1] += meth_count
+                seg_meth_calls[-1] += unmeth_count
+
+            seg_result['m'] = seg_meth_calls
+
+        return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, call_count)
+
     c_lookup = {}
 
     if not methbam:
@@ -2700,15 +2726,33 @@ def segmeth(args):
         elif is_bam(args.bams):
             bams = args.bams.split(',')
 
+        elif args.bed:
+            logger.info('input is expected to be bgzip/tabix bedMethyl')
+
+            beds = args.bams.split(',')
+            if beds[0].endswith('.gz'):
+                bams = beds
+            else:
+                logger.info('-b input does not end in .gz, assuming this is a file with a list of bedMethyl .gz files...')
+                with open(args.bams) as bed_list:
+                    for line in bed_list:
+                        if not line.strip().endswith('.gz'):
+                            sys.exit('cannot identify input type')
+                        bams.append(line.strip().split()[0])
+
         else:
             logger.info('assuming %s contains a list of .bams' % args.bams)
             with open(args.bams) as bam_list:
                 for line in bam_list:
+                    if not is_bam(line.strip()):
+                        sys.exit('cannot identify input type')
                     bams.append(line.strip().split()[0])
 
         ct_bams = []
 
         if args.ctbam is not None:
+            if args.bed:
+                sys.exit('--ctbam not compatible with --bed')
             for ctbam_fn in args.ctbam.split(','):
                 if ctbam_fn not in bams:
                     sys.exit(f'{ctbam_fn} passed to --ctbam has no corresponding .bam passed to -b/--bam')
@@ -2725,9 +2769,10 @@ def segmeth(args):
             if not os.path.exists(bam):
                 sys.exit(f'.bam file not found: {bam}')
 
-            with pysam.AlignmentFile(bam) as fh:
-                if not fh.check_index():
-                    sys.exit('bam not indexed: %s' % bam)
+            if not args.bed:
+                with pysam.AlignmentFile(bam) as fh:
+                    if not fh.check_index():
+                        sys.exit('bam not indexed: %s' % bam)
 
             data[bam] = None
 
@@ -2735,11 +2780,16 @@ def segmeth(args):
             logger.info(f'Assuming modtype m for C/T substitution bam {bam}')
             mod_names = ['m']
         else:
-            mod_names = mods_methbam(bam)
+            if not args.bed:
+                mod_names = mods_methbam(bam)
+            else:
+                mod_names = ['m']
 
     mod_names = list(set(mod_names))
 
     if args.mods:
+        if args.bed:
+            logger.warning('--mods has no effect because of --bed')
         user_mod_names = []
         for mod in args.mods.split(','):
             if mod not in mod_names:
@@ -2749,7 +2799,8 @@ def segmeth(args):
 
         mod_names = list(set(user_mod_names))
 
-    logger.info('using mods: %s' % ','.join(mod_names))
+    if not args.bed:
+        logger.info('using mods: %s' % ','.join(mod_names))
 
     base_names = ['.'.join(bam.split('.')[:-1]) for bam in data]
 
@@ -2771,8 +2822,9 @@ def segmeth(args):
     if args.can_thresh:
         can_thresh = float(args.can_thresh)
 
-    logger.info(f'methylated base threshold: {meth_thresh}')
-    logger.info(f'canonical base threshold: {can_thresh}')
+    if not args.bed:
+        logger.info(f'methylated base threshold: {meth_thresh}')
+        logger.info(f'canonical base threshold: {can_thresh}')
 
     if methbam:
         data_basename = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1])
@@ -2810,6 +2862,8 @@ def segmeth(args):
     phases = [None]
 
     if args.phased:
+        if args.bed:
+            sys.exit('--bed not compatible with --phased (generate phased bedMethyl output before running segmeth)')
         phases = ['1', '2']
 
     for bam_fn, meth_fn in data.items():
@@ -2836,7 +2890,7 @@ def segmeth(args):
                     seg_start = int(seg_start)
                     seg_end = int(seg_end)
 
-                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, ct_bams, meth_thresh, can_thresh])
+                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, args.bed, ct_bams, meth_thresh, can_thresh])
 
                     results.append((res, base_name))
 
@@ -4680,7 +4734,7 @@ def region(args):
             for bam_fn, meth_dbs in data.items():
                 seg_strand = '.'
                 seg_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
-                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, ct_bams, meth_thresh, can_thresh])
+                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, False, ct_bams, meth_thresh, can_thresh])
                 results.append(res)
 
         logger.info('parsing segments (phase %s)...' % str(phase))
@@ -5879,6 +5933,11 @@ def wgmeth(args):
         logger.warning('more than one mod exists, need to pick one with -m/--mod: %s' % ','.join(mods))
         sys.exit()
 
+    if args.dss:
+        logger.info('output will be DSS format: https://www.bioconductor.org/packages/release/bioc/html/DSS.html')
+    else:
+        logger.info('output will be bedMethyl format: https://www.encodeproject.org/data-standards/wgbs/')
+
     meth_thresh = 0.8
     can_thresh = 0.8
 
@@ -6065,12 +6124,13 @@ def parse_args():
 
     # options for methylation segments
     parser_segmeth.add_argument('-d', '--data', default=None, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
-    parser_segmeth.add_argument('-b', '--bams', default=None, help='one or more .bams with Mm and Ml tags for modification calls (see samtags spec)')
+    parser_segmeth.add_argument('-b', '--bams', default=None, help='one or more .bams (or bedMethyl input) with Mm and Ml tags for modification calls (see samtags spec)')
     parser_segmeth.add_argument('-i', '--intervals', required=True, help='.bed file')
     parser_segmeth.add_argument('-p', '--procs', default=1, help='multiprocessing')
     parser_segmeth.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_segmeth.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_segmeth.add_argument('-m', '--mods', default=None, help='mods, comma-delimited for >1 (default to all available mods)')
+    parser_segmeth.add_argument('--bed', default=False, action='store_true', help='input is (tabix-indexed) bedMethyl')
     parser_segmeth.add_argument('--meth_thresh', default=0.8, help='modified base threshold (default=0.8)')
     parser_segmeth.add_argument('--can_thresh', default=0.8, help='canonical base threshold (default=0.8)')
     parser_segmeth.add_argument('--ctbam', default=None, help='specify which .bam(s) are C/T substitution data (can be comma-delimited)')
