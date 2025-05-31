@@ -1114,7 +1114,9 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
             for rec in bed.fetch(chrom, seg_start, seg_end):
                 c = rec.strip().split('\t')
                 assert len(c) >= 11
-                methfrac = float(c[10])
+                methpct = float(c[10])
+
+                methfrac = methpct/100.0
                 numsites = int(c[9])
 
                 call_count += numsites
