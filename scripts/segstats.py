@@ -73,7 +73,12 @@ def kruskal(args):
                 logger.error('\n'+'\n'.join(list(avail_annots)))
                 sys.exit(1)
 
-    cols = args.columns.split(',')
+    cols = []
+
+    if args.columns is None:
+        cols = [c for c in data.columns if c.endswith('_methfrac')]
+    else:
+        cols = args.columns.split(',')
 
     for col in cols:
         if col not in data.columns:
@@ -93,18 +98,18 @@ def kruskal(args):
         h_stat, p_value = ss.kruskal(*[subdata[col].dropna() for col in subdata.columns])
 
         if args.posthoc:
-            with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-                print('Annotation\tH_Stat\tP_Value')
+            print('Annotation\tH_Stat\tP_Value')
 
 
         print(f'{ann}\t{h_stat}\t{p_value}')
 
         if args.posthoc:
-            print(f'\nPost-hoc Dunn\'s tests:')
-            sd_long = pd.melt(subdata, var_name='group', value_name='values')
-            posthoc = sp.posthoc_dunn(sd_long, val_col='values', group_col='group', p_adjust='holm')
-            print(posthoc)
-            print('\n')
+            with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+                print(f'\nPost-hoc Dunn\'s tests:')
+                sd_long = pd.melt(subdata, var_name='group', value_name='values')
+                posthoc = sp.posthoc_dunn(sd_long, val_col='values', group_col='group', p_adjust='holm')
+                print(posthoc)
+                print('\n')
 
 
 def effsize(args):
@@ -121,7 +126,12 @@ def effsize(args):
                 logger.error('\n'+'\n'.join(list(avail_annots)))
                 sys.exit(1)
 
-    cols = args.columns.split(',')
+    cols = []
+
+    if args.columns is None:
+        cols = [c for c in data.columns if c.endswith('_methfrac')]
+    else:
+        cols = args.columns.split(',')
 
     for col in cols:
         if col not in data.columns:
@@ -182,9 +192,9 @@ def parse_args():
 
     parser_mean.add_argument('-c', '--columns', default=None, help='which columns to output (comma-delimited, default = all)')
     parser_median.add_argument('-c', '--columns', default=None, help='which columns to output (comma-delimited, default = all)')
-    parser_kruskal.add_argument('-c', '--columns', required=True, help='comma-delimited columns')
+    parser_kruskal.add_argument('-c', '--columns', default=None, help='comma-delimited columns')
     parser_kruskal.add_argument('--posthoc', action='store_true', default=False, help='perform post-hoc Dunn\'s tests')
-    parser_effsize.add_argument('-c', '--columns', required=True, help='columns to compare (pairwise comparisons)')
+    parser_effsize.add_argument('-c', '--columns', default=None, help='columns to compare (pairwise comparisons)')
 
     return parser.parse_args()
 
