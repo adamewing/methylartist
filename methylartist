@@ -2982,6 +2982,11 @@ def segplot(args):
         elif int(v[1]) == 11 and int(v[2]) < 2:
             sys.exit('--ridge requires seaborn 0.11.2 or later')
 
+    if args.usemeta and not args.group_by_annotation:
+        if not args.ridge:
+            logger.warning('must use -a/--group_by_annotation with --usemeta and violin/strip plots')
+            sys.exit(1)
+
     data = pd.read_csv(args.segmeth, sep='\t', header=0, index_col=0)
 
     samples = []
@@ -3007,6 +3012,53 @@ def segplot(args):
             user_samples.append(s)
 
         samples = user_samples
+
+    metadata = None
+    usemeta = []
+    meta_colours = {}
+    
+    palette = args.palette
+
+    if args.metadata:
+        metadata = pd.read_csv(args.metadata, sep='\t', header=0, index_col=0)
+        if args.usemeta:
+            for md in args.usemeta.split(','):
+                if md in metadata.columns:
+                    usemeta.append(md)
+                else:
+                    logger.warning(f'column {md} not found in {args.metadata}')
+        else:
+            logger.warning('--metadata without --usemeta does not affect plot')
+        
+        uniqmeta = []
+        for md in usemeta:
+            uniqmeta.append(list(set(metadata[md])))
+        
+        meta_categories = itertools.product(*uniqmeta)
+        meta_categories = ['_'.join(mc) for mc in meta_categories]
+
+        mcp = sns.color_palette(args.palette, n_colors=len(meta_categories))
+        meta_colours = dict([(mc, mcp[i]) for i, mc in enumerate(meta_categories)])
+        palette = {}
+
+        for s in samples:
+            md = []
+            if s not in metadata.index:
+                logger.warning(f'no metadata for sample: {s}')
+            else:
+                for col in usemeta:
+                    md.append(metadata.loc[s][col])
+
+            md = '_'.join(md)        
+            assert md in meta_colours, f'meta {md} not found'
+
+            palette[s] = meta_colours[md]
+            for m in mods:
+                palette[s+'_'+m] = palette[s]
+
+        metadata = metadata.sort_values(usemeta)
+        samples = list(metadata.index)
+
 
     if args.mods:
         user_mods = []
@@ -3071,6 +3123,13 @@ def segplot(args):
                 plot_data[uid]['modbase'] = data[sm + '_methfrac'].loc[seg]
                 plot_data[uid]['group']   = data['seg_name'].loc[seg]
 
+                if args.metadata:
+                    if s not in metadata.index:
+                        logger.warning(f'no metadata for sample: {s}')
+                    else:
+                        for col in metadata:
+                            plot_data[uid][col] = metadata.loc[s][col]
+
                 if args.ridge:
                     plot_data[uid]['samplegroup'] = sm + ' ' + plot_data[uid]['group']
 
@@ -3096,11 +3155,20 @@ def segplot(args):
 
     if args.violin:
         if args.group_by_annotation:
-            sns_plot = sns.violinplot(x='group', y='modbase', data=plot_data, hue='sample', dodge=True, order=order, hue_order=samples_mods, palette=args.palette)
+            sns_plot = sns.violinplot(x='group', y='modbase', data=plot_data, hue='sample', dodge=True, order=order, hue_order=samples_mods, palette=palette)
         else:
-            sns_plot = sns.violinplot(x='sample', y='modbase', data=plot_data, hue='group', dodge=True, hue_order=order, palette=args.palette)
-
+            sns_plot = sns.violinplot(x='sample', y='modbase', data=plot_data, hue='group', dodge=True, hue_order=order, palette=palette)
+            
         basename += '.violin'
+
+        if args.usemeta:
+            legend_elements = []
+            for metacat, colour in meta_colours.items():
+                catlabel = '+'.join(metacat.split('_'))
+                legend_elements.append(matplotlib.patches.Patch(facecolor=colour, label=catlabel))
+
+            meta_title = '+'.join(usemeta)
+            sns_plot.legend(handles=legend_elements, title=meta_title)
 
     elif args.ridge:
         sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
@@ -3122,7 +3190,7 @@ def segplot(args):
 
         plot_data = plot_data.query('@ridge_min <= modbase <= @ridge_max')
 
-        sns_plot = sns.FacetGrid(plot_data, row='samplegroup', hue='sample', aspect=15, height=.5, palette=args.palette)
+        sns_plot = sns.FacetGrid(plot_data, row='samplegroup', hue='sample', aspect=15, height=.5, palette=palette)
         sns_plot.map(sns.kdeplot, 'modbase', bw_adjust=float(args.ridge_smoothing), clip_on=False, fill=True, alpha=float(args.ridge_alpha), linewidth=1.5)
         sns_plot.map(sns.kdeplot, 'modbase', clip_on=False, color='w', lw=2, bw_adjust=float(args.ridge_smoothing), alpha=float(args.ridge_alpha))
         sns_plot.refline(y=0, linewidth=2, linestyle="-", color=None, clip_on=False)
@@ -3162,13 +3230,23 @@ def segplot(args):
         sns_plot.set(yticks=[], ylabel="")
         sns_plot.despine(bottom=True, left=True)
 
+        if args.usemeta:
+            legend_elements = []
+            for metacat, colour in meta_colours.items():
+                catlabel = '+'.join(metacat.split('_'))
+                legend_elements.append(matplotlib.patches.Patch(facecolor=colour, label=catlabel))
+
+            meta_title = '+'.join(usemeta)
+            ax = sns_plot.axes[0,0]
+            ax.legend(handles=legend_elements, title=meta_title, facecolor='white', framealpha=0.5, loc='best')
+
         basename += '.ridge'
 
     else:
         if args.group_by_annotation:
-            sns_plot = sns.stripplot(x='group', y='modbase', data=plot_data, hue='sample', dodge=True, jitter=True, size=pt_sz, order=order, hue_order=samples_mods, palette=args.palette)
+            sns_plot = sns.stripplot(x='group', y='modbase', data=plot_data, hue='sample', dodge=True, jitter=True, size=pt_sz, order=order, hue_order=samples_mods, palette=palette)
         else:
-            sns_plot = sns.stripplot(x='sample', y='modbase', data=plot_data, hue='group', dodge=True, jitter=True, size=pt_sz, hue_order=order, palette=args.palette)
+            sns_plot = sns.stripplot(x='sample', y='modbase', data=plot_data, hue='group', dodge=True, jitter=True, size=pt_sz, hue_order=order, palette=palette)
 
     if args.group_by_annotation:
         basename += '.group_by_annotation'
@@ -6156,6 +6234,8 @@ def parse_args():
     parser_segplot.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_segplot.add_argument('-a', '--group_by_annotation', default=False, action='store_true', help='group plots by annotation rather than by sample')
     parser_segplot.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
+    parser_segplot.add_argument('--metadata', default=None, help='sample metadata (tab-delimited with header, sample name as first column)')
+    parser_segplot.add_argument('--usemeta', default=None, help='metadata to append to annotation (comma-delimited)')
     parser_segplot.add_argument('--width', default=None, help='figure width (default = automatic)')
     parser_segplot.add_argument('--height', default=6, help='figure height (default = 6)')
     parser_segplot.add_argument('--pointsize', default=1, help='point size for scatterplot (default = 1)')
