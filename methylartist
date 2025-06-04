@@ -2853,6 +2853,14 @@ def segmeth(args):
     if args.outfile is not None:
         outfn = args.outfile
 
+    interval_count = 0
+
+    with open(args.intervals) as seg_ivls:
+        for line in seg_ivls:
+            interval_count += 1
+    
+    logger.info(f'{args.intervals} has {interval_count} intervals')
+
     out = open(outfn, 'w')
 
     logger.info('segmeth output filename: %s' % outfn)
@@ -2876,7 +2884,8 @@ def segmeth(args):
                 base_name += '_ph' + phase
 
             with open(args.intervals) as seg_ivls:
-                for line in seg_ivls:
+                logger.info(f'parse intervals from {bam_fn} phase {phase}')
+                for line in tqdm(seg_ivls, total=interval_count):
                     c = line.strip().split()
                     chrom, seg_start, seg_end = c[:3]
 
@@ -6046,7 +6055,7 @@ def wgmeth(args):
                 if args.chrom != chrom:
                     continue
 
-            for seg_start in tqdm(range(0, chrlen, bin_size)):
+            for seg_start in range(0, chrlen, bin_size):
                 seg_end = seg_start + bin_size
 
                 if seg_end > chrlen:
@@ -6060,7 +6069,7 @@ def wgmeth(args):
                 results.append(res)
 
 
-    for res in results:
+    for res in tqdm(results):
         seg_meth_table = res.get()
 
         if seg_meth_table is None:
