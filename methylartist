@@ -1352,7 +1352,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, meth_thresh=0.8, can_thresh=0.8, al
     return seg_reads
 
 
-def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, phase):
+def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, phase, meth_thresh, can_thresh):
     per_bam_results = {}
 
     for bam in data:
@@ -1383,7 +1383,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
         seg_reads = {}
 
         if methbam:
-            for row in parse_methbam(bam, reads, seg_chrom, seg_start, seg_end, motifsize=len(args.motif), meth_thresh=0.8, can_thresh=0.8, restrict_motif=args.motif, restrict_ref=args.ref, primary_only=args.primary_only):
+            for row in parse_methbam(bam, reads, seg_chrom, seg_start, seg_end, motifsize=len(args.motif), meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_motif=args.motif, restrict_ref=args.ref, primary_only=args.primary_only):
                 index, cg_chrom, cg_start, stat, methstate, modname = row
 
                 if seg_chrom != cg_chrom:
