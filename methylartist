@@ -4373,7 +4373,9 @@ def locus(args):
 
         masked_segs = mask_methfrac(list(meth_n.values()), cutoff=args.maskcutoff)
 
-        frac_masked = len(list(itertools.chain(*masked_segs))) / len(meth_n.values())
+        frac_masked = 0.0
+        if len(meth_n) > 0:
+            frac_masked = len(list(itertools.chain(*masked_segs))) / len(meth_n.values())
 
         logger.info('%s:%d-%d (%s), sample %s fraction masked: %.3f' % (chrom, elt_start, elt_end, ''.join(use_mods), sample, frac_masked))
 
