@@ -4357,6 +4357,7 @@ def locus(args):
     for sample in sample_order:
         sample_filtered_data[sample] = meth_table[meth_table['sample'] == sample]
 
+    skipped_samples = []
 
     for sample in sample_order:
         sample_data = sample_filtered_data[sample]
@@ -4381,6 +4382,7 @@ def locus(args):
 
         if frac_masked > float(args.maxmaskedfrac):
             logger.warning('%s:%d-%d (%s), skip sample %s due to --maxmaskedfrac %.3f' % (chrom, elt_start, elt_end, ''.join(use_mods), sample, float(args.maxmaskedfrac)))
+            skipped_samples.append(sample)
             continue
 
         if frac_masked > 0.1 and args.bams is not None and args.ref is None:
@@ -4495,10 +4497,13 @@ def locus(args):
         phase_lookup = dd(list)
 
         for sn in smoothed_values.columns:
+            if sn in skipped_samples:
+                continue
+
             sn_parts = sn.split('.')
             sn_ph = '.'.join(sn_parts[:-2])
             if ':' in sn_parts[-2]:
-                sn_ph = sn_ph + '.' + sn_parts[-2].split(':')[1]
+                sn_ph = sn_ph + '.' + sn_parts[-2].split(':')[1] + '.' + sn_parts[-1]
             phase_lookup[sn_ph].append(sn)
 
         samples = []
@@ -4512,15 +4517,8 @@ def locus(args):
 
         pd_colors = {}
 
-        user_colours_nopath = dict([(os.path.basename(s), user_colours[s]) for s in user_colours])
-
-        for i, sample in enumerate(samples):
-            #sample_orig = '.'.join(sample.split('.')[:-1]) + '.bam'
-            sample_orig = sample + '.bam'
-            if sample_orig in user_colours_nopath:
-                pd_colors[sample] = user_colours_nopath[sample_orig]
-            else:
-                pd_colors[sample] = sns.color_palette(args.samplepalette, n_colors=len(samples))[i]
+        for pd_sample, phased_samples in phase_lookup.items():
+            pd_colors[pd_sample] = sample_color[phased_samples[0]]
 
         phase_diffs = smoothed_values[samples]
 
