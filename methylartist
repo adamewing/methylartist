@@ -80,7 +80,7 @@ class Read:
         self.llrs       = {}
         self.meth_calls = {}
         self.phase      = phase
-        self.mod_names  = {}
+        self.modname    = modname
         self.call_count = 0
 
         # used for locus per-read plot
@@ -105,7 +105,7 @@ class Read:
 
         self.llrs[cpg_loc]       = stat
         self.meth_calls[cpg_loc] = methcall
-        self.mod_names[cpg_loc]  = modname
+        assert self.modname == modname
 
         if methcall != 0:
             self.call_count += 1
@@ -116,14 +116,41 @@ class Read:
     def mod_count(self):
         return len([c for c in self.meth_calls.values() if c == 1])
 
+    def mod_count_region(self, start, end):
+        calls = 0
+
+        for loc, call in self.meth_calls.items():
+            if loc < start or loc > end:
+                continue
+            if call == 1:
+                calls += 1
+
+        return calls
+
     def site_count(self):
         return len(self.meth_calls)
+
+    def site_count_region(self, start, end):
+        sites = 0
+        for site in self.meth_calls:
+            if site < start or site > end:
+                continue
+            sites += 1
+
+        return sites
 
     def mod_frac(self):
         if self.site_count() == 0:
             return 0
 
         return self.mod_count()/self.site_count()
+    
+    def mod_frac_region(self, start, end):
+        local_site_count = self.site_count_region(start, end)
+        if local_site_count == 0:
+            return 0
+        
+        return self.mod_count_region(start,end)/local_site_count
 
 
 class Gene:
@@ -1102,8 +1129,16 @@ def parse_ctbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, 
                 yield (read.qname, read.reference_name, pos, mod_prob, methcall, 'm')
 
 
-def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, bedmethyl, ct_bams, meth_thresh, can_thresh):
+def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, bedmethyl, ct_bams, meth_thresh, can_thresh, lowmethread_thresh, highmethread_thresh):
+
+    lowmeth_count = {}
+    highmeth_count = {}
+
     if bedmethyl:
+        for modname in mod_names:
+            lowmeth_count[modname] = 0
+            highmeth_count[modname] = 0
+
         seg_result = {}
         seg_meth_calls = dd(int)
         call_count = 0
@@ -1129,7 +1164,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
 
             seg_result['m'] = seg_meth_calls
 
-        return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, call_count)
+        return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, call_count, lowmeth_count, highmeth_count)
 
     c_lookup = {}
 
@@ -1206,21 +1241,35 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
     seg_result = {}
     seen_reads = {}
 
+
     for modname in mod_names:
         seg_meth_calls = dd(int)
+        lowmeth_count[modname] = 0
+        highmeth_count[modname] = 0
+
 
         for name, read in seg_reads[modname].items():
+            if read.modname != modname:
+                continue
+
             seen_reads[name] = 1
 
             for loc, call in read.meth_calls.items():
-                if read.mod_names[loc] == modname:
-                    seg_meth_calls[call] += 1
+                seg_meth_calls[call] += 1
+            
+            if lowmethread_thresh is not None:
+                if read.mod_frac_region(0, seg_end-seg_start) <= float(lowmethread_thresh):
+                    lowmeth_count[modname] += 1
+
+            if highmethread_thresh is not None:
+                if read.mod_frac_region(0, seg_end-seg_start) >= float(highmethread_thresh):
+                    highmeth_count[modname] += 1
 
         seg_result[modname] = seg_meth_calls
 
     read_count = len(seen_reads)
 
-    return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, read_count)
+    return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, read_count, lowmeth_count, highmeth_count)
 
 
 def get_meth_locus(args, bam, meth_dbs, mod, meth_thresh=0.8, can_thresh=0.8, allele=None, variant=None, phase=None, methbam=False, HP_only=False, restrict_motif=None, restrict_ref=None, ct_bams=None):
@@ -2684,7 +2733,9 @@ def segmeth(args):
     'unmeth_calls',
     'no_calls',
     'methfrac',
-    'readcount'
+    'readcount',
+    'highmeth',
+    'lowmeth'
     ]
 
     mod_names = []
@@ -2901,7 +2952,7 @@ def segmeth(args):
                     seg_start = int(seg_start)
                     seg_end = int(seg_end)
 
-                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, args.bed, ct_bams, meth_thresh, can_thresh])
+                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, args.bed, ct_bams, meth_thresh, can_thresh, float(args.lowmeth_thresh), float(args.highmeth_thresh)])
 
                     results.append((res, base_name))
 
@@ -2917,12 +2968,14 @@ def segmeth(args):
 
         seg_id = '%s:%d-%d' % seg[:3]
 
-        seg_chrom, seg_start, seg_end, seg_name, seg_strand, read_count = map(str, seg)
+        seg_chrom, seg_start, seg_end, seg_name, seg_strand, read_count, lowmeth_count, highmeth_count = seg
+
+
 
         meth_segs[seg_id]['seg_id']     = seg_id
         meth_segs[seg_id]['seg_chrom']  = seg_chrom
-        meth_segs[seg_id]['seg_start']  = seg_start
-        meth_segs[seg_id]['seg_end']    = seg_end
+        meth_segs[seg_id]['seg_start']  = str(seg_start)
+        meth_segs[seg_id]['seg_end']    = str(seg_end)
         meth_segs[seg_id]['seg_name']   = seg_name
         meth_segs[seg_id]['seg_strand'] = seg_strand
 
@@ -2955,7 +3008,9 @@ def segmeth(args):
             else:
                 meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_methfrac'] = meth_calls/float(meth_calls+unmeth_calls)
 
-            meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_readcount'] = read_count
+            meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_readcount'] = str(read_count)
+            meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_lowmeth'] = str(lowmeth_count[modname])
+            meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_highmeth'] = str(highmeth_count[modname])
 
     header = ['seg_id', 'seg_chrom', 'seg_start', 'seg_end', 'seg_name', 'seg_strand']
 
@@ -4823,7 +4878,7 @@ def region(args):
             for bam_fn, meth_dbs in data.items():
                 seg_strand = '.'
                 seg_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
-                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, False, ct_bams, meth_thresh, can_thresh])
+                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, False, ct_bams, meth_thresh, can_thresh, None, None])
                 results.append(res)
 
         logger.info('parsing segments (phase %s)...' % str(phase))
@@ -4835,7 +4890,7 @@ def region(args):
 
             seg_id = '%s:%d-%d' % seg[:3]
 
-            seg_chrom, seg_start, seg_end, seg_name, seg_strand = map(str, seg[:-1])
+            seg_chrom, seg_start, seg_end, seg_name, seg_strand, lowmeth_count, highmeth_count = map(str, seg[:-1])
 
             meth_segs[seg_id]['seg_id']     = seg_id
             meth_segs[seg_id]['seg_chrom']  = seg_chrom
@@ -6232,6 +6287,8 @@ def parse_args():
     parser_segmeth.add_argument('--excl_ambig', action='store_true', default=False, help='do not consider reads that align entirely within segment')
     parser_segmeth.add_argument('--spanning_only', action='store_true', default=False, help='only consider reads that span segment')
     parser_segmeth.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
+    parser_segmeth.add_argument('--lowmeth_thresh', default=0.05, help='threshold for low-methylated read count column (default = 0.05)')
+    parser_segmeth.add_argument('--highmeth_thresh', default=0.95, help='threshold for high-methylated read count column (default = 0.95)')
     parser_segmeth.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
 
     # options for methylation strip / violin / ridge plots
