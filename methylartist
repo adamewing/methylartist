@@ -27,6 +27,11 @@ from matplotlib import gridspec
 from matplotlib.patches import ConnectionPatch
 import seaborn as sns
 
+from sklearn import metrics
+from sklearn.mixture import GaussianMixture
+from sklearn.exceptions import ConvergenceWarning
+
+
 import numpy as np
 import pandas as pd
 import pysam
@@ -1133,6 +1138,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
 
     lowmeth_count = {}
     highmeth_count = {}
+    motif_sites = dd(dict)
 
     if bedmethyl:
         for modname in mod_names:
@@ -1142,7 +1148,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
         seg_result = {}
         seg_meth_calls = dd(int)
         call_count = 0
-
+        
         bed = pysam.Tabixfile(bam_fn)
 
         if chrom in bed.contigs:
@@ -1150,6 +1156,8 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
                 c = rec.strip().split('\t')
                 assert len(c) >= 11
                 methpct = float(c[10])
+
+                motif_sites['m'][c[1]] = True
 
                 methfrac = methpct/100.0
                 numsites = int(c[9])
@@ -1164,7 +1172,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
 
             seg_result['m'] = seg_meth_calls
 
-        return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, call_count, lowmeth_count, highmeth_count)
+        return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, call_count, len(motif_sites['m']), lowmeth_count, highmeth_count)
 
     c_lookup = {}
 
@@ -1206,6 +1214,8 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
             if cg_start < seg_start or cg_start > seg_end:
                 continue
 
+            motif_sites[modname][cg_start] = True
+
             cg_seg_start = cg_start - seg_start
 
             if index not in seg_reads[modname]:
@@ -1227,6 +1237,8 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
                     if cg_start < seg_start or cg_start > seg_end:
                         continue
 
+                    motif_sites[modname][cg_start] = True
+
                     cg_seg_start = cg_start - seg_start
 
                     if index not in seg_reads[modname]:
@@ -1240,13 +1252,15 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
 
     seg_result = {}
     seen_reads = {}
+    out_means = {}
 
+    modfrac_read_dist = {}
 
     for modname in mod_names:
         seg_meth_calls = dd(int)
         lowmeth_count[modname] = 0
         highmeth_count[modname] = 0
-
+        modfrac_read_dist[modname] = []
 
         for name, read in seg_reads[modname].items():
             if read.modname != modname:
@@ -1256,20 +1270,134 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
 
             for loc, call in read.meth_calls.items():
                 seg_meth_calls[call] += 1
-            
+
+            modfrac_read = read.mod_frac_region(0, seg_end-seg_start)
+
+            modfrac_read_dist[modname].append(modfrac_read)
+
             if lowmethread_thresh is not None:
-                if read.mod_frac_region(0, seg_end-seg_start) <= float(lowmethread_thresh):
+                if modfrac_read <= float(lowmethread_thresh):
                     lowmeth_count[modname] += 1
 
             if highmethread_thresh is not None:
-                if read.mod_frac_region(0, seg_end-seg_start) >= float(highmethread_thresh):
+                if modfrac_read >= float(highmethread_thresh):
                     highmeth_count[modname] += 1
 
         seg_result[modname] = seg_meth_calls
 
+        predict_dmr = True
+
+        if predict_dmr:
+            means, sigmetrics = mixmodel(modfrac_read_dist[modname])
+
+            if sigmetrics is not None:
+                if any(int(args.dmr_minreads) > rc for rc in sigmetrics['group_sizes']):
+                    sigmetrics = None
+
+            if sigmetrics is not None:
+                if float(args.dmr_minratio) > sigmetrics['group_ratio']:
+                    sigmetrics = None
+
+            if sigmetrics is not None:
+                if float(args.dmr_maxoverlap) < sigmetrics['overlap_fraction']:
+                    sigmetrics = None
+
+            if sigmetrics is not None:
+                if float(args.dmr_mindiff) > sigmetrics['raw_difference']:
+                    sigmetrics = None
+            
+            if sigmetrics is not None:
+                if int(args.dmr_minmotifs) > len(motif_sites[modname]):
+                    sigmetrics = None
+
+            # if sigmetrics is not None:
+            #     print(len(motif_sites[modname]), chrom, seg_start, seg_end, means, sigmetrics)
+
+            out_means[modname] = ','.join(map(lambda x: str(round(x, 2)), means))
+    
+            if sigmetrics is None:
+                out_means[modname] = 'NA'
+
     read_count = len(seen_reads)
 
-    return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, read_count, lowmeth_count, highmeth_count)
+    return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, read_count, motif_sites, out_means, lowmeth_count, highmeth_count)
+
+
+def mixmodel(fracs, reg_covar=1e-4, max_iter=1000, max_means=2):
+    fracs = np.asarray(fracs).reshape(-1,1)
+
+    N = np.arange(1,max_means+1)
+    models = [None for i in range(len(N))]
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=ConvergenceWarning)
+
+        for i in range(len(N)):
+            models[i] = GaussianMixture(N[i], reg_covar=reg_covar, max_iter=max_iter, n_init=max_means, random_state=1).fit(fracs)
+
+    BIC = [m.bic(fracs) for m in models]
+
+    best_model = models[np.argmin(BIC)]
+
+    significance_metrics = assess_mean_separation(fracs.flatten(), best_model)
+
+    means = list(best_model.means_.reshape(1,-1)[0])
+
+    if len(means) == 1:
+        means.append(means[0])
+
+    return sorted(means), significance_metrics
+
+
+def assess_mean_separation(data, gmm_model):
+    if gmm_model.n_components != 2:
+        return None
+        
+    means = gmm_model.means_.flatten()
+    covariances = gmm_model.covariances_.flatten()
+    weights = gmm_model.weights_
+    
+    order = np.argsort(means)
+    mean1, mean2 = means[order]
+    std1, std2 = np.sqrt(covariances[order])
+    weight1, weight2 = weights[order]
+    
+    # raw difference
+    raw_diff = abs(mean2 - mean1)
+    
+    # effect size
+    pooled_std = np.sqrt(((weight1 * std1**2) + (weight2 * std2**2)) / (weight1 + weight2))
+    cohens_d = raw_diff / pooled_std if pooled_std > 0 else float('inf')
+    
+    # separation relative to spread
+    avg_std = (std1 + std2) / 2
+    separation_ratio = raw_diff / avg_std if avg_std > 0 else float('inf')
+    
+    # overlap coefficient (approximate)
+    overlap_region = max(0, min(mean1 + 2*std1, mean2 + 2*std2) - max(mean1 - 2*std1, mean2 - 2*std2))
+    total_span = (mean1 + 2*std1) - (mean1 - 2*std1) + (mean2 + 2*std2) - (mean2 - 2*std2)
+    overlap_fraction = overlap_region / total_span if total_span > 0 else 1.0
+    
+    # assign points to clusters
+    cluster_assignments = gmm_model.predict(data.reshape(-1, 1))
+    group1 = data[cluster_assignments == order[0]]
+    group2 = data[cluster_assignments == order[1]]
+    
+    if len(group1) > 1 and len(group2) > 1:
+        t_stat, p_value = ss.ttest_ind(group1, group2)
+    else:
+        t_stat, p_value = None, None
+    
+    return {
+        'raw_difference': raw_diff,
+        'cohens_d': cohens_d,
+        'separation_ratio': separation_ratio,
+        'overlap_fraction': overlap_fraction,
+        't_statistic': t_stat,
+        'raw_p_value': p_value,
+        'group_sizes': [len(group1), len(group2)],
+        'group_ratio': min(len(group1), len(group2))/(len(group1)+len(group2))
+    }
 
 
 def get_meth_locus(args, bam, meth_dbs, mod, meth_thresh=0.8, can_thresh=0.8, allele=None, variant=None, phase=None, methbam=False, HP_only=False, restrict_motif=None, restrict_ref=None, ct_bams=None):
@@ -2734,6 +2862,8 @@ def segmeth(args):
     'no_calls',
     'methfrac',
     'readcount',
+    'motifcount',
+    'sigmeans',
     'highmeth',
     'lowmeth'
     ]
@@ -2968,7 +3098,7 @@ def segmeth(args):
 
         seg_id = '%s:%d-%d' % seg[:3]
 
-        seg_chrom, seg_start, seg_end, seg_name, seg_strand, read_count, lowmeth_count, highmeth_count = seg
+        seg_chrom, seg_start, seg_end, seg_name, seg_strand, read_count, motif_count, gmm_means, lowmeth_count, highmeth_count = seg
 
 
 
@@ -3009,6 +3139,8 @@ def segmeth(args):
                 meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_methfrac'] = meth_calls/float(meth_calls+unmeth_calls)
 
             meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_readcount'] = str(read_count)
+            meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_motifcount'] = str(len(motif_count[modname]))
+            meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_sigmeans'] = str(gmm_means[modname])
             meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_lowmeth'] = str(lowmeth_count[modname])
             meth_segs[seg_id][os.path.basename(base_name) + '_' + modname + '_highmeth'] = str(highmeth_count[modname])
 
@@ -4890,7 +5022,7 @@ def region(args):
 
             seg_id = '%s:%d-%d' % seg[:3]
 
-            seg_chrom, seg_start, seg_end, seg_name, seg_strand, lowmeth_count, highmeth_count = map(str, seg[:-1])
+            seg_chrom, seg_start, seg_end, seg_name, seg_strand, motif_count, gmm_means, lowmeth_count, highmeth_count = map(str, seg[:-1])
 
             meth_segs[seg_id]['seg_id']     = seg_id
             meth_segs[seg_id]['seg_chrom']  = seg_chrom
@@ -6287,8 +6419,13 @@ def parse_args():
     parser_segmeth.add_argument('--excl_ambig', action='store_true', default=False, help='do not consider reads that align entirely within segment')
     parser_segmeth.add_argument('--spanning_only', action='store_true', default=False, help='only consider reads that span segment')
     parser_segmeth.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
-    parser_segmeth.add_argument('--lowmeth_thresh', default=0.05, help='threshold for low-methylated read count column (default = 0.05)')
-    parser_segmeth.add_argument('--highmeth_thresh', default=0.95, help='threshold for high-methylated read count column (default = 0.95)')
+    parser_segmeth.add_argument('--lowmeth_thresh', default=0.1, help='threshold for low-methylated read count column (default = 0.05)')
+    parser_segmeth.add_argument('--highmeth_thresh', default=0.9, help='threshold for high-methylated read count column (default = 0.95)')
+    parser_segmeth.add_argument('--dmr_minreads', default=8, help='minimum reads per group for DMR prediction (default=8)')
+    parser_segmeth.add_argument('--dmr_minratio', default=0.3, help='minimum reads ratio for DMR prediction (default=0.3)')
+    parser_segmeth.add_argument('--dmr_maxoverlap', default=0.0, help='max overlap between distributions (default = 0.0)')
+    parser_segmeth.add_argument('--dmr_mindiff', default=0.4, help='minimum difference between means (default = 0.4)')
+    parser_segmeth.add_argument('--dmr_minmotifs', default=20, help='minimum motif count for DMR prediction (default = 20)')
     parser_segmeth.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
 
     # options for methylation strip / violin / ridge plots
@@ -6451,6 +6588,11 @@ def parse_args():
     parser_region.add_argument('--exonheight', default=0.8, help='set exon height (default=0.8)')
     parser_region.add_argument('--width', default=16, help='image width (inches, default=16)')
     parser_region.add_argument('--height', default=8, help='image width (inches, default=8)')
+    parser_region.add_argument('--dmr_minreads', default=8, help='minimum reads per group for DMR prediction (default=8)')
+    parser_region.add_argument('--dmr_minratio', default=0.3, help='minimum reads ratio for DMR prediction (default=0.3)')
+    parser_region.add_argument('--dmr_maxoverlap', default=0.0, help='max overlap between distributions (default = 0.0)')
+    parser_region.add_argument('--dmr_mindiff', default=0.4, help='minimum difference between means (default = 0.4)')
+    parser_region.add_argument('--dmr_minmotifs', default=20, help='minimum motif count for DMR prediction (default = 20)')
     parser_region.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
     parser_region.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
     parser_region.add_argument('--color_by_hp', default=False, action='store_true', help='color samples by HP value (req --phased)')

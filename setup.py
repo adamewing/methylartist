@@ -22,6 +22,7 @@ setup(
         'matplotlib',
         'seaborn',
         'bx-python',
+        'scikit-learn',
         'tqdm',
     ],
     classifiers=[
