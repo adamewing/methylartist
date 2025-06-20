@@ -1327,6 +1327,9 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
 
 
 def mixmodel(fracs, reg_covar=1e-4, max_iter=1000, max_means=2):
+    if len(fracs) == 0:
+        return (0.0, 0.0), None
+    
     if len(fracs) == 1:
         return (fracs[0], fracs[0]), None
     
