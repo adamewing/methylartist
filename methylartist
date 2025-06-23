@@ -1152,6 +1152,8 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
             highmeth_count[modname] = 0
 
         seg_result = {}
+        out_means = {}
+        dmr_metrics = {}
         seg_meth_calls = dd(int)
         call_count = 0
         
@@ -1177,8 +1179,10 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
                 seg_meth_calls[-1] += unmeth_count
 
             seg_result['m'] = seg_meth_calls
+            out_means[modname] = 'NA'
+            dmr_metrics[modname] = 'NA'
 
-        return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, call_count, len(motif_sites['m']), lowmeth_count, highmeth_count)
+        return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, call_count, motif_sites, out_means, dmr_metrics, lowmeth_count, highmeth_count)
 
     c_lookup = {}
 
