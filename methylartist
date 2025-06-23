@@ -962,7 +962,10 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
         if rec.seq is None:
             continue
 
-        if len(reads) > 0 and rec.qname not in reads:
+        if len(reads) == 0:
+            continue
+
+        if rec.qname not in reads:
             continue
 
         if primary_only:
@@ -1106,7 +1109,10 @@ def parse_ctbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, 
         if read.seq is None:
             continue
 
-        if len(reads) > 0 and read.qname not in reads:
+        if len(reads) == 0:
+            continue
+
+        if read.qname not in reads:
             continue
 
         if primary_only:
@@ -1286,7 +1292,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
 
         seg_result[modname] = seg_meth_calls
 
-        predict_dmr = True
+        predict_dmr = not phase
 
         if predict_dmr:
             means, sigmetrics = mixmodel(modfrac_read_dist[modname])
@@ -1311,15 +1317,15 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
                 if int(args.dmr_minmotifs) > len(motif_sites[modname]):
                     sigmetrics = None
 
-            # if sigmetrics is not None:
-            #     print(len(motif_sites[modname]), chrom, seg_start, seg_end, means, sigmetrics)
-
             out_means[modname] = ','.join(map(lambda x: str(round(x, 2)), means))
     
             if sigmetrics is None:
                 out_means[modname] = 'NA'
             else:
                 dmr_metrics[modname] = sigmetrics
+        else:
+            out_means[modname] = 'NA'
+            dmr_metrics[modname] = 'NA'
 
     read_count = len(seen_reads)
 
@@ -3108,8 +3114,6 @@ def segmeth(args):
         seg_id = '%s:%d-%d' % seg[:3]
 
         seg_chrom, seg_start, seg_end, seg_name, seg_strand, read_count, motif_count, gmm_means, dmr_metrics, lowmeth_count, highmeth_count = seg
-
-
 
         meth_segs[seg_id]['seg_id']     = seg_id
         meth_segs[seg_id]['seg_chrom']  = seg_chrom
