@@ -1618,7 +1618,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
                 if modname != use_mod:
                     continue
 
-                cg_seg_start = (cg_start - seg_start) + 1
+                cg_seg_start = cg_start - seg_start
 
                 if index not in seg_reads:
                     seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
@@ -1640,7 +1640,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
                     if modname != use_mod:
                         continue
 
-                    cg_seg_start = (cg_start - seg_start) + 1
+                    cg_seg_start = cg_start - seg_start
 
                     if index not in seg_reads:
                         seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
