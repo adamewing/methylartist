@@ -843,6 +843,29 @@ def bam_pileupcover(bam_fn, chrom, w_starts, w_ends, procs=1, log=False):
     return cover
     
 
+def mods_bedmethyl(bed_fn, sample_len=100000):
+    mods = []
+    samples = 0
+    with gzip.open(bed_fn) as bed:
+        for line in bed:
+            modcol = line.decode().split()[3]
+            if len(modcol) != 1:
+                logger.warning(f'found in single base mod column (4): {modcol}, assuming non-modkit therefore using mod "m" (5mC) for entire bed')
+                return ['m']
+            
+            else:
+                if modcol not in mods:
+                    mods.append(modcol)
+
+            samples += 1
+            if samples > sample_len:
+                break
+
+    logger.info('found mods: %s' % ','.join(mods))
+
+    return mods
+
+
 def mods_methbam(bam_fn):
     bam = pysam.AlignmentFile(bam_fn)
 
@@ -1154,35 +1177,39 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
         seg_result = {}
         out_means = {}
         dmr_metrics = {}
-        seg_meth_calls = dd(int)
-        call_count = 0
         
         bed = pysam.Tabixfile(bam_fn)
 
         if chrom in bed.contigs:
-            for rec in bed.fetch(chrom, seg_start, seg_end):
-                c = rec.strip().split('\t')
-                assert len(c) >= 11
-                methpct = float(c[10])
+            for modname in mod_names:
+                seg_meth_calls = dd(int)
+                for rec in bed.fetch(chrom, seg_start, seg_end):
+                    c = rec.strip().split('\t')
+                    assert len(c) >= 11
 
-                motif_sites['m'][c[1]] = True
+                    modcol = c[3]
+                    if modcol != modname:
+                        continue
 
-                methfrac = methpct/100.0
-                numsites = int(c[9])
+                    methpct = float(c[10])
 
-                call_count += numsites
-                meth_count = int(numsites*methfrac)
-                unmeth_count = numsites-meth_count
-                assert unmeth_count >= 0
+                    motif_sites[modname][c[1]] = True
 
-                seg_meth_calls[1] += meth_count
-                seg_meth_calls[-1] += unmeth_count
+                    methfrac = methpct/100.0
+                    numsites = int(c[9])
 
-            seg_result['m'] = seg_meth_calls
-            out_means[modname] = 'NA'
-            dmr_metrics[modname] = 'NA'
+                    meth_count = int(numsites*methfrac)
+                    unmeth_count = numsites-meth_count
+                    assert unmeth_count >= 0
 
-        return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, call_count, motif_sites, out_means, dmr_metrics, lowmeth_count, highmeth_count)
+                    seg_meth_calls[1] += meth_count
+                    seg_meth_calls[-1] += unmeth_count
+
+                seg_result[modname] = seg_meth_calls
+                out_means[modname] = 'NA'
+                dmr_metrics[modname] = 'NA'
+
+        return seg_result, (chrom, seg_start, seg_end, seg_name, seg_strand, 'NA', motif_sites, out_means, dmr_metrics, lowmeth_count, highmeth_count)
 
     c_lookup = {}
 
@@ -1226,7 +1253,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
 
             motif_sites[modname][cg_start] = True
 
-            cg_seg_start = cg_start - seg_start
+            cg_seg_start = (cg_start - seg_start) + 1
 
             if index not in seg_reads[modname]:
                 seg_reads[modname][index] = Read(index, cg_seg_start, stat, methstate, modname)
@@ -1249,7 +1276,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
 
                     motif_sites[modname][cg_start] = True
 
-                    cg_seg_start = cg_start - seg_start
+                    cg_seg_start = (cg_start - seg_start) + 1
 
                     if index not in seg_reads[modname]:
                         seg_reads[modname][index] = Read(index, cg_seg_start, stat, methstate, modname)
@@ -1508,7 +1535,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, meth_thresh=0.8, can_thresh=0.8, al
             if cg_start < elt_start or cg_start > elt_end:
                 continue
 
-            cg_seg_start = cg_start - elt_start
+            cg_seg_start = (cg_start - elt_start) + 1
 
             if index not in seg_reads:
                 seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
@@ -1535,7 +1562,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, meth_thresh=0.8, can_thresh=0.8, al
                     if cg_start < elt_start or cg_start > elt_end:
                         continue
 
-                    cg_seg_start = cg_start - elt_start
+                    cg_seg_start = (cg_start - elt_start) + 1
 
                     if index not in seg_reads:
                         seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
@@ -1591,7 +1618,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
                 if modname != use_mod:
                     continue
 
-                cg_seg_start = cg_start - seg_start
+                cg_seg_start = (cg_start - seg_start) + 1
 
                 if index not in seg_reads:
                     seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
@@ -1613,7 +1640,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
                     if modname != use_mod:
                         continue
 
-                    cg_seg_start = cg_start - seg_start
+                    cg_seg_start = (cg_start - seg_start) + 1
 
                     if index not in seg_reads:
                         seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
@@ -1801,7 +1828,7 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
             if index not in reads:
                 continue
 
-            cg_seg_start = cg_start - seg_start
+            cg_seg_start = (cg_start - seg_start) + 1
 
             if index not in seg_reads:
                 seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname, phase=reads[index])
@@ -1824,7 +1851,7 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
                 if cg_start < seg_start or cg_start > seg_end:
                     continue
 
-                cg_seg_start = cg_start - seg_start
+                cg_seg_start = (cg_start - seg_start) + 1
 
                 if index not in seg_reads:
                     seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname, phase=reads[index])
@@ -2915,9 +2942,15 @@ def segmeth(args):
     ct_bams = None
 
     if args.bams is not None:
-        if None in (args.ref, args.motif):
+        if (not args.bed) and None in (args.ref, args.motif):
             logger.warning('--ref and --motif are required when using --bams')
             sys.exit(1)
+
+        if args.ref and args.bed:
+            logger.warning('--ref not required with --bed and is ignored')
+        
+        if args.motif and args.bed:
+            logger.warning('--motif not required with --bed and is ignored')
 
         methbam = True
         bams = []
@@ -2985,7 +3018,7 @@ def segmeth(args):
             if not args.bed:
                 mod_names = mods_methbam(bam)
             else:
-                mod_names = ['m']
+                mod_names = mods_bedmethyl(bam)
 
     mod_names = list(set(mod_names))
 
@@ -6316,20 +6349,18 @@ def wgmeth(args):
             logger.info('writing %s' % outfn)
 
             if args.dss:
-                meth_table[phase].to_csv(outfn, columns=['chr','pos','N','X'], index=False, sep='\t') # 1-based
+                meth_table[phase].to_csv(outfn, columns=['chr','pos','N','X'], index=False, sep='\t') # 0-based
 
             else:
                 meth_table[phase]['score']  = meth_table[phase]['N']
                 meth_table[phase]['score']  = meth_table[phase]['score'].where(meth_table[phase]['score'] <= 1000, 1000) # cap score at 1000
-                meth_table[phase]['start']  = meth_table[phase]['pos']-1 # 0-based
+                meth_table[phase]['start']  = meth_table[phase]['pos'] - 1 # 1-based
                 meth_table[phase]['end']    = meth_table[phase]['pos']
                 meth_table[phase]['pct']    = meth_table[phase]['X']/meth_table[phase]['N']
-                if args.methdb:
-                    meth_table[phase]['name']   = '.'.join(os.path.basename(args.methdb).split('.')[:-1])
-                else:
-                    meth_table[phase]['name']   = '.'.join(os.path.basename(args.bam).split('.')[:-1])
+                meth_table[phase]['name']   = args.mod
+
                 meth_table[phase]['strand'] = '.'
-                meth_table[phase]['colour'] = '0,0,0'
+                meth_table[phase]['colour'] = '255,0,0'
 
                 meth_table[phase].to_csv(outfn, columns=['chr','start','end','name', 'score', 'strand', 'start', 'end', 'colour', 'N', 'pct'], header=False, index=False, sep='\t')
 
@@ -6364,14 +6395,9 @@ def wgmeth(args):
             meth_table[0]['start']  = meth_table[0]['pos']-1
             meth_table[0]['end']    = meth_table[0]['pos']
             meth_table[0]['pct']    = meth_table[0]['X']/meth_table[0]['N']*100
-
-            if args.methdb:
-                meth_table[0]['name']   = '.'.join(args.methdb.split('.')[:-1])
-            else:
-                meth_table[0]['name']   = '.'.join(args.bam.split('.')[:-1])
-
+            meth_table[0]['name']   = args.mod
             meth_table[0]['strand'] = '.'
-            meth_table[0]['colour'] = '0,0,0'
+            meth_table[0]['colour'] = '255,0,0'
 
             meth_table[0].to_csv(outfn, columns=['chr','start','end','name', 'score', 'strand', 'start', 'end', 'colour', 'N', 'pct'], header=False, index=False, sep='\t')
 
