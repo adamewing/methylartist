@@ -95,16 +95,17 @@ class Read:
 
         self.add_mod(cpg_loc, stat, methcall, modname)
 
-    def add_mod(self, cpg_loc, stat, methcall, modname):
+    def add_mod(self, cpg_loc, stat, methcall, modname, warn=True):
         assert methcall in (-1,0,1)
 
         global conflicting_call_warning
 
         if cpg_loc in self.llrs:
             if not conflicting_call_warning:
-                logger.warning('''warning: multiple modification calls for the same site + mod, read: %s  cpg_loc: %d  mod: %s
-                        consider excluding non-primary alignments from your analysis, or if using a .bam with mod tags try --primary_only
-                        this warning is only shown once per thread'''% (self.read_name, cpg_loc, modname))
+                if warn:
+                    logger.warning('''warning: multiple modification calls for the same site + mod, read: %s  cpg_loc: %d  mod: %s
+                            consider excluding non-primary alignments from your analysis, or if using a .bam with mod tags try --primary_only
+                            this warning is only shown once per thread'''% (self.read_name, cpg_loc, modname))
 
             conflicting_call_warning = True
 
@@ -1235,12 +1236,14 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
 
     reads = set(reads)
     seg_reads = dd(dict)
+    multi_warn = True
 
     if methbam:
         parse_func = parse_methbam
 
         if ct_bams is not None and bam_fn in ct_bams:
             parse_func = parse_ctbam
+            multi_warn = False
 
         for row in parse_func(bam_fn, reads, chrom, seg_start, seg_end, meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_ref=args.ref, restrict_motif=args.motif, primary_only=args.primary_only):
             index, cg_chrom, cg_start, stat, methstate, modname = row
@@ -1258,7 +1261,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
             if index not in seg_reads[modname]:
                 seg_reads[modname][index] = Read(index, cg_seg_start, stat, methstate, modname)
             else:
-                seg_reads[modname][index].add_mod(cg_seg_start, stat, methstate, modname)
+                seg_reads[modname][index].add_mod(cg_seg_start, stat, methstate, modname, warn=multi_warn)
 
     else:
         for index in reads:
@@ -1513,12 +1516,14 @@ def get_meth_locus(args, bam, meth_dbs, mod, meth_thresh=0.8, can_thresh=0.8, al
             reads = set(new_reads)
 
     seg_reads = {}
+    multi_warn = True
 
     if methbam:
         parse_func = parse_methbam
 
         if ct_bams is not None and bam in ct_bams:
             parse_func = parse_ctbam
+            multi_warn = False
 
         for row in parse_func(bam, reads, chrom, elt_start, elt_end, motifsize=args.motifsize, meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_motif=restrict_motif, restrict_ref=restrict_ref, primary_only=args.primary_only):
             index, cg_chrom, cg_start, stat, methstate, modname = row
@@ -1540,7 +1545,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, meth_thresh=0.8, can_thresh=0.8, al
             if index not in seg_reads:
                 seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname)
             else:
-                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
+                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname, warn=multi_warn)
 
     else:
         for index in reads:
@@ -1806,12 +1811,14 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
     reads = get_phased_reads(bam_fn, chrom, seg_start, seg_end, tag_untagged=phased, min_mapq=int(args.min_mapq), HP_only=True)
 
     seg_reads = {}
+    multi_warn = True
 
     if methbam:
         parse_func = parse_methbam
 
         if ct_bams is not None:
             parse_func = parse_ctbam
+            multi_warn = False
 
         for row in parse_func(bam_fn, set(reads), chrom, seg_start, seg_end, meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_ref=args.ref, restrict_motif=args.motif, motifsize=motifsize, primary_only=args.primary_only):
             index, cg_chrom, cg_start, stat, methstate, modname = row
@@ -1834,7 +1841,7 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
                 seg_reads[index] = Read(index, cg_seg_start, stat, methstate, modname, phase=reads[index])
 
             else:
-                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname)
+                seg_reads[index].add_mod(cg_seg_start, stat, methstate, modname, warn=multi_warn)
 
     else:
         for index in reads:
@@ -3080,6 +3087,11 @@ def segmeth(args):
     
     if args.phased:
         outfn += '.phased'
+
+    if args.bed:
+        outfn += '.bedMethyl'
+    else:
+        outfn += f'.mt{args.meth_thresh}.ct{args.can_thresh}'
 
     outfn += '.segmeth.tsv'
 
@@ -4625,7 +4637,7 @@ def locus(args):
         if frac_masked > 0.1 and args.bams is not None and args.ref is None:
             logger.warning('*** WARNING: specifying a reference genome (indexed via samtools faidx) with --restrict_ref is strongly recommended when using mod .bams ***')
 
-        ax5.plot(list(windowed_methfrac.keys()), smoothed_methfrac, marker='', lw=4, color=sample_color[sample], alpha=smoothalpha)
+        ax5.plot(list(windowed_methfrac.keys()), smoothed_methfrac, marker='', lw=4, color=sample_color[sample], alpha=smoothalpha, label=sample)
 
         order_stack += 1
 
@@ -4643,7 +4655,10 @@ def locus(args):
         smoothed_df = pd.DataFrame(smoothed_values).T
         smoothed_df.to_csv(args.smoothed_csv)
 
-    ax4.set_zorder(order_stack)  # adjust z-level of legend after smoothed plot is finished
+    if args.skip_raw_plot:
+        ax5.legend()
+    else:
+        ax4.set_zorder(order_stack)  # adjust z-level of legend after smoothed plot is finished
 
     if args.color_by_hp:
         handles, labels = ax4.get_legend_handles_labels()
@@ -4675,6 +4690,9 @@ def locus(args):
             found_phases[hp] = True
 
         ax4.legend(new_handles, new_labels)
+
+        if args.skip_raw_plot:
+            ax5.legend(new_handles, new_labels)
 
     ax5.set_xlim(ax2.get_xlim())
     ax5.set_ylim((float(args.ymin),float(args.ymax)))
@@ -4815,6 +4833,8 @@ def locus(args):
 
     if int(args.mincalls) > 0:
         fn_prefix += '.mc%d' % int(args.mincalls)
+
+    fn_prefix += f'.mt{args.meth_thresh}.ct{args.can_thresh}'
 
     outfn = fn_prefix
 
@@ -5817,6 +5837,8 @@ def region(args):
     if args.scale_fullwidth:
         fn_prefix += '.scale_width.%.3f' % scale_width
 
+    fn_prefix += f'.mt{args.meth_thresh}.ct{args.can_thresh}'
+
     if args.segment_csv:
         if args.segment_csv == 'auto':
             args.segment_csv = fn_prefix + '.segments.csv'
@@ -5976,6 +5998,8 @@ def composite(args):
     if args.phased:
         outfn += '.phased'
 
+    outfn += f'.mt{args.meth_thresh}.ct{args.can_thresh}'
+
     outfn += '.composite'
 
     table_fn = outfn + '.table.tsv'
@@ -6093,13 +6117,6 @@ def composite(args):
 
         median_call_count = int(np.median(per_elt_calls))
         cutoff = median_call_count
-
-        # v = sorted([len(c[0]) for c in meth_by_coord.values()], reverse=True)
-
-        # cutoff = v[-1]
-
-        # if len(v) > median_call_count:
-        #     cutoff = v[median_call_count]
         
         if args.meanplot_cutoff:
             cutoff = int(args.meanplot_cutoff)
@@ -6128,8 +6145,6 @@ def composite(args):
     meanplot_table['end'] = np.array(meanplot_table['end'], dtype=int)
     meanplot_table['coord'] = np.array(meanplot_table['coord'], dtype=int)
     meanplot_table['meth'] = np.array(meanplot_table['meth'], dtype=float)
-
-    #meanplot_table['meth'] = smooth(meanplot_table['meth'], window_len=int(args.smoothwindowsize)*4, window=args.smoothfunc)
 
     if args.output_table:
         meanplot_table.to_csv(table_fn, sep='\t', quoting=False, index=False)
@@ -6338,6 +6353,8 @@ def wgmeth(args):
             if args.chrom:
                 outfn += '.%s' % args.chrom
 
+            outfn += f'.mt{args.meth_thresh}.ct{args.can_thresh}'
+
             if args.dss:
                 outfn += '.%s.phase_%d.DSS.txt' % (str(args.mod), phase)
             else:
@@ -6375,6 +6392,8 @@ def wgmeth(args):
 
         if args.chrom:
             outfn += '.%s' % args.chrom
+
+        outfn += f'.mt{args.meth_thresh}.ct{args.can_thresh}'
 
         if args.dss:
             outfn += '.%s.DSS.txt' % str(args.mod)
