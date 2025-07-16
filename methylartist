@@ -2935,7 +2935,7 @@ def segmeth(args):
 
     if args.data is not None:
         if args.bams is not None:
-            sys.exit('please specify either -d/--data or -b/--bams but not both')
+            sys.exit('please specify either -d/--data or -b/--bams but not both (or use -b and specify --bedmethyl)')
 
         with open(args.data) as _:
             for line in _:
@@ -2949,15 +2949,15 @@ def segmeth(args):
     ct_bams = None
 
     if args.bams is not None:
-        if (not args.bed) and None in (args.ref, args.motif):
+        if (not args.bedmethyl) and None in (args.ref, args.motif):
             logger.warning('--ref and --motif are required when using --bams')
             sys.exit(1)
 
-        if args.ref and args.bed:
-            logger.warning('--ref not required with --bed and is ignored')
+        if args.ref and args.bedmethyl:
+            logger.warning('--ref not required with --bedmethyl and is ignored')
         
-        if args.motif and args.bed:
-            logger.warning('--motif not required with --bed and is ignored')
+        if args.motif and args.bedmethyl:
+            logger.warning('--motif not required with --bedmethyl and is ignored')
 
         methbam = True
         bams = []
@@ -2968,7 +2968,7 @@ def segmeth(args):
         elif is_bam(args.bams):
             bams = args.bams.split(',')
 
-        elif args.bed:
+        elif args.bedmethyl:
             logger.info('input is expected to be bgzip/tabix bedMethyl')
 
             beds = args.bams.split(',')
@@ -2993,8 +2993,9 @@ def segmeth(args):
         ct_bams = []
 
         if args.ctbam is not None:
-            if args.bed:
+            if args.bedmethyl:
                 sys.exit('--ctbam not compatible with --bed')
+
             for ctbam_fn in args.ctbam.split(','):
                 if ctbam_fn not in bams:
                     sys.exit(f'{ctbam_fn} passed to --ctbam has no corresponding .bam passed to -b/--bam')
@@ -3011,7 +3012,7 @@ def segmeth(args):
             if not os.path.exists(bam):
                 sys.exit(f'.bam file not found: {bam}')
 
-            if not args.bed:
+            if not args.bedmethyl:
                 with pysam.AlignmentFile(bam) as fh:
                     if not fh.check_index():
                         sys.exit('bam not indexed: %s' % bam)
@@ -3022,7 +3023,7 @@ def segmeth(args):
             logger.info(f'Assuming modtype m for C/T substitution bam {bam}')
             mod_names = ['m']
         else:
-            if not args.bed:
+            if not args.bedmethyl:
                 mod_names = mods_methbam(bam)
             else:
                 mod_names = mods_bedmethyl(bam)
@@ -3030,8 +3031,6 @@ def segmeth(args):
     mod_names = list(set(mod_names))
 
     if args.mods:
-        if args.bed:
-            logger.warning('--mods has no effect because of --bed')
         user_mod_names = []
         for mod in args.mods.split(','):
             if mod not in mod_names:
@@ -3041,8 +3040,7 @@ def segmeth(args):
 
         mod_names = list(set(user_mod_names))
 
-    if not args.bed:
-        logger.info('using mods: %s' % ','.join(mod_names))
+    logger.info('using mods: %s' % ','.join(mod_names))
 
     base_names = ['.'.join(bam.split('.')[:-1]) for bam in data]
 
@@ -3064,7 +3062,7 @@ def segmeth(args):
     if args.can_thresh:
         can_thresh = float(args.can_thresh)
 
-    if not args.bed:
+    if not args.bedmethyl:
         logger.info(f'methylated base threshold: {meth_thresh}')
         logger.info(f'canonical base threshold: {can_thresh}')
 
@@ -3088,7 +3086,7 @@ def segmeth(args):
     if args.phased:
         outfn += '.phased'
 
-    if args.bed:
+    if args.bedmethyl:
         outfn += '.bedMethyl'
     else:
         outfn += f'.mt{args.meth_thresh}.ct{args.can_thresh}'
@@ -3117,8 +3115,9 @@ def segmeth(args):
     phases = [None]
 
     if args.phased:
-        if args.bed:
-            sys.exit('--bed not compatible with --phased (generate phased bedMethyl output before running segmeth)')
+        if args.bedmethyl:
+            sys.exit('--bedmethyl not compatible with --phased (generate phased bedMethyl output before running segmeth)')
+
         phases = ['1', '2']
 
     for bam_fn, meth_fn in data.items():
@@ -3146,7 +3145,7 @@ def segmeth(args):
                     seg_start = int(seg_start)
                     seg_end = int(seg_end)
 
-                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, args.bed, ct_bams, meth_thresh, can_thresh, float(args.lowmeth_thresh), float(args.highmeth_thresh)])
+                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, args.bedmethyl, ct_bams, meth_thresh, can_thresh, float(args.lowmeth_thresh), float(args.highmeth_thresh)])
 
                     results.append((res, base_name))
 
@@ -4935,7 +4934,7 @@ def region(args):
     user_colours = {}
 
     if args.data is None and args.bams is None:
-        sys.exit('please specify either -d/--data or -b/--bams')
+        sys.exit('please specify either -d/--data or -b/--bams (or use -b and specify --bedmethyl)')
 
     meth_thresh = 0.8
     can_thresh = 0.8
@@ -4946,8 +4945,9 @@ def region(args):
     if args.can_thresh:
         can_thresh = float(args.can_thresh)
 
-    logger.info(f'methylated base threshold: {meth_thresh}')
-    logger.info(f'canonical base threshold: {can_thresh}')
+    if not args.bedmethyl:
+        logger.info(f'methylated base threshold: {meth_thresh}')
+        logger.info(f'canonical base threshold: {can_thresh}')
 
     methbam = False
 
@@ -4973,6 +4973,10 @@ def region(args):
     ct_bams = None
 
     if args.bams is not None:
+        if (not args.bedmethyl) and None in (args.ref, args.motif):
+            logger.warning('--ref and --motif are required when using --bams')
+            sys.exit(1)
+
         methbam = True
         bams = []
 
@@ -4981,6 +4985,28 @@ def region(args):
         
         elif is_bam(args.bams):
             bams = args.bams.split(',')
+
+        elif args.bedmethyl:
+            logger.info('input is expected to be bgzip/tabix bedMethyl')
+
+            beds = args.bams.split(',')
+            if beds[0].endswith('.gz'):
+                bams = beds
+            else:
+                logger.info('-b input does not end in .gz, assuming this is a file with a list of bedMethyl .gz files...')
+                with open(args.bams) as bed_list: 
+                    for line in bed_list:
+                        if not line.strip().endswith('.gz'):
+                            sys.exit('cannot identify input type')
+                        c = line.strip().split()
+                        if len(c) == 1:
+                            bams.append(c[0])
+                        elif len(c) == 2:
+                            bams.append(c[0])
+                            user_colours[bams[-1]] = c[1]
+                        else:
+                            sys.exit(f'unparsable line in {args.bams}: {line.strip()}')
+
 
         else:
             logger.info('assuming %s contains a list of .bams' % args.bams)
@@ -4998,6 +5024,9 @@ def region(args):
         ct_bams = []
 
         if args.ctbam is not None:
+            if args.bedmethyl:
+                sys.exit('--ctbam not compatible with --bed')
+
             for ctbam_fn in args.ctbam.split(','):
                 if ctbam_fn not in bams:
                     sys.exit(f'{ctbam_fn} passed to --ctbam has no corresponding .bam passed to -b/--bam')
@@ -5015,9 +5044,10 @@ def region(args):
             if not os.path.exists(bam):
                 sys.exit(f'.bam file not found: {bam}')
 
-            with pysam.AlignmentFile(bam) as fh:
-                if not fh.check_index():
-                    sys.exit('bam not indexed: %s' % bam)
+            if not args.bedmethyl:
+                with pysam.AlignmentFile(bam) as fh:
+                    if not fh.check_index():
+                        sys.exit('bam not indexed: %s' % bam)
 
             data[bam] = None
 
@@ -5025,7 +5055,10 @@ def region(args):
             logger.info(f'Assuming modtype m for C/T substitution bam {bam}')
             mods = ['m']
         else:
-            mods = mods_methbam(bam)
+            if not args.bedmethyl:
+                mods = mods_methbam(bam)
+            else:
+                mods = mods_bedmethyl(bam)
 
     mods = list(set(mods))
 
@@ -5046,11 +5079,20 @@ def region(args):
         logger.info('--skip_align_plot overridden via --force_align_plot')
         args.skip_align_plot = False
 
+    if args.bedmethyl:
+        logger.info('setting --skip_align_plot due to --bedmethyl')
+        args.skip_align_plot = True
+        if args.force_align_plot:
+            logger.warning('--force_align_plot overridden due to --bedmethyl')
+
     reads = {}
     orig_bam = {}
 
     phases = [None]
     if args.phased:
+        if args.bedmethyl:
+            sys.exit('--bedmethyl not compatible with --phased (generate phased bedMethyl output before running segmeth)')
+
         phases = ['1','2']
 
     for phase in phases:
@@ -5080,7 +5122,7 @@ def region(args):
             for bam_fn, meth_dbs in data.items():
                 seg_strand = '.'
                 seg_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
-                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, False, ct_bams, meth_thresh, can_thresh, None, None])
+                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, args.bedmethyl, ct_bams, meth_thresh, can_thresh, None, None])
                 results.append(res)
 
         logger.info('parsing segments (phase %s)...' % str(phase))
@@ -5837,7 +5879,10 @@ def region(args):
     if args.scale_fullwidth:
         fn_prefix += '.scale_width.%.3f' % scale_width
 
-    fn_prefix += f'.mt{args.meth_thresh}.ct{args.can_thresh}'
+    if args.bedmethyl:
+        fn_prefix += '.bedMethyl'
+    else:
+        fn_prefix += f'.mt{args.meth_thresh}.ct{args.can_thresh}'
 
     if args.segment_csv:
         if args.segment_csv == 'auto':
@@ -6471,7 +6516,7 @@ def parse_args():
     parser_segmeth.add_argument('-q', '--min_mapq', default=10, help='minimum mapping quality (mapq), default = 10')
     parser_segmeth.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_segmeth.add_argument('-m', '--mods', default=None, help='mods, comma-delimited for >1 (default to all available mods)')
-    parser_segmeth.add_argument('--bed', default=False, action='store_true', help='input is (tabix-indexed) bedMethyl')
+    parser_segmeth.add_argument('--bedmethyl', default=False, action='store_true', help='input is (tabix-indexed) bedMethyl')
     parser_segmeth.add_argument('--meth_thresh', default=0.8, help='modified base threshold (default=0.8)')
     parser_segmeth.add_argument('--can_thresh', default=0.8, help='canonical base threshold (default=0.8)')
     parser_segmeth.add_argument('--ctbam', default=None, help='specify which .bam(s) are C/T substitution data (can be comma-delimited)')
@@ -6614,6 +6659,7 @@ def parse_args():
     parser_region.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_region.add_argument('--meth_thresh', default=0.8, help='modified base threshold (default=0.8)')
     parser_region.add_argument('--can_thresh', default=0.8, help='canonical base threshold (default=0.8)')
+    parser_region.add_argument('--bedmethyl', default=False, action='store_true', help='input is (tabix-indexed) bedMethyl')
     parser_region.add_argument('--ctbam', default=None, help='specify which .bam(s) are C/T substitution data (can be comma-delimited)')
     parser_region.add_argument('--bed', default=None, help='.bed file for additional annotations (BED3+3: chrom, start, end, label, strand, color)')
     parser_region.add_argument('--hidebedlabel', default=False, action='store_true', help='hide lables from .bed track')
