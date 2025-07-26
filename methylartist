@@ -10,6 +10,7 @@ import subprocess
 import multiprocessing as mp
 import matplotlib
 import random
+random.seed(1)
 import itertools
 import sqlite3
 import warnings
@@ -79,6 +80,7 @@ logging.basicConfig(format=FORMAT)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+from time import sleep
 
 class Read:
     def __init__(self, read_name, cpg_loc, stat, methcall, modname, phase=None):
@@ -461,10 +463,27 @@ def get_ambiguous_reads(fn, chrom, start, end, min_mapq=10, w=50):
     return reads
 
 
-def get_reads(fn, chrom, start, end, min_mapq=10, spanning_only=False, primary_only=False):
+def get_reads(fn, chrom, start, end, min_mapq=10, retry=5, spanning_only=False, primary_only=False):
     reads = []
 
-    bam = pysam.AlignmentFile(fn)
+    retries = 0
+    bam_open = False
+
+    while not bam_open:
+        try:
+            bam = pysam.AlignmentFile(fn)
+            bam_open = True
+
+        except OSError as e:
+            if retries < retry:
+                logger.warning(f'retry open on {fn}, possibly due to network filesystem')
+                sleep(1)
+                retries += 1
+                
+            else:
+                sys.exit(e)
+
+
     for read in bam.fetch(chrom, start, end):
         if primary_only:
             if read.is_secondary or read.is_supplementary:
@@ -480,10 +499,26 @@ def get_reads(fn, chrom, start, end, min_mapq=10, spanning_only=False, primary_o
     return reads
 
 
-def get_phased_reads(fn, chrom, start, end, min_mapq=10, tag_untagged=False, ignore_tags=False, HP_only=False, primary_only=False):
+def get_phased_reads(fn, chrom, start, end, min_mapq=10, retry=5, tag_untagged=False, ignore_tags=False, HP_only=False, primary_only=False):
     reads = {}
 
-    bam = pysam.AlignmentFile(fn)
+    retries = 0
+    bam_open = False
+
+    while not bam_open:
+        try:
+            bam = pysam.AlignmentFile(fn)
+            bam_open = True
+
+        except OSError as e:
+            if retries < retry:
+                logger.warning(f'retry open on {fn}, possibly due to network filesystem')
+                sleep(1)
+                retries += 1
+                
+            else:
+                sys.exit(e)
+
     for read in bam.fetch(chrom, start, end):
         if primary_only:
             if read.is_secondary or read.is_supplementary:
@@ -4654,6 +4689,9 @@ def locus(args):
 
     skipped_samples = []
 
+    if args.shuffle:
+        random.shuffle(sample_order)
+
     for sample in sample_order:
         sample_data = sample_filtered_data[sample]
 
@@ -4826,6 +4864,9 @@ def locus(args):
 
         for pd_sample, phased_samples in phase_lookup.items():
             pd_colors[pd_sample] = sample_color[phased_samples[0]]
+
+        if args.shuffle:
+            random.shuffle(samples)
 
         phase_diffs = smoothed_values[samples]
 
@@ -5460,7 +5501,7 @@ def region(args):
 
         gs = gridspec.GridSpec(len(height_ratios),1,height_ratios=p_ratios, hspace=0)
 
-    sample_order = sample_names.keys()
+    sample_order = list(sample_names.keys())
 
     logger.info('sample order: %s' % ','.join(sample_order))
 
@@ -5893,6 +5934,9 @@ def region(args):
     if smoothalpha > 1.0 or smoothalpha < 0.0:
         logger.warning('--smoothalpha must be between 0 and 1, set to 1.0')
         smoothalpha = 1.0
+
+    if args.shuffle:
+        random.shuffle(sample_order)
 
     for sample in sample_order:
         ax4.plot(meth_segs['pos'], meth_segs[sample], marker='', lw=slw, color=sample_color[sample], zorder=2, label=sample, alpha=smoothalpha)
@@ -6725,6 +6769,7 @@ def parse_args():
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_locus.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
     parser_locus.add_argument('--smoothlinewidth', default=4.0, help='smooth line width (default = 4.0)')
+    parser_locus.add_argument('--shuffle', default=False, action='store_true', help='shuffle sample order for smoothed plot (may reduce visual bias due to sample order)')
     parser_locus.add_argument('--smoothed_csv', default=None, help='output values from smoothed plot to specified filename in CSV format (default=None)')
     parser_locus.add_argument('--maskcutoff', default=1, help='read count masking cutoff (default=1)')
     parser_locus.add_argument('--maxmaskedfrac', default=1.0, help='skip smoothed plot if fraction of sample masked (--maskcutoff) > this value (default = 1.0)')
@@ -6787,6 +6832,7 @@ def parse_args():
     parser_region.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_region.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
     parser_region.add_argument('--smoothlinewidth', default=4.0, help='smooth line width (default = 4.0)')
+    parser_region.add_argument('--shuffle', default=False, action='store_true', help='shuffle sample order for smoothed plot (may reduce visual bias due to sample order)')
     parser_region.add_argument('--segment_csv', default=None, help='output values from smoothed segment plot to specified filename in CSV format (default=None)')
     parser_region.add_argument('--eff', default=None, help='conversion efficiency (for e.g. bs-seq or em-seq), input as comma-delimited sample:eff e.g. MySample1.m:0.9,MySample2.m:0.8')
     parser_region.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot (default = -0.05)')
