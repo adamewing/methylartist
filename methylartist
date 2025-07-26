@@ -23,6 +23,7 @@ new_rc_params = {'text.usetex': False, "svg.fonttype": 'none'}
 matplotlib.rcParams.update(new_rc_params)
 
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from matplotlib import gridspec
 from matplotlib.patches import ConnectionPatch
 import seaborn as sns
@@ -3700,6 +3701,11 @@ def locus(args):
             with open(args.bams) as bam_list:
                 for line in bam_list:
                     c = line.strip().split()
+                    if not c[0].endswith('.bam'):
+                        if os.path.exists(c[0]+'.bam'):
+                            logger.warning(f'{c[0]} doesnt end with .bam, appending a .bam because {c[0]}.bam exists')
+                            c[0] += '.bam'
+
                     if len(c) == 1:
                         bams.append(c[0])
                     elif len(c) == 2:
@@ -3721,6 +3727,43 @@ def locus(args):
                     sys.exit('bam not indexed: %s' % bam)
 
             data[bam] = None
+
+    colour_mapping = {}
+
+    if args.colormap:
+        mapped_user_colours = {}
+        
+        if args.colormap == 'auto':
+            unique_annotations = list(set(user_colours.values()))
+            map_colours = sns.color_palette(args.samplepalette, len(unique_annotations))
+            colour_mapping = dict(zip(unique_annotations, map_colours))
+
+            logger.info('automatic colour mapping:')
+            for ann, col in colour_mapping.items():
+                logger.info(f'\t{ann}: {col}')
+
+        else:
+            with open(args.colormap) as cm:
+                for line in cm:
+                    c = line.strip().split()
+                    if len(c) != 2:
+                        logger.error('malformed --colormap file (should be two columns)')
+                        sys.exit(1)
+                    colour_mapping[c[0]] = c[1]
+
+            logger.info(f'loaded colour mapping from {args.colormap}:')
+            for ann, col in colour_mapping.items():
+                logger.info(f'\t{ann}: {col}')
+
+        for sample, ann in user_colours.items():
+            mapped_user_colours[sample] = colour_mapping[ann]
+    
+        user_colours = mapped_user_colours
+
+    for c in user_colours.values():
+        if not matplotlib.colors.is_color_like(c):
+            logger.error(f'invalid colour {c} found in {args.bams}, use "--colormap auto" to map colours onto annotations if desired')
+            sys.exit(1)
 
     ct_bams = []
 
@@ -4084,6 +4127,9 @@ def locus(args):
             sys.exit(1)
 
         p_ratios = user_p_ratios
+
+        if args.skip_raw_plot:
+            p_ratios[3] = 0
 
         gs = gridspec.GridSpec(len(p_ratios),1,height_ratios=p_ratios, hspace=0)
 
@@ -4594,6 +4640,7 @@ def locus(args):
     order_stack = 2
 
     smoothalpha = float(args.smoothalpha)
+    slw = float(args.smoothlinewidth)
 
     if smoothalpha > 1.0 or smoothalpha < 0.0:
         logger.warning('--smoothalpha must be between 0 and 1, set to 1.0')
@@ -4636,7 +4683,7 @@ def locus(args):
         if frac_masked > 0.1 and args.bams is not None and args.ref is None:
             logger.warning('*** WARNING: specifying a reference genome (indexed via samtools faidx) with --restrict_ref is strongly recommended when using mod .bams ***')
 
-        ax5.plot(list(windowed_methfrac.keys()), smoothed_methfrac, marker='', lw=4, color=sample_color[sample], alpha=smoothalpha, label=sample)
+        ax5.plot(list(windowed_methfrac.keys()), smoothed_methfrac, marker='', lw=slw, color=sample_color[sample], alpha=smoothalpha, label=sample)
 
         order_stack += 1
 
@@ -4646,7 +4693,7 @@ def locus(args):
                     mf_seg = np.asarray(smoothed_methfrac)[seg]
                     pos_seg = np.asarray(list(windowed_methfrac.keys()))[seg]
                 
-                    ax5.plot(pos_seg, mf_seg, marker='', lw=4, color='#ffffff', alpha=0.8, zorder=order_stack)
+                    ax5.plot(pos_seg, mf_seg, marker='', lw=slw, color='#ffffff', alpha=0.8, zorder=order_stack)
 
                     order_stack += 1
 
@@ -4688,10 +4735,16 @@ def locus(args):
                 
             found_phases[hp] = True
 
-        ax4.legend(new_handles, new_labels)
-
         if args.skip_raw_plot:
             ax5.legend(new_handles, new_labels)
+        else:
+            ax4.legend(new_handles, new_labels)
+
+    if args.colormap:
+        if args.skip_raw_plot:
+            ax5.legend([mpatches.Patch(color=c) for c in colour_mapping.values()], colour_mapping.keys())
+        else:
+            ax4.legend([mpatches.Patch(color=c) for c in colour_mapping.values()], colour_mapping.keys())
 
     ax5.set_xlim(ax2.get_xlim())
     ax5.set_ylim((float(args.ymin),float(args.ymax)))
@@ -4721,7 +4774,7 @@ def locus(args):
             offset = list(windowed_methfrac.keys())[0]
             matched_cover = [cover_bams[sample][i-offset] for i in windowed_methfrac.keys()]
             
-            ax6.plot(list(windowed_methfrac.keys()), matched_cover, marker='', lw=4, color=cover_color[sample], zorder=3, label=sample, alpha=smoothalpha)
+            ax6.plot(list(windowed_methfrac.keys()), matched_cover, marker='', lw=slw, color=cover_color[sample], zorder=3, label=sample, alpha=smoothalpha)
 
         ax6.legend()
         ax6.set_xlim(ax2.get_xlim())
@@ -4780,7 +4833,7 @@ def locus(args):
         if args.hidelegend:
             legend=False
 
-        ax7 = sns.lineplot(data=phase_diffs, lw=4, palette=pd_colors, dashes=False, zorder=2, legend=legend, alpha=smoothalpha)
+        ax7 = sns.lineplot(data=phase_diffs, lw=slw, palette=pd_colors, dashes=False, zorder=2, legend=legend, alpha=smoothalpha)
 
         ax7.set_xlim(ax2.get_xlim())
         ax7.set_ylim((float(args.ymin),float(args.ymax)))
@@ -4996,9 +5049,11 @@ def region(args):
                 logger.info('-b input does not end in .gz, assuming this is a file with a list of bedMethyl .gz files...')
                 with open(args.bams) as bed_list: 
                     for line in bed_list:
-                        if not line.strip().endswith('.gz'):
-                            sys.exit('cannot identify input type')
                         c = line.strip().split()
+
+                        if not c[0].endswith('.gz'):
+                            sys.exit('cannot identify input type')
+
                         if len(c) == 1:
                             bams.append(c[0])
                         elif len(c) == 2:
@@ -5013,6 +5068,11 @@ def region(args):
             with open(args.bams) as bam_list:
                 for line in bam_list:
                     c = line.strip().split()
+                    if not c[0].endswith('.bam'):
+                        if os.path.exists(c[0]+'.bam'):
+                            logger.warning(f'{c[0]} doesnt end with .bam, appending a .bam because {c[0]}.bam exists')
+                            c[0] += '.bam'
+
                     if len(c) == 1:
                         bams.append(c[0])
                     elif len(c) == 2:
@@ -5020,6 +5080,43 @@ def region(args):
                         user_colours[bams[-1]] = c[1]
                     else:
                         sys.exit(f'unparsable line in {args.bams}: {line.strip()}')
+
+    colour_mapping = {}
+
+    if args.colormap:
+        mapped_user_colours = {}
+        
+        if args.colormap == 'auto':
+            unique_annotations = list(set(user_colours.values()))
+            map_colours = sns.color_palette(args.samplepalette, len(unique_annotations))
+            colour_mapping = dict(zip(unique_annotations, map_colours))
+
+            logger.info('automatic colour mapping:')
+            for ann, col in colour_mapping.items():
+                logger.info(f'\t{ann}: {col}')
+
+        else:
+            with open(args.colormap) as cm:
+                for line in cm:
+                    c = line.strip().split()
+                    if len(c) != 2:
+                        logger.error('malformed --colormap file (should be two columns)')
+                        sys.exit(1)
+                    colour_mapping[c[0]] = c[1]
+
+            logger.info(f'loaded colour mapping from {args.colormap}:')
+            for ann, col in colour_mapping.items():
+                logger.info(f'\t{ann}: {col}')
+
+        for sample, ann in user_colours.items():
+            mapped_user_colours[sample] = colour_mapping[ann]
+    
+        user_colours = mapped_user_colours
+
+        for c in user_colours.values():
+            if not matplotlib.colors.is_color_like(c):
+                logger.error(f'invalid colour {c} found in {args.bams}, use --mapcolours to map colours onto annotations if desired')
+                sys.exit(1)
 
         ct_bams = []
 
@@ -5791,13 +5888,14 @@ def region(args):
     ax4 = plt.subplot(gs[3])
 
     smoothalpha = float(args.smoothalpha)
+    slw = float(args.smoothlinewidth)
 
     if smoothalpha > 1.0 or smoothalpha < 0.0:
         logger.warning('--smoothalpha must be between 0 and 1, set to 1.0')
         smoothalpha = 1.0
 
     for sample in sample_order:
-        ax4.plot(meth_segs['pos'], meth_segs[sample], marker='', lw=4, color=sample_color[sample], zorder=2, label=sample, alpha=smoothalpha)
+        ax4.plot(meth_segs['pos'], meth_segs[sample], marker='', lw=slw, color=sample_color[sample], zorder=2, label=sample, alpha=smoothalpha)
 
     ax4.legend()
     ax4.set_xlim(ax2.get_xlim())
@@ -5822,6 +5920,9 @@ def region(args):
     for h in highlight_patches:
         ax4.add_patch(h)
 
+    if args.colormap:
+        ax4.legend([mpatches.Patch(color=c) for c in colour_mapping.values()], colour_mapping.keys())
+
     # coverage plot (optional)
 
     if args.plot_coverage:
@@ -5829,7 +5930,7 @@ def region(args):
         ax5 = plt.subplot(gs[4])
 
         for sample in cover_bams:
-            ax5.plot(meth_segs['pos'], cover_bams[sample], marker='', lw=4, color=cover_color[sample], zorder=3, label=sample, alpha=smoothalpha)
+            ax5.plot(meth_segs['pos'], cover_bams[sample], marker='', lw=slw, color=cover_color[sample], zorder=3, label=sample, alpha=smoothalpha)
 
         ax5.legend()
         ax5.set_xlim(ax2.get_xlim())
@@ -6610,6 +6711,7 @@ def parse_args():
     parser_locus.add_argument('--ignore_ps', default=False, action='store_true', help='do not use phase set (PS) when plotting phased data (HP only)')
     parser_locus.add_argument('--color_by_hp', default=False, action='store_true', help='color samples by HP value (req --phased)')
     parser_locus.add_argument('--color_by_phase', default=False, action='store_true', help='color samples by phase (req --phased)')
+    parser_locus.add_argument('--colormap', default=None, help='map annotations to colours, can be file with mapping or "auto"')
     parser_locus.add_argument('--phase_labels', default=None, help='if --color_by_hp substitute HP tags for labels. Format HP:Label comma-delimited e.g.: 1:Father,2:Mother')
     parser_locus.add_argument('--include_unphased', default=False, action='store_true', help='include an "unphased" category if called with --phased')
     parser_locus.add_argument('--readmask', default=None, help='mask reads from being shown in interval(s) (start-end or chrom:start-end; chrom ignored). Can be comma-delimited.')
@@ -6622,6 +6724,7 @@ def parse_args():
     parser_locus.add_argument('--slidingwindowsize', default=2, help='size of initial sliding window for coverage check (default=2)')
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_locus.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
+    parser_locus.add_argument('--smoothlinewidth', default=4.0, help='smooth line width (default = 4.0)')
     parser_locus.add_argument('--smoothed_csv', default=None, help='output values from smoothed plot to specified filename in CSV format (default=None)')
     parser_locus.add_argument('--maskcutoff', default=1, help='read count masking cutoff (default=1)')
     parser_locus.add_argument('--maxmaskedfrac', default=1.0, help='skip smoothed plot if fraction of sample masked (--maskcutoff) > this value (default = 1.0)')
@@ -6683,6 +6786,7 @@ def parse_args():
     parser_region.add_argument('--min_window_calls', default=1, help='minimum reads per window to include in plot (default = 1)')
     parser_region.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_region.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
+    parser_region.add_argument('--smoothlinewidth', default=4.0, help='smooth line width (default = 4.0)')
     parser_region.add_argument('--segment_csv', default=None, help='output values from smoothed segment plot to specified filename in CSV format (default=None)')
     parser_region.add_argument('--eff', default=None, help='conversion efficiency (for e.g. bs-seq or em-seq), input as comma-delimited sample:eff e.g. MySample1.m:0.9,MySample2.m:0.8')
     parser_region.add_argument('--ymin', default=-0.05, help='y-axis minimum for smoothed plot (default = -0.05)')
@@ -6715,6 +6819,7 @@ def parse_args():
     parser_region.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
     parser_region.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
     parser_region.add_argument('--color_by_hp', default=False, action='store_true', help='color samples by HP value (req --phased)')
+    parser_region.add_argument('--colormap', default=None, help='map annotations to colours, can be file with mapping or "auto"')
     parser_region.add_argument('--scale_fullwidth', default=None, help='scale plot output relative to value (e.g. use length of chrom 1)')
     parser_region.add_argument('--svg', action='store_true', default=False)
 
