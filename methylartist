@@ -25,6 +25,7 @@ matplotlib.rcParams.update(new_rc_params)
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.colors as mcolors
 from matplotlib import gridspec
 from matplotlib.patches import ConnectionPatch
 import seaborn as sns
@@ -3775,7 +3776,7 @@ def locus(args):
 
             logger.info('automatic colour mapping:')
             for ann, col in colour_mapping.items():
-                logger.info(f'\t{ann}: {col}')
+                logger.info(f'\t{ann}: {mcolors.rgb2hex(col)}')
 
         else:
             with open(args.colormap) as cm:
@@ -4364,6 +4365,7 @@ def locus(args):
     ax1 = plt.subplot(gs[1])
     ax1.set_xticks([])
     ax1.set_yticks([])
+    ax1.set_frame_on(False)
 
     if not args.skip_align_plot:
         logger.info('building read alignment plot...')
@@ -4474,6 +4476,8 @@ def locus(args):
 
         ax1.set_ylim(0, pack_y+1)
 
+        bam_ylims = {}
+
         # Batch plotting for better performance - process each sample separately
         for bamname in readstack:
             rm = args.readmarker
@@ -4527,6 +4531,23 @@ def locus(args):
             # Plot variant markers for this sample
             for x, y, color in variant_markers:
                 ax1.plot(x, y, marker='v', fillstyle='full', mec='black', mfc=color, markersize=int(args.variantsize), zorder=4, alpha=1)
+
+            bam_ylims[bamname] = [min([r[0][1] for r in read_lines]), max([r[0][1] for r in read_lines])]
+        
+        sample_margin = abs(ax1.get_xbound()[0])
+        sample_box_width = sample_margin*.2
+        sample_box_pad = abs(ax1.get_xbound()[0])*.1
+
+        sample_box_x1 = (ax1.get_xbound()[1]-sample_margin)+sample_box_pad
+
+        sample_box_patches = []
+
+        for bamname, sample_box_y in bam_ylims.items():
+            sample_box_patches.append(matplotlib.patches.Rectangle([sample_box_x1, sample_box_y[0]-1], sample_box_width, sample_box_y[1]-sample_box_y[0], edgecolor='black', facecolor=sample_color[bamname], zorder=1))
+            ax1.text(sample_box_x1+sample_box_width+sample_box_pad, sum(sample_box_y)/2, bamname, ha='left', va='center', fontsize='x-small')
+
+        for sb in sample_box_patches:
+            ax1.add_patch(sb)
 
         highlight_patches = []
 
@@ -4626,7 +4647,10 @@ def locus(args):
     ax4.set_xticks([])
     ax4.yaxis.tick_right()
 
-    if not args.skip_raw_plot:
+    if args.skip_raw_plot:
+        ax4.set_yticks([])
+
+    else:
         logger.info('building llr plot... (if this is slow and/or raw signal is not helpful, try --skip_raw_plot)')
 
         ax4.axhline(y=0, c='#bbbbbb', linestyle='--',lw=1)
