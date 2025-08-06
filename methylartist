@@ -3655,6 +3655,10 @@ def locus(args):
                 logger.warning('locus -p/--panelratios requires 5 terms e.g. --panelratios 1,5,1,3,3') 
                 sys.exit(1)
 
+    if args.phasediff and not args.phased:
+        logger.warning('--phasediff cannot be called without --phase')
+        sys.exit(1)
+
     if args.motif is not None:
         assert iupac(args.motif)
 
