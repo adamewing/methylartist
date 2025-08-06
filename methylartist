@@ -581,6 +581,9 @@ def get_variant_reads(fn, chrom, start, end, variants, min_mapq=10, primary_only
 
     bam = pysam.AlignmentFile(fn)
     for read in bam.fetch(chrom, start, end):
+        if read.seq is None:
+            continue
+        
         if primary_only:
             if read.is_secondary or read.is_supplementary:
                 continue
@@ -4433,7 +4436,25 @@ def locus(args):
 
         # Process all BAM files first to collect position and variant data
         for bamname in reads:
-            fetch_reads_bam = pysam.AlignmentFile(orig_bam[bamname])
+            fetch_reads_bam = None
+
+            # in case the user has a dodgy nfs
+            retries = 0
+            bam_open = False
+
+            while not bam_open:
+                try:
+                    fetch_reads_bam = pysam.AlignmentFile(orig_bam[bamname])
+                    bam_open = True
+
+                except OSError as e:
+                    if retries < 5:
+                        logger.warning(f'retry open on {orig_bam[bamname]}, possibly due to network filesystem')
+                        sleep(1)
+                        retries += 1
+                        
+                    else:
+                        sys.exit(e)
             
             # Pre-filter reads that match our criteria
             filtered_reads = []
