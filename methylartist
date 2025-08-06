@@ -332,6 +332,25 @@ def pandas_df(out, mod_base, can_base):
     return data
 
 
+def remove_all_text(ax):
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+    ax.set_title('')
+    
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    legend = ax.get_legend()
+    if legend:
+        legend.remove()
+    
+    for text in ax.texts:
+        text.remove()
+
+
 def guppy_f5_fetch(fast5, bam_db, args):
     bam = pysam.AlignmentFile(args.bam)
     ref = pysam.Fastafile(args.ref)
@@ -1004,8 +1023,23 @@ def sample_bam(bam_fn, motif, ref, n):
     return np.asarray(sample)
 
 
-def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, can_thresh=0.8, restrict_motif=None, restrict_ref=None, primary_only=False):
-    bam = pysam.AlignmentFile(bam_fn)
+def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, can_thresh=0.8, restrict_motif=None, restrict_ref=None, primary_only=False, retry=5):
+    retries = 0
+    bam_open = False
+
+    while not bam_open:
+        try:
+            bam = pysam.AlignmentFile(bam_fn)
+            bam_open = True
+
+        except OSError as e:
+            if retries < retry:
+                logger.warning(f'retry open on {bam_fn}, possibly due to network filesystem')
+                sleep(1)
+                retries += 1
+                
+            else:
+                sys.exit(e)
 
     if restrict_motif:
         if len(restrict_motif) != motifsize:
@@ -1160,8 +1194,23 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
 
                 yield (rec.qname, rec.reference_name, genome_pos, p_mod, methstate, mod_type)
 
-def parse_ctbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, can_thresh=0.8, restrict_motif=None, restrict_ref=None, primary_only=False):
-    bam = pysam.AlignmentFile(bam_fn)
+def parse_ctbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, can_thresh=0.8, restrict_motif=None, restrict_ref=None, primary_only=False, retry=5):
+    retries = 0
+    bam_open = False
+
+    while not bam_open:
+        try:
+            bam = pysam.AlignmentFile(bam_fn)
+            bam_open = True
+
+        except OSError as e:
+            if retries < retry:
+                logger.warning(f'retry open on {bam_fn}, possibly due to network filesystem')
+                sleep(1)
+                retries += 1
+                
+            else:
+                sys.exit(e)
 
     for read in bam.fetch(chrom, start, end):
         if read.is_unmapped:
@@ -3315,12 +3364,15 @@ def segplot(args):
 
     if args.metadata:
         metadata = pd.read_csv(args.metadata, sep='\t', header=0, index_col=0)
+
         if args.usemeta:
             for md in args.usemeta.split(','):
+                md = md.strip()
                 if md in metadata.columns:
                     usemeta.append(md)
                 else:
                     logger.warning(f'column {md} not found in {args.metadata}')
+                    sys.exit(1)
         else:
             logger.warning('--metadata without --usemeta does not affect plot')
         
@@ -3339,11 +3391,12 @@ def segplot(args):
             md = []
             if s not in metadata.index:
                 logger.warning(f'no metadata for sample: {s}')
+                continue
             else:
                 for col in usemeta:
                     md.append(metadata.loc[s][col])
 
-            md = '_'.join(md)        
+            md = '_'.join(md)
             assert md in meta_colours, f'meta {md} not found'
 
             palette[s] = meta_colours[md]
@@ -3352,7 +3405,6 @@ def segplot(args):
 
         metadata = metadata.sort_values(usemeta)
         samples = list(metadata.index)
-
 
     if args.mods:
         user_mods = []
@@ -4572,6 +4624,7 @@ def locus(args):
 
     ax2.set_ylim(0,10)
     ax2.set_yticklabels([])
+    ax2.set_yticks([])
 
     x1 = []
     x2 = []
@@ -4953,6 +5006,13 @@ def locus(args):
 
     fn_prefix += f'.mt{args.meth_thresh}.ct{args.can_thresh}'
 
+    if args.notext:
+        for i, g in enumerate(gs):
+            if i != 2:
+                remove_all_text(plt.subplot(g))
+
+        fn_prefix += '.notext'
+
     outfn = fn_prefix
 
     if args.svg:
@@ -5158,7 +5218,7 @@ def region(args):
 
             logger.info('automatic colour mapping:')
             for ann, col in colour_mapping.items():
-                logger.info(f'\t{ann}: {col}')
+                logger.info(f'\t{ann}: {mcolors.rgb2hex(col)}')
 
         else:
             with open(args.colormap) as cm:
@@ -6821,6 +6881,7 @@ def parse_args():
     parser_locus.add_argument('--unambig_highlight', action='store_true', default=False)
     parser_locus.add_argument('--width', default=16, help='image width (inches, default=16)')
     parser_locus.add_argument('--height', default=8, help='image width (inches, default=8)')
+    parser_locus.add_argument('--notext', default=False, action='store_true', help='remove all text from figure')
     parser_locus.add_argument('--svg', action='store_true')
 
     # options for region plots
