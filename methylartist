@@ -3836,6 +3836,7 @@ def locus(args):
             logger.info('automatic colour mapping:')
             for ann, col in colour_mapping.items():
                 logger.info(f'\t{ann}: {mcolors.rgb2hex(col)}')
+                colour_mapping[ann] = mcolors.rgb2hex(col)
 
         else:
             with open(args.colormap) as cm:
@@ -5061,7 +5062,6 @@ def locus(args):
         if args.smoothed_csv == 'auto':
             args.smoothed_csv = fn_prefix + '.locus.meth.csv'
 
-        #smoothed_df = smoothed_df.dropna(axis=1, how='all')
         smoothed_df.to_csv(args.smoothed_csv)
         logger.info(f'smoothed values written to {args.smoothed_csv}')
 
@@ -5073,19 +5073,85 @@ def locus(args):
     fig.savefig(outfn, bbox_inches='tight')
     logger.info('plot saved to %s' % outfn)
 
-    if True and args.smoothed_csv:
+    if args.highlight_subplots and args.highlight and colour_mapping:
+        reverse_colour_mapping = {v:k for k,v in colour_mapping.items()}
+
+        fn_prefix = '.%s_%d_%d.%s' % (chrom, elt_start, elt_end, ''.join(use_mods))
+
+        if methbam:
+            fn_prefix = '.'.join(os.path.basename(args.bams.split(',')[0]).split('.')[:-1]) + fn_prefix
+        else:
+            fn_prefix = '.'.join(os.path.basename(args.data).split('.')[:-1]) + fn_prefix
+
+
         for h, h_s in enumerate(h_cpg_start):
+            plt.clf()
+            plt.rcdefaults()
+            sns.reset_defaults()
+            plt.close('all')
+
             h_e = h_cpg_end[h]
-            print(h_s, h_e)
             h_subset = smoothed_df.query(f'index >= {h_s} and index <= {h_e}').dropna(axis=1, how='all')
 
-            for sample in h_subset.columns:
-                col = sample_color[sample]
-                print(sample, col)
+            h_plotdata = dd(dict)
 
-            # if args.phasediff:
-            #     h_subset_pd = phasediff_df.query(f'index >= {h_s} and index <= {h_e}').dropna(axis=1, how='all')
-            #     pd_colors[sample]
+            for i, sample in enumerate(h_subset.columns):
+                col = mcolors.rgb2hex(sample_color[sample])
+
+                h_plotdata[i]['sample'] = sample
+                h_plotdata[i]['median'] = h_subset[sample].median()
+                h_plotdata[i]['group']  = reverse_colour_mapping[col]
+                h_plotdata[i]['colour'] = col
+
+            h_plotdata = pd.DataFrame.from_dict(h_plotdata).T
+
+            sns.swarmplot(data=h_plotdata, x='group', hue='group', y='median', palette=colour_mapping, legend=False)
+            out_fn = f'{fn_prefix}.highlight_subplot_{h}'
+
+            if args.svg:
+                out_fn += '.svg'
+            else:
+                out_fn += '.png'
+
+            plt.title(f'{fn_prefix} highlight {h}')
+            plt.xlabel('median methylation in highlight')
+            plt.savefig(out_fn)
+            logger.info(f'saved highlight plot to {out_fn}')
+            
+
+            if args.phasediff:
+                plt.clf()
+                plt.rcdefaults()
+                sns.reset_defaults()
+                plt.close('all')
+
+                h_subset_pd = phasediff_df.query(f'index >= {h_s} and index <= {h_e}').dropna(axis=1, how='all')
+                
+
+                h_plotdata = dd(dict)
+
+                for i, sample in enumerate(h_subset_pd.columns):
+                    col = mcolors.rgb2hex(pd_colors[sample])
+
+                    h_plotdata[i]['sample'] = sample
+                    h_plotdata[i]['median'] = h_subset_pd[sample].median()
+                    h_plotdata[i]['group']  = reverse_colour_mapping[col]
+                    h_plotdata[i]['colour'] = col
+
+                h_plotdata = pd.DataFrame.from_dict(h_plotdata).T
+
+                sns.swarmplot(data=h_plotdata, x='group', hue='group', y='median', palette=colour_mapping, legend=False)
+                out_fn = f'{fn_prefix}.highlight_subplot_{h}.phasediff'
+
+                if args.svg:
+                    out_fn += '.svg'
+                else:
+                    out_fn += '.png'
+
+                plt.title(f'{fn_prefix} phasediff hl {h}')
+                plt.xlabel('median phasediff in highlight')
+                plt.savefig(out_fn)
+                logger.info(f'saved phasediff highlight plot to {out_fn}')
 
 
 def region(args):
@@ -6886,6 +6952,7 @@ def parse_args():
     parser_locus.add_argument('--bed', default=None, help='.bed file for additional annotations (BED3+3: chrom, start, end, label, strand, color)')
     parser_locus.add_argument('--hidebedlabel', default=False, action='store_true', help='hide lables from .bed track')
     parser_locus.add_argument('--highlight_bed', default=None, help='BED3+1 format (chrom, start, end, optional_colour) where colour (optional) must be intelligible to matplotlib')
+    parser_locus.add_argument('--highlight_subplot', default=False, action='store_true', help='make sub-plots for highlighted regions of smoothed plots grouped by colormap (incl --phasediff plot), requires --highlight and --colormap')
     parser_locus.add_argument('--variants', default=None, help='variants to highlight, bgzipped/tabix VCF')
     parser_locus.add_argument('--splitvar', default=None, help='split variant on variant with ID (uses ID field from --variants VCF)')
     parser_locus.add_argument('--variantpalette', default='Set1', help='colour palette for variant ticks (default = Set1)')
