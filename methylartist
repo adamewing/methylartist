@@ -4554,6 +4554,7 @@ def locus(args):
         ax1.set_ylim(0, pack_y+1)
 
         bam_ylims = {}
+        bam_xlims = {}
 
         # Batch plotting for better performance - process each sample separately
         for bamname in readstack:
@@ -4610,19 +4611,23 @@ def locus(args):
                 ax1.plot(x, y, marker='v', fillstyle='full', mec='black', mfc=color, markersize=int(args.variantsize), zorder=4, alpha=1)
 
             bam_ylims[bamname] = [min([r[0][1] for r in read_lines]), max([r[0][1] for r in read_lines])]
+            bam_xlims[bamname] = [min([r[1][0] for r in read_lines]), max([r[1][0] for r in read_lines])]
         
         if args.samplebox:
-            sample_margin = abs(ax1.get_xbound()[0])
-            sample_box_width = sample_margin*.2
-            sample_box_pad = abs(ax1.get_xbound()[0])*.1
+            xlim_max = max([v[1] for v in bam_xlims.values()])
 
-            sample_box_x1 = (ax1.get_xbound()[1]-sample_margin)+sample_box_pad
+            sample_margin = abs(ax1.get_xbound()[1])-xlim_max
+            sample_box_width = sample_margin*.2
+            sample_box_pad = sample_margin*.1
+
+            sample_box_x1 = xlim_max + sample_box_pad
 
             sample_box_patches = []
 
             for bamname, sample_box_y in bam_ylims.items():
                 sample_box_patches.append(matplotlib.patches.Rectangle([sample_box_x1, sample_box_y[0]-1], sample_box_width, sample_box_y[1]-sample_box_y[0], edgecolor='black', facecolor=sample_color[bamname], zorder=1))
-                ax1.text(sample_box_x1+sample_box_width+sample_box_pad, sum(sample_box_y)/2, bamname, ha='left', va='center', fontsize='x-small')
+                if not args.notext:
+                    ax1.text(sample_box_x1+sample_box_width+sample_box_pad, sum(sample_box_y)/2, bamname, ha='left', va='center', fontsize='x-small')
 
             for sb in sample_box_patches:
                 ax1.add_patch(sb)
