@@ -4611,20 +4611,21 @@ def locus(args):
 
             bam_ylims[bamname] = [min([r[0][1] for r in read_lines]), max([r[0][1] for r in read_lines])]
         
-        sample_margin = abs(ax1.get_xbound()[0])
-        sample_box_width = sample_margin*.2
-        sample_box_pad = abs(ax1.get_xbound()[0])*.1
+        if args.samplebox:
+            sample_margin = abs(ax1.get_xbound()[0])
+            sample_box_width = sample_margin*.2
+            sample_box_pad = abs(ax1.get_xbound()[0])*.1
 
-        sample_box_x1 = (ax1.get_xbound()[1]-sample_margin)+sample_box_pad
+            sample_box_x1 = (ax1.get_xbound()[1]-sample_margin)+sample_box_pad
 
-        sample_box_patches = []
+            sample_box_patches = []
 
-        for bamname, sample_box_y in bam_ylims.items():
-            sample_box_patches.append(matplotlib.patches.Rectangle([sample_box_x1, sample_box_y[0]-1], sample_box_width, sample_box_y[1]-sample_box_y[0], edgecolor='black', facecolor=sample_color[bamname], zorder=1))
-            ax1.text(sample_box_x1+sample_box_width+sample_box_pad, sum(sample_box_y)/2, bamname, ha='left', va='center', fontsize='x-small')
+            for bamname, sample_box_y in bam_ylims.items():
+                sample_box_patches.append(matplotlib.patches.Rectangle([sample_box_x1, sample_box_y[0]-1], sample_box_width, sample_box_y[1]-sample_box_y[0], edgecolor='black', facecolor=sample_color[bamname], zorder=1))
+                ax1.text(sample_box_x1+sample_box_width+sample_box_pad, sum(sample_box_y)/2, bamname, ha='left', va='center', fontsize='x-small')
 
-        for sb in sample_box_patches:
-            ax1.add_patch(sb)
+            for sb in sample_box_patches:
+                ax1.add_patch(sb)
 
         highlight_patches = []
 
@@ -5055,22 +5056,31 @@ def locus(args):
         if args.smoothed_csv == 'auto':
             args.smoothed_csv = fn_prefix + '.locus.meth.csv'
 
-        smoothed_df = smoothed_df.dropna(axis=1, how='all')
+        #smoothed_df = smoothed_df.dropna(axis=1, how='all')
         smoothed_df.to_csv(args.smoothed_csv)
         logger.info(f'smoothed values written to {args.smoothed_csv}')
 
         if args.phasediff:
             phasediff_csv = '.'.join(args.smoothed_csv.split('.')[:-1]) + '.phasediff.csv'
-            phasediff_df = phasediff_df.dropna(axis=1, how='all')
             phasediff_df.to_csv(phasediff_csv)
             logger.info(f'smoothed phasediff values written to {phasediff_csv}')
 
     fig.savefig(outfn, bbox_inches='tight')
     logger.info('plot saved to %s' % outfn)
 
-    # if True:
-    #     for h, h_s in enumerate(h_cpg_start):
-    #         h_e = h_cpg_end[h]
+    if True and args.smoothed_csv:
+        for h, h_s in enumerate(h_cpg_start):
+            h_e = h_cpg_end[h]
+            print(h_s, h_e)
+            h_subset = smoothed_df.query(f'index >= {h_s} and index <= {h_e}').dropna(axis=1, how='all')
+
+            for sample in h_subset.columns:
+                col = sample_color[sample]
+                print(sample, col)
+
+            # if args.phasediff:
+            #     h_subset_pd = phasediff_df.query(f'index >= {h_s} and index <= {h_e}').dropna(axis=1, how='all')
+            #     pd_colors[sample]
 
 
 def region(args):
@@ -6860,6 +6870,7 @@ def parse_args():
     parser_locus.add_argument('-n', '--motif', default=None, help='expected modification motif (e.g. CG for 5mCpG required for mod bams)')
     parser_locus.add_argument('-c', '--plot_coverage', default=None, help='plot coverage from bam(s) (can be comma-delimited list)')
     parser_locus.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
+    parser_locus.add_argument('--samplebox', default=False, action='store_true', help='draw sample box with labels next to alignments')
     parser_locus.add_argument('--skip_align_plot', default=False, action='store_true', help='do not plot alignments')
     parser_locus.add_argument('--skip_raw_plot', default=False, action='store_true', help='do not plot raw signal')
     parser_locus.add_argument('--meth_thresh', default=0.8, help='modified base threshold (default=0.8)')
