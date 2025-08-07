@@ -4837,9 +4837,7 @@ def locus(args):
 
                     order_stack += 1
 
-    if args.smoothed_csv:
-        smoothed_df = pd.DataFrame(smoothed_values).T
-        smoothed_df.to_csv(args.smoothed_csv)
+    smoothed_df = pd.DataFrame(smoothed_values).T
 
     if args.skip_raw_plot:
         ax5.legend()
@@ -5051,6 +5049,13 @@ def locus(args):
             if outfn.split('.')[-1] != 'svg':
                 logger.warning('warning: %s does not have extension .svg, appending')
                 outfn += '.svg'
+
+    if args.smoothed_csv:
+        if args.smoothed_csv == 'auto':
+            args.smoothed_csv = fn_prefix + '.locus.meth.csv'
+
+        smoothed_df.to_csv(args.smoothed_csv)
+        logger.info(f'smoothed values written to {args.smoothed_csv}')
 
     fig.savefig(outfn, bbox_inches='tight')
     logger.info('plot saved to %s' % outfn)
@@ -6879,7 +6884,7 @@ def parse_args():
     parser_locus.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
     parser_locus.add_argument('--smoothlinewidth', default=4.0, help='smooth line width (default = 4.0)')
     parser_locus.add_argument('--shuffle', default=False, action='store_true', help='shuffle sample order for smoothed plot (may reduce visual bias due to sample order)')
-    parser_locus.add_argument('--smoothed_csv', default=None, help='output values from smoothed plot to specified filename in CSV format (default=None)')
+    parser_locus.add_argument('--smoothed_csv', default=None, help='output values from smoothed plot to CSV format (can specify filename or "auto")')
     parser_locus.add_argument('--maskcutoff', default=1, help='read count masking cutoff (default=1)')
     parser_locus.add_argument('--maxmaskedfrac', default=1.0, help='skip smoothed plot if fraction of sample masked (--maskcutoff) > this value (default = 1.0)')
     parser_locus.add_argument('--nomask', default=False, action='store_true', help='skip drawing segment masks')
