@@ -4837,7 +4837,7 @@ def locus(args):
 
                     order_stack += 1
 
-    smoothed_df = pd.DataFrame(smoothed_values).T
+    smoothed_df = pd.DataFrame(smoothed_values)
 
     if args.skip_raw_plot:
         ax5.legend()
@@ -4975,6 +4975,7 @@ def locus(args):
             legend=False
 
         ax7 = sns.lineplot(data=phase_diffs, lw=slw, palette=pd_colors, dashes=False, zorder=2, legend=legend, alpha=smoothalpha)
+        phasediff_df = pd.DataFrame(phase_diffs)
 
         ax7.set_xlim(ax2.get_xlim())
         ax7.set_ylim((float(args.ymin),float(args.ymax)))
@@ -5054,11 +5055,22 @@ def locus(args):
         if args.smoothed_csv == 'auto':
             args.smoothed_csv = fn_prefix + '.locus.meth.csv'
 
+        smoothed_df = smoothed_df.dropna(axis=1, how='all')
         smoothed_df.to_csv(args.smoothed_csv)
         logger.info(f'smoothed values written to {args.smoothed_csv}')
 
+        if args.phasediff:
+            phasediff_csv = '.'.join(args.smoothed_csv.split('.')[:-1]) + '.phasediff.csv'
+            phasediff_df = phasediff_df.dropna(axis=1, how='all')
+            phasediff_df.to_csv(phasediff_csv)
+            logger.info(f'smoothed phasediff values written to {phasediff_csv}')
+
     fig.savefig(outfn, bbox_inches='tight')
     logger.info('plot saved to %s' % outfn)
+
+    # if True:
+    #     for h, h_s in enumerate(h_cpg_start):
+    #         h_e = h_cpg_end[h]
 
 
 def region(args):
