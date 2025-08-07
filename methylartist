@@ -4625,7 +4625,7 @@ def locus(args):
             sample_box_patches = []
 
             for bamname, sample_box_y in bam_ylims.items():
-                sample_box_patches.append(matplotlib.patches.Rectangle([sample_box_x1, sample_box_y[0]-1], sample_box_width, sample_box_y[1]-sample_box_y[0], edgecolor='black', facecolor=sample_color[bamname], zorder=1))
+                sample_box_patches.append(matplotlib.patches.Rectangle([sample_box_x1, sample_box_y[0]-0.5], sample_box_width, sample_box_y[1]-sample_box_y[0]+1, edgecolor='black', facecolor=sample_color[bamname], zorder=1))
                 if not args.notext:
                     ax1.text(sample_box_x1+sample_box_width+sample_box_pad, sum(sample_box_y)/2, bamname, ha='left', va='center', fontsize='x-small')
 
