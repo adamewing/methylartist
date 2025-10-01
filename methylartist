@@ -3067,7 +3067,7 @@ def segmeth(args):
                 logger.info('-b input does not end in .gz, assuming this is a file with a list of bedMethyl .gz files...')
                 with open(args.bams) as bed_list:
                     for line in bed_list:
-                        if not line.strip().endswith('.gz'):
+                        if not line.strip().split()[0].endswith('.gz'):
                             sys.exit('cannot identify input type')
                         bams.append(line.strip().split()[0])
 
@@ -3075,7 +3075,7 @@ def segmeth(args):
             logger.info('assuming %s contains a list of .bams' % args.bams)
             with open(args.bams) as bam_list:
                 for line in bam_list:
-                    if not is_bam(line.strip()):
+                    if not is_bam(line.strip().split()[0]):
                         sys.exit('cannot identify input type')
                     bams.append(line.strip().split()[0])
 
