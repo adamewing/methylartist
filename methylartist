@@ -4909,6 +4909,9 @@ def locus(args):
     for h in highlight_patches:
         ax5.add_patch(h)
 
+    if args.skip_raw_plot:
+        ax5.set_zorder(1)
+
     # coverage plot (optional)
 
     if args.plot_coverage:
@@ -4959,6 +4962,9 @@ def locus(args):
             phase_lookup[sn_ph].append(sn)
 
         samples = []
+
+        print(ax5.zorder)
+        print(ax7.zorder)
 
         for sample in phase_lookup:
             if len(phase_lookup[sample]) == 2:
