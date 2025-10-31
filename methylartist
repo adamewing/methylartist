@@ -909,6 +909,7 @@ def mods_bedmethyl(bed_fn, sample_len=100000):
     with gzip.open(bed_fn) as bed:
         for line in bed:
             modcol = line.decode().split()[3]
+            
             if len(modcol) != 1:
                 logger.warning(f'found in single base mod column (4): {modcol}, assuming non-modkit therefore using mod "m" (5mC) for entire bed')
                 return ['m']
@@ -5374,49 +5375,49 @@ def region(args):
     
         user_colours = mapped_user_colours
 
-        for c in user_colours.values():
-            if not matplotlib.colors.is_color_like(c):
-                logger.error(f'invalid colour {c} found in {args.bams}, use --mapcolours to map colours onto annotations if desired')
-                sys.exit(1)
+    for c in user_colours.values():
+        if not matplotlib.colors.is_color_like(c):
+            logger.error(f'invalid colour {c} found in {args.bams}, use --colormap to map colours onto annotations if desired')
+            sys.exit(1)
 
-        ct_bams = []
+    ct_bams = []
 
-        if args.ctbam is not None:
-            if args.bedmethyl:
-                sys.exit('--ctbam not compatible with --bed')
+    if args.ctbam is not None:
+        if args.bedmethyl:
+            sys.exit('--ctbam not compatible with --bed')
 
-            for ctbam_fn in args.ctbam.split(','):
-                if ctbam_fn not in bams:
-                    sys.exit(f'{ctbam_fn} passed to --ctbam has no corresponding .bam passed to -b/--bam')
-                
-                ct_bams.append(ctbam_fn)
-                logger.info(f'Noted C/T substitution .bam: {ctbam_fn}')
+        for ctbam_fn in args.ctbam.split(','):
+            if ctbam_fn not in bams:
+                sys.exit(f'{ctbam_fn} passed to --ctbam has no corresponding .bam passed to -b/--bam')
+            
+            ct_bams.append(ctbam_fn)
+            logger.info(f'Noted C/T substitution .bam: {ctbam_fn}')
 
-        ct_bams = set(ct_bams)
+    ct_bams = set(ct_bams)
 
-        for bam in bams:
-            if ':' in bam:
-                bam, ucol = bam.split(':')
-                user_colours[bam] = ucol
+    for bam in bams:
+        if ':' in bam:
+            bam, ucol = bam.split(':')
+            user_colours[bam] = ucol
 
-            if not os.path.exists(bam):
-                sys.exit(f'.bam file not found: {bam}')
+        if not os.path.exists(bam):
+            sys.exit(f'.bam file not found: {bam}')
 
-            if not args.bedmethyl:
-                with pysam.AlignmentFile(bam) as fh:
-                    if not fh.check_index():
-                        sys.exit('bam not indexed: %s' % bam)
+        if not args.bedmethyl:
+            with pysam.AlignmentFile(bam) as fh:
+                if not fh.check_index():
+                    sys.exit('bam not indexed: %s' % bam)
 
-            data[bam] = None
+        data[bam] = None
 
-        if bam in ct_bams:
-            logger.info(f'Assuming modtype m for C/T substitution bam {bam}')
-            mods = ['m']
+    if bam in ct_bams:
+        logger.info(f'Assuming modtype m for C/T substitution bam {bam}')
+        mods = ['m']
+    else:
+        if not args.bedmethyl:
+            mods = mods_methbam(bam)
         else:
-            if not args.bedmethyl:
-                mods = mods_methbam(bam)
-            else:
-                mods = mods_bedmethyl(bam)
+            mods = mods_bedmethyl(bam)
 
     mods = list(set(mods))
 
