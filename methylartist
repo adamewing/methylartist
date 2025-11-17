@@ -1416,9 +1416,11 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
 
         seg_result[modname] = seg_meth_calls
 
-        predict_dmr = not phase
+        if args.predict_dmr:
+            if phase:
+                args.predict_dmr = not phase
 
-        if predict_dmr:
+        if args.predict_dmr:
             means, sigmetrics = mixmodel(modfrac_read_dist[modname])
 
             if sigmetrics is not None:
@@ -6910,6 +6912,7 @@ def parse_args():
     parser_segmeth.add_argument('--dmr_mindiff', default=0.4, help='minimum difference between means (default = 0.4)')
     parser_segmeth.add_argument('--dmr_minmotifs', default=20, help='minimum motif count for DMR prediction (default = 20)')
     parser_segmeth.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
+    parser_segmeth.add_argument('--predict_dmr', action='store_true', default=False, help='enable DMR prediction in unphased data')
 
     # options for methylation strip / violin / ridge plots
     parser_segplot.add_argument('-s', '--segmeth', required=True, help='output from segmeth.py')
