@@ -5178,6 +5178,8 @@ def region(args):
     assert ':' in args.interval
     assert '-' in args.interval
 
+    args.predict_dmr = False
+
     chrom, pos = args.interval.split(':')
     start, end = pos.split('-')
 
