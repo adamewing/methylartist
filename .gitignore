@@ -1,0 +1,14 @@
+# Sphinx build directories
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db
+

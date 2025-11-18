@@ -1,0 +1,11 @@
+LICENSE
+README.md
+methylartist
+pyproject.toml
+setup.cfg
+setup.py
+methylartist.egg-info/PKG-INFO
+methylartist.egg-info/SOURCES.txt
+methylartist.egg-info/dependency_links.txt
+methylartist.egg-info/requires.txt
+methylartist.egg-info/top_level.txt

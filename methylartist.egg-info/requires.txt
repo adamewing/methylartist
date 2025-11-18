@@ -1,0 +1,10 @@
+cython
+pysam
+numpy
+scipy
+pandas
+matplotlib
+seaborn
+bx-python
+scikit-learn
+tqdm
