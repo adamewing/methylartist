@@ -6857,7 +6857,7 @@ def parse_args():
     subparsers = parser.add_subparsers(title="tool", dest="tool")
     subparsers.required = True
 
-    __version__ = "1.5.2"
+    __version__ = "1.5.3"
     parser.add_argument('-v', '--version', action='version', version='%(prog)s {version}'.format(version=__version__))
 
     parser_nanopolish    = subparsers.add_parser('db-nanopolish')
