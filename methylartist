@@ -3132,6 +3132,8 @@ def segmeth(args):
 
         mod_names = list(set(user_mod_names))
 
+    mod_names = sorted(mod_names) # ensure consistent order of appearance for mod names in table
+
     logger.info('using mods: %s' % ','.join(mod_names))
 
     base_names = ['.'.join(bam.split('.')[:-1]) for bam in data]
