@@ -4968,9 +4968,6 @@ def locus(args):
 
         samples = []
 
-        print(ax5.zorder)
-        print(ax7.zorder)
-
         for sample in phase_lookup:
             if len(phase_lookup[sample]) == 2:
                 samples.append(sample)
