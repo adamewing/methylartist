@@ -59,6 +59,14 @@ def median(args):
     single_arg(args, pd.DataFrame.median)
 
 
+def std(args):
+    single_arg(args, pd.DataFrame.std)
+
+
+def quantile(args):
+    single_arg(args, lambda x: x.quantile(q=float(args.quantile)))
+
+
 def kruskal(args):
     data = pd.read_csv(args.tsv, sep='\t', header=0)
 
@@ -181,16 +189,23 @@ def parse_args():
     subparsers.required = True
 
     parser_mean = subparsers.add_parser('mean')
+    parser_std = subparsers.add_parser('std')
+    parser_quantile = subparsers.add_parser('quantile')
     parser_median = subparsers.add_parser('median')
     parser_kruskal = subparsers.add_parser('kruskal')
     parser_effsize = subparsers.add_parser('effsize')
 
     parser_mean.set_defaults(func=mean)
+    parser_std.set_defaults(func=std)
+    parser_quantile.set_defaults(func=quantile)
     parser_median.set_defaults(func=median)
     parser_kruskal.set_defaults(func=kruskal)
     parser_effsize.set_defaults(func=effsize)
 
     parser_mean.add_argument('-c', '--columns', default=None, help='which columns to output (comma-delimited, default = all)')
+    parser_std.add_argument('-c', '--columns', default=None, help='which columns to output (comma-delimited, default = all)')
+    parser_quantile.add_argument('-q', '--quantile', required=True, help='quantile value')
+    parser_quantile.add_argument('-c', '--columns', default=None, help='which columns to output (comma-delimited, default = all)')
     parser_median.add_argument('-c', '--columns', default=None, help='which columns to output (comma-delimited, default = all)')
     parser_kruskal.add_argument('-c', '--columns', default=None, help='comma-delimited columns')
     parser_kruskal.add_argument('--posthoc', action='store_true', default=False, help='perform post-hoc Dunn\'s tests')

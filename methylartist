@@ -4852,7 +4852,8 @@ def locus(args):
     smoothed_df = pd.DataFrame(smoothed_values)
 
     if args.skip_raw_plot:
-        ax5.legend()
+        if not args.hidelegend:
+            ax5.legend()
     else:
         ax4.set_zorder(order_stack)  # adjust z-level of legend after smoothed plot is finished
 
@@ -4885,10 +4886,11 @@ def locus(args):
                 
             found_phases[hp] = True
 
-        if args.skip_raw_plot:
-            ax5.legend(new_handles, new_labels)
-        else:
-            ax4.legend(new_handles, new_labels)
+        if not args.hidelegend:
+            if args.skip_raw_plot:
+                ax5.legend(new_handles, new_labels)
+            else:
+                ax4.legend(new_handles, new_labels)
 
     if args.colormap:
         if args.skip_raw_plot:
