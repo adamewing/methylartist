@@ -5291,6 +5291,7 @@ def region(args):
                     user_colours[bam] = c[2]
 
     ct_bams = None
+    bams = None
 
     if args.bams is not None:
         if (not args.bedmethyl) and None in (args.ref, args.motif):
@@ -5400,29 +5401,31 @@ def region(args):
 
     ct_bams = set(ct_bams)
 
-    for bam in bams:
-        if ':' in bam:
-            bam, ucol = bam.split(':')
-            user_colours[bam] = ucol
+    if bams:
+        for bam in bams:
+            if ':' in bam:
+                bam, ucol = bam.split(':')
+                user_colours[bam] = ucol
 
-        if not os.path.exists(bam):
-            sys.exit(f'.bam file not found: {bam}')
+            if not os.path.exists(bam):
+                sys.exit(f'.bam file not found: {bam}')
 
-        if not args.bedmethyl:
-            with pysam.AlignmentFile(bam) as fh:
-                if not fh.check_index():
-                    sys.exit('bam not indexed: %s' % bam)
+            if not args.bedmethyl:
+                with pysam.AlignmentFile(bam) as fh:
+                    if not fh.check_index():
+                        sys.exit('bam not indexed: %s' % bam)
 
-        data[bam] = None
+            data[bam] = None
 
-    if bam in ct_bams:
-        logger.info(f'Assuming modtype m for C/T substitution bam {bam}')
-        mods = ['m']
-    else:
-        if not args.bedmethyl:
-            mods = mods_methbam(bam)
+    if not mods:
+        if bam in ct_bams:
+            logger.info(f'Assuming modtype m for C/T substitution bam {bam}')
+            mods = ['m']
         else:
-            mods = mods_bedmethyl(bam)
+            if not args.bedmethyl:
+                mods = mods_methbam(bam)
+            else:
+                mods = mods_bedmethyl(bam)
 
     mods = list(set(mods))
 
