@@ -14,7 +14,6 @@ random.seed(1)
 import itertools
 import sqlite3
 import warnings
-from matplotlib.colors import NoNorm
 
 # Force matplotlib to not use any Xwindows backend.
 matplotlib.use('Agg')
