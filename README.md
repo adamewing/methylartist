@@ -223,10 +223,10 @@ methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sa
 
 ![locus plot](https://github.com/adamewing/methylartist/blob/main/docs/GPER1.MCF7_data_megalodon.chr7_1072064-1101499.m.ms1.smw38.locus.meth.png?raw=true)
 
-From top to bottom, the plot shows the genome coordinates, gene models (optional if `--gtf` is supplied), read mappings with modified bases as closed (modified) or open (unmodified) circles, translation from genome to CpG-only coordinate space, raw log-likelihood ratios, and smoothed methylated fraction plot. Note that `--genes` results in plotting only the genes specified after `--genes` (comma-delimited), leaving this out plots all genes across the window. Gene name labels can be added via `--labelgenes`:
+From top to bottom, the plot shows the genome coordinates, gene models (optional if `--gtf` is supplied), read mappings with modified bases as closed (modified) or open (unmodified) circles, translation from genome to CpG-only coordinate space, raw log-likelihood ratios, and smoothed methylated fraction plot. Note that `--genes` results in plotting only the genes specified after `--genes` (comma-delimited), leaving this out plots all genes across the window:
 
 ```
-methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz -l 1085667-1089471 -p 1,6,1,3,4 --labelgenes
+methylartist locus -d MCF7_data_megalodon.txt -i chr7:1072064-1101499 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz -l 1085667-1089471 -p 1,6,1,3,4
 ```
 ![locus plot](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_data_megalodon.chr7_1072064-1101499.m.ms1.smw38.locus.meth.png?raw=true)
 
@@ -244,7 +244,7 @@ methylartist locus -d MCF7_data_megalodon.txt -i chr14:64213064-64351433 --gtf H
 
 Plot of the ERBB2 (HER2) locus in hg38, using a data input file (`-d`) with custom colour specification:
 ```
-methylartist locus -d MCF7_data_megalodon.colours.txt -i chr17:39677914-39738361 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes ERBB2 --highlight_bed erbb2.highlights.txt --highlightpalette viridis --labelgenes
+methylartist locus -d MCF7_data_megalodon.colours.txt -i chr17:39677914-39738361 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --genes ERBB2 --highlight_bed erbb2.highlights.txt --highlightpalette viridis
 ```
 
 Contents of `MCF7_data_megalodon.colours.txt`:
@@ -267,7 +267,7 @@ chr17 39698981 39707766
 Since WGBS/EM-seq data is supported by specifying that the .bam is C/T substitution data via `--ctbam`, this data can be displayed via any of the other methylartist commands, e.g.:
 
 ```
-methylartist locus -b NA12878.EMSEQ.GAPDH.bam --ctbam NA12878.EMSEQ.GAPDH.bam -i chr12:6,517,169-6,555,718 -g data/Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --labelgenes --panelratios 5,5,1,3,3 --ref data/Homo_sapiens_assembly38.fasta.gz --motif CG
+methylartist locus -b NA12878.EMSEQ.GAPDH.bam --ctbam NA12878.EMSEQ.GAPDH.bam -i chr12:6,517,169-6,555,718 -g data/Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --panelratios 5,5,1,3,3 --ref data/Homo_sapiens_assembly38.fasta.gz --motif CG
 ```
 
 ![locus plot ct](https://github.com/adamewing/methylartist/blob/main/docs/sub_test.data.chr12_6517169_6555718.m.ms1.smw34.locus.meth.png?raw=true)
