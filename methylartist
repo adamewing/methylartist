@@ -4204,7 +4204,7 @@ def locus(args):
     if args.skip_align_plot:
         p_ratios[1] = 0
     
-    if args.skip_raw_plot:
+    if not args.include_raw_plot:
         p_ratios[3] = 0
 
     fig = plt.figure()
@@ -4229,7 +4229,7 @@ def locus(args):
 
         p_ratios = user_p_ratios
 
-        if args.skip_raw_plot:
+        if not args.include_raw_plot:
             p_ratios[3] = 0
 
         gs = gridspec.GridSpec(len(p_ratios),1,height_ratios=p_ratios, hspace=0)
@@ -4339,7 +4339,7 @@ def locus(args):
             exon_len = exon_end - exon_start
             exon_patches.append(matplotlib.patches.Rectangle([exon_start-elt_start, y], exon_len, float(args.exonheight), edgecolor=gene_colours[i], facecolor=gene_colours[i], zorder=3))
 
-        if args.labelgenes:
+        if not args.hidegenelabels:
             label = genes[ensg].name
 
             if genes[ensg].strand in ('+', '-'):
@@ -4368,7 +4368,7 @@ def locus(args):
 
     gene_height = max(4, len(genemap))
 
-    if args.labelgenes:
+    if not args.hidegenelabels:
         gene_height = max(8, len(genemap))
 
     if args.bed:
@@ -4737,7 +4737,7 @@ def locus(args):
     ax4.set_xticks([])
     ax4.yaxis.tick_right()
 
-    if args.skip_raw_plot:
+    if not args.include_raw_plot:
         ax4.set_yticks([])
 
     else:
@@ -4851,7 +4851,7 @@ def locus(args):
 
     smoothed_df = pd.DataFrame(smoothed_values)
 
-    if args.skip_raw_plot:
+    if not args.include_raw_plot:
         if not args.hidelegend:
             ax5.legend()
     else:
@@ -4887,13 +4887,13 @@ def locus(args):
             found_phases[hp] = True
 
         if not args.hidelegend:
-            if args.skip_raw_plot:
+            if not args.include_raw_plot:
                 ax5.legend(new_handles, new_labels)
             else:
                 ax4.legend(new_handles, new_labels)
 
     if args.colormap:
-        if args.skip_raw_plot:
+        if not args.include_raw_plot:
             ax5.legend([mpatches.Patch(color=c) for c in colour_mapping.values()], colour_mapping.keys())
         else:
             ax4.legend([mpatches.Patch(color=c) for c in colour_mapping.values()], colour_mapping.keys())
@@ -4916,7 +4916,7 @@ def locus(args):
     for h in highlight_patches:
         ax5.add_patch(h)
 
-    if args.skip_raw_plot:
+    if not args.include_raw_plot:
         ax5.set_zorder(1)
 
     # coverage plot (optional)
@@ -6966,7 +6966,7 @@ def parse_args():
     parser_locus.add_argument('-o', '--outfile', default=None, help='output file name (default: generated from input)')
     parser_locus.add_argument('--samplebox', default=False, action='store_true', help='draw sample box with labels next to alignments')
     parser_locus.add_argument('--skip_align_plot', default=False, action='store_true', help='do not plot alignments')
-    parser_locus.add_argument('--skip_raw_plot', default=False, action='store_true', help='do not plot raw signal')
+    parser_locus.add_argument('--include_raw_plot', default=False, action='store_true', help='include plot raw signal')
     parser_locus.add_argument('--meth_thresh', default=0.8, help='modified base threshold (default=0.8)')
     parser_locus.add_argument('--can_thresh', default=0.8, help='canonical base threshold (default=0.8)')
     parser_locus.add_argument('--ctbam', default=None, help='specify which .bam(s) are C/T substitution data (can be comma-delimited)')
@@ -7010,7 +7010,7 @@ def parse_args():
     parser_locus.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
     parser_locus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
-    parser_locus.add_argument('--labelgenes', default=False, action='store_true', help='plot gene names')
+    parser_locus.add_argument('--hidegenelabels', default=False, action='store_true', help='plot gene names')
     parser_locus.add_argument('--hidelegend', default=False, action='store_true', help='hide legends')
     parser_locus.add_argument('--exonheight', default=0.8, help='set exon height (default=0.8)')
     parser_locus.add_argument('--show_transcripts', default=False, action='store_true', help='plot all transcripts, use transcript_id/transcript_name attrs')
