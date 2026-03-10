@@ -1083,7 +1083,7 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
                 mm = str(rec.get_tag('Mm')).rstrip(';')
             except:
                 if not mm_warned:
-                    logger.info('cannot find MM tag in at least one read')
+                    logger.debug('cannot find MM tag in at least one read, ensure this bam has MM and ML tags!')
                     mm_warned = True
                 continue
 
@@ -1120,8 +1120,7 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
             try:
                 mod_base, mod_type_raw = mod_info.split(mod_strand)
             except ValueError:
-                logger.info('%s: malformed mod string for read %s (%s) skipped.' %
-                            (bam_fn, rec.qname, mod_info))
+                logger.debug('%s: malformed mod string for read %s (%s) skipped.' % (bam_fn, rec.qname, mod_info))
                 continue
 
             implicit_mode = None
