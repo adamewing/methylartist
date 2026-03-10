@@ -1137,19 +1137,13 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
 
             base_pos = [i for i, b in enumerate(seq) if b == mod_base]
 
-            logger.info(f"{rec.qname} base_positions({mod_base})={base_pos[:20]} total={len(base_pos)}")
-
             i = -1
 
             called_indices = set() if (implicit_mode == 'canonical' and infer_implicit) else None
 
             for skip, score in zip(mod_relpos, scores):
 
-                logger.info(f"{rec.qname} skip={skip} score={score} current_i={i}")
-
                 i += 1
-
-                logger.info(f"{rec.qname} updated_i={i}")
 
                 if skip > 0:
                     i += skip
@@ -1175,12 +1169,8 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
                 if genome_pos is None:
                     continue
 
-                logger.info(f"{rec.qname} read_pos={read_pos} genome_pos={genome_pos} reverse={rec.is_reverse}")
-
                 p_mod = score / 255
                 p_can = 1 - p_mod
-
-                logger.info(f"{rec.qname} genome_pos={genome_pos} score={score} p_mod={p_mod:.3f}")
 
                 assert p_mod <= 1.0
 
@@ -1191,8 +1181,6 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
 
                 if p_can > can_thresh:
                     methstate = -1
-
-                logger.info(f"{rec.qname} genome_pos={genome_pos} score={score} p_mod={p_mod:.3f} state={methstate}")
 
                 yield (rec.qname, rec.reference_name, genome_pos,
                        p_mod, methstate, mod_type)
@@ -1223,13 +1211,9 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
                     if genome_pos is None:
                         continue
 
-                    logger.info(f"{rec.qname} implicit canonical read_pos={read_pos} genome_pos={genome_pos}")
-
                     p_mod = 0.0
                     p_can = 1.0
                     methstate = -1
-
-                    logger.info(f"{rec.qname} genome_pos={genome_pos} implicit canonical p_mod=0.000 state={methstate}")
 
                     yield (rec.qname, rec.reference_name, genome_pos,
                            p_mod, methstate, mod_type)
@@ -6887,7 +6871,6 @@ def wgmeth(args):
 
 def main():
     logger.info('starting methylartist with command: %s' % ' '.join(sys.argv))
-    logger.info("buthoole")
     args = parse_args()
     args.func(args)
 
