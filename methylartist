@@ -574,11 +574,10 @@ def get_phased_reads(fn, chrom, start, end, min_mapq=10, retry=5, tag_untagged=F
     return reads
 
 
-def get_variant_reads(fn, chrom, start, end, variants, min_mapq=10, primary_only=False):
+def get_variant_reads(fn, chrom, start, end, variants, dist_tolerance, size_tolerance, min_mapq=10, primary_only=False):
     reads = {}
 
     assert len(variants) == 1
-
     bam = pysam.AlignmentFile(fn)
     for read in bam.fetch(chrom, start, end):
         if read.seq is None:
@@ -591,12 +590,12 @@ def get_variant_reads(fn, chrom, start, end, variants, min_mapq=10, primary_only
         if read.mapq >= min_mapq:    
             allele = None
 
-            alt_sites = check_variants(variants, read, allele='alt')
+            alt_sites = check_variants(variants, read, dist_tolerance, size_tolerance, allele='alt')
             if len(alt_sites) > 0:
                 allele = 'alt'
 
             else:
-                ref_sites = check_variants(variants, read, allele='ref')
+                ref_sites = check_variants(variants, read, dist_tolerance, size_tolerance, allele='ref')
                 if len(ref_sites) > 0:
                     allele = 'ref'
 
@@ -605,35 +604,42 @@ def get_variant_reads(fn, chrom, start, end, variants, min_mapq=10, primary_only
     return reads
 
 
-def check_variants(variants, read, allele=None):
+def check_variants(variants, read, dist_tolerance, size_tolerance, allele=None):
     sites = []
 
     assert allele in ('ref', 'alt')
     
     for q, r in read.get_aligned_pairs():
-        if q is not None and r in variants:
-            vref, valt, vartype, varlen = variants[r]
+        if r is not None:
+            if r+1 in variants:
+                vref, valt, vartype, varlen = variants[r+1]
 
-            if vartype == 'SNV':
-                if allele == 'alt':
-                    if read.seq[q].upper() == valt.upper():
-                        sites.append(r)
+                if vartype == 'SNV':
+                    if allele == 'alt':
+                        if read.seq[q].upper() == valt.upper():
+                            sites.append(r+1)
 
-                if allele == 'ref':
-                    if read.seq[q].upper() == vref.upper():
-                        sites.append(r)
-            
-            elif vartype in ('INS', 'DEL'):
-                sv_gt = has_sv(read, r, variants[r])
+                    if allele == 'ref':
+                        if read.seq[q].upper() == vref.upper():
+                            sites.append(r+1)
+                
+                elif vartype in ('INS', 'DEL'):
+                    sv_gt = has_sv(read, r+1, variants[r+1], dist_tolerance, size_tolerance)
 
-                if allele == sv_gt:
-                    sites.append(r)
+                    if allele == sv_gt:
+                        sites.append(r+1)
 
     return sites
 
 
-def has_sv(read, bnd, variant, window=100):
+import logging
+
+logger = logging.getLogger(__name__)
+
+def has_sv(read, bnd, variant, dist_tolerance, size_tolerance):
+
     if read.seq is None:
+        logger.debug(f"{read.query_name}: skipping read with no sequence")
         return None
 
     svtype = variant[2]
@@ -641,76 +647,55 @@ def has_sv(read, bnd, variant, window=100):
 
     assert svtype in ('DEL', 'INS')
 
-    ap = {}
+    ref_pos = read.reference_start
 
-    ap = dict(read.get_aligned_pairs())
+    for op, length in read.cigartuples:
+        # stop scanning once we're past breakpoint window
+        if ref_pos > (bnd + dist_tolerance):
+            break
+        # MATCH
+        if op == 0:
+            ref_pos += length
 
-    best_rpos = None
-    best_gpos = None
+        # INSERTION
+        elif op == 1:
 
-    for rpos, gpos in ap.items():
-        if gpos is None:
-            continue
+            if svtype == 'INS':
+                distance_to_bnd = abs(bnd - ref_pos)
+                if distance_to_bnd <= dist_tolerance:
+                    size_diff = abs(svlen - length)
+                    if svlen > 0:
+                        size_diff /= svlen
+                    if size_diff <= size_tolerance:
+                        logger.debug(
+                            f"{read.query_name}: matching insertion length={length} pos={ref_pos}"
+                        )
+                        return 'alt'
+        # DELETION
+        elif op == 2:
+            if svtype == 'DEL':
+                distance_to_bnd = abs(bnd - ref_pos)
+                if distance_to_bnd <= dist_tolerance:
+                    size_diff = abs(svlen - length)
+                    if svlen > 0:
+                        size_diff /= svlen
+                    if size_diff <= size_tolerance:
+                        logger.debug(
+                            f"{read.query_name}: matching deletion length={length} pos={ref_pos}"
+                        )
+                        return 'alt'
+            ref_pos += length
 
-        if best_gpos is None:
-            best_gpos = gpos
-            best_rpos = rpos
-
+        # SOFT CLIP
+        elif op == 4:
+            pass
+        # HARD CLIP
+        elif op == 5:
+            pass
+        # OTHER
         else:
-            if abs(bnd-gpos) < abs(bnd-best_gpos):
-                best_gpos = gpos
-                best_rpos = rpos
-
-    if best_rpos < window:
-        return None
-
-    if len(read.seq)-best_rpos < window:
-        return None
-
-    bnd_right = 0
-    bnd_left = 0
-    prev_rp = 0
-
-    for rp in range(best_rpos-1, best_rpos+window):
-        if rp in ap:
-            if ap[rp] is None:
-                bnd_right += 1
-            elif None not in (ap[rp], ap[prev_rp]) and abs(abs(ap[rp]-ap[prev_rp]) - svlen) < window:
-                bnd_right += svlen
-            if ap[rp] is not None:
-                prev_rp = rp
-
-    prev_rp = 0
-
-    for rp in range(best_rpos-window, best_rpos+1):
-        if rp in ap:
-            if ap[rp] is None:
-                bnd_left += 1
-            elif None not in (ap[rp], ap[prev_rp]) and abs(abs(ap[rp]-ap[prev_rp]) - svlen) < window:
-                bnd_left += svlen
-            if ap[rp] is not None:
-                prev_rp = rp
-
-    if svtype == 'INS' and max(bnd_left, bnd_right)*1.25 > window:
-        return 'alt'
-
-    if svtype == 'DEL' and max(bnd_left, bnd_right)*1.25 > svlen:
-        return 'alt'
-    
+            ref_pos += length
     return 'ref'
-
-
-def single_seq_fa(fn):
-    with open(fn, 'r') as fa:
-        seq   = ''
-        for line in fa:
-            if line.startswith('>'):
-                assert seq == '', 'input fa must have only one entry'
-            else:
-                seq = seq + line.strip()
-
-    return seq
-
 
 def rc(dna):
     ''' reverse complement '''
@@ -1600,7 +1585,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, infer_implicit, meth_thresh=0.8, ca
         reads = [r for r in reads if r in phased_reads_dict and phased_reads_dict[r] == phase]
 
     if variant:
-        var_reads_dict = get_variant_reads(bam, chrom, elt_start, elt_end, variant, min_mapq=int(args.min_mapq))
+        var_reads_dict = get_variant_reads(bam, chrom, elt_start, elt_end, variant, args.dist_tolerance, args.size_tolerance, min_mapq=int(args.min_mapq))
         reads = [r for r in reads if r in var_reads_dict and var_reads_dict[r] == allele]
 
     if hasattr(args, 'unambig_highlight') and hasattr(args, 'highlight'): 
@@ -3734,7 +3719,7 @@ def locus(args):
         with open(args.variants) as _:
             for rec in var_tbx.fetch(chrom, elt_start, elt_end):
                 vchrom, vpos, vid, vref, valt, vqual, vfilt, vinfo = rec.strip().split()[:8]
-                vpos = int(vpos)-1  # VCF is 1-based, BAM is 0-based
+                vpos = int(vpos)  # VCF is 1-based, BAM is 0-based
 
                 if vfilt not in ('PASS', '.'):
                     continue
@@ -3755,8 +3740,17 @@ def locus(args):
                         i = info_field.split('=')
                         if i[0] == 'SVTYPE':
                             vtype = i[1]
+                        # if type isn't made explicit then infer it
+                        elif (len(vref)>len(valt)):
+                            vtype = 'DEL'
+                        elif (len(vref)<len(valt)):
+                            valt = 'INS'
                         if i[0] == 'SVLEN':
                             vlen = int(i[1])
+                        # do same for SVLEN
+                        elif(vtype in ('INS','DEL')):
+                            vlen = abs(len(vref) - len(valt))
+
 
                 if split_vid:
                     if split_vid == vid:
@@ -3919,7 +3913,7 @@ def locus(args):
 
     if args.splitvar:
         for bam in data:
-            phased_reads = get_variant_reads(bam, chrom, elt_start, elt_end, variants, min_mapq=int(args.min_mapq), primary_only=args.primary_only)
+            phased_reads = get_variant_reads(bam, chrom, elt_start, elt_end, variants, args.dist_tolerance, args.size_tolerance, min_mapq=int(args.min_mapq), primary_only=args.primary_only)
             phases[bam] = list(set([p for p in phased_reads.values() if p]))
             logger.info('splitvar phases for bam %s: %s' % (bam, ','.join(phases[bam])))
 
@@ -4514,7 +4508,7 @@ def locus(args):
 
                 # Process variants if needed
                 if args.variants and read.query_name not in varcache:
-                    varcache[read.query_name] = check_variants(variants, read, allele='alt')
+                    varcache[read.query_name] = check_variants(variants, read, args.dist_tolerance, args.size_tolerance, allele='alt')
             
             fetch_reads_bam.close()
 
@@ -7051,6 +7045,8 @@ def parse_args():
     parser_locus.add_argument('--notext', default=False, action='store_true', help='remove all text from figure')
     parser_locus.add_argument('--svg', action='store_true')
     parser_locus.add_argument('--infer_implicit', action='store_true', default=False, help='If MM tags are marked with an implicitly cannonical base code (i.e ".") then these will be interpreted as a zero probability')
+    parser_locus.add_argument('--dist_tolerance', default=50, help='number of allowed basepairs away from a labeled variant position (in vcf) to count as a particular variant')
+    parser_locus.add_argument('--size_tolerance', default=0.2, help='allowed percentage difference in size to be considered the same as a variant in a vcf file')
 
     # options for region plots
     parser_region.add_argument('-i', '--interval', required=True, help='chrom:start-end')
