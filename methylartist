@@ -3752,7 +3752,7 @@ def locus(args):
                         elif (len(vref)>len(valt)):
                             vtype = 'DEL'
                         elif (len(vref)<len(valt)):
-                            valt = 'INS'
+                            vtype = 'INS'
                         if i[0] == 'SVLEN':
                             vlen = int(i[1])
                         # do same for SVLEN
