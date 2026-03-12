@@ -4515,7 +4515,6 @@ def locus(args):
                 # Process variants if needed
                 if args.variants and read.query_name not in varcache:
                     varcache[read.query_name] = check_variants(variants, read, args.dist_tolerance, args.size_tolerance, allele='alt')
-                    logger.info(varcache[read.query_name])
             
             fetch_reads_bam.close()
 
