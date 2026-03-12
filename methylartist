@@ -590,12 +590,12 @@ def get_variant_reads(fn, chrom, start, end, variants, dist_tolerance, size_tole
         if read.mapq >= min_mapq:    
             allele = None
 
-            alt_sites = check_variants(variants, read, dist_tolerance, size_tolerance, allele='alt')
+            alt_sites = check_variants(variants, read, dist_tolerance, size_tolerance, allele='alt')[0]
             if len(alt_sites) > 0:
                 allele = 'alt'
 
             else:
-                ref_sites = check_variants(variants, read, dist_tolerance, size_tolerance, allele='ref')
+                ref_sites = check_variants(variants, read, dist_tolerance, size_tolerance, allele='ref')[0]
                 if len(ref_sites) > 0:
                     allele = 'ref'
 
@@ -605,8 +605,9 @@ def get_variant_reads(fn, chrom, start, end, variants, dist_tolerance, size_tole
 
 
 def check_variants(variants, read, dist_tolerance, size_tolerance, allele=None):
-    sites = []
-
+    variant_sites = []
+    variant_types = []
+    variant_lengths = []
     assert allele in ('ref', 'alt')
     
     for q, r in read.get_aligned_pairs():
@@ -617,19 +618,26 @@ def check_variants(variants, read, dist_tolerance, size_tolerance, allele=None):
                 if vartype == 'SNV':
                     if allele == 'alt':
                         if read.seq[q].upper() == valt.upper():
-                            sites.append(r+1)
+                            variant_sites.append(r+1)
+                            variant_types.append(vartype)
+                            variant_lengths.append(varlen)
 
                     if allele == 'ref':
                         if read.seq[q].upper() == vref.upper():
-                            sites.append(r+1)
+                            variant_sites.append(r+1)
+                            variant_types.append(vartype)
+                            variant_lengths.append(varlen)
+
                 
                 elif vartype in ('INS', 'DEL'):
                     sv_gt = has_sv(read, r+1, variants[r+1], dist_tolerance, size_tolerance)
 
                     if allele == sv_gt:
-                        sites.append(r+1)
+                        variant_sites.append(r+1)
+                        variant_types.append(vartype)
+                        variant_lengths.append(varlen)
 
-    return sites
+    return (variant_sites,variant_types, variant_lengths)
 
 
 import logging
@@ -4509,6 +4517,7 @@ def locus(args):
                 # Process variants if needed
                 if args.variants and read.query_name not in varcache:
                     varcache[read.query_name] = check_variants(variants, read, args.dist_tolerance, args.size_tolerance, allele='alt')
+                    logger.info(varcache[read.query_name])
             
             fetch_reads_bam.close()
 
@@ -4608,8 +4617,9 @@ def locus(args):
                 
                 # Collect variant markers
                 if args.variants and read.read_name in varcache:
-                    for alt_site in varcache[read.read_name]:
-                        variant_markers.append((alt_site-elt_start, read.ypos, var_colours[alt_site]))
+                    alt_sites, alt_types, alt_lengths = varcache[read.read_name]
+                    for alt_site, alt_type, alt_length in zip(alt_sites, alt_types, alt_lengths):
+                        variant_markers.append((alt_site-elt_start, alt_length, alt_type, read.ypos, var_colours[alt_site]))
             
             # Plot in batches for this sample
             if unmeth_markers:
@@ -4625,9 +4635,16 @@ def locus(args):
                 ax1.add_line(matplotlib.lines.Line2D([x1, x2], [y1, y2], lw=lw, zorder=2, color=sample_color[bamname], alpha=la))
             
             # Plot variant markers for this sample
-            for x, y, color in variant_markers:
-                ax1.plot(x, y, marker='v', fillstyle='full', mec='black', mfc=color, markersize=int(args.variantsize), zorder=4, alpha=1)
-
+            for start, length, vartype, ypos, color in variant_markers:
+                if vartype == 'SNV':
+                    ax1.plot(start,ypos, marker= 'v',fillstyle='full', mec='black', mfc=color, markersize=int(args.variantsize), zorder=4, alpha=1)
+                if vartype == 'INS':
+                    ax1.plot(start,ypos, marker= 'P',fillstyle='full', mec='black', mfc=color, markersize=int(args.variantsize), zorder=4, alpha=1)
+                if vartype == 'DEL':
+                     ax1.plot(start,ypos, marker= '|',fillstyle='full', mec=color, mfc=color, markersize=int(args.variantsize), zorder=4, alpha=1)
+                     ax1.add_line(matplotlib.lines.Line2D([start, (start+length)], [ypos, ypos], lw=lw, zorder=4, color=color, alpha=1))
+                     ax1.plot((start+length), ypos, marker= '|',fillstyle='full', mec=color, mfc=color, markersize=int(args.variantsize), zorder=4, alpha=1)
+                     
             bam_ylims[bamname] = [min([r[0][1] for r in read_lines]), max([r[0][1] for r in read_lines])]
             bam_xlims[bamname] = [min([r[1][0] for r in read_lines]), max([r[1][0] for r in read_lines])]
         
