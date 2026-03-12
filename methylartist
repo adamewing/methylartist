@@ -1020,7 +1020,21 @@ def sample_bam(bam_fn, motif, ref, n, infer_implicit):
     return np.asarray(sample)
 
 
-def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,meth_thresh=0.8, can_thresh=0.8, restrict_motif=None, restrict_ref=None, primary_only=False, retry=5):
+def parse_methbam(
+    bam_fn,
+    reads,
+    chrom,
+    start,
+    end,
+    infer_implicit,
+    motifsize=2,
+    meth_thresh=0.8,
+    can_thresh=0.8,
+    restrict_motif=None,
+    restrict_ref=None,
+    primary_only=False,
+    retry=5
+):
 
     retries = 0
     bam_open = False
@@ -1043,6 +1057,28 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
 
     if restrict_ref is not None:
         restrict_ref = pysam.Fastafile(restrict_ref)
+
+    def motif_ok(rec, genome_pos):
+        if restrict_motif is None or restrict_ref is None:
+            return True
+
+        if genome_pos < 0:
+            return False
+
+        try:
+            ref_motif = restrict_ref.fetch(
+                rec.reference_name,
+                genome_pos,
+                genome_pos + motifsize
+            )
+
+            if motifsize == 1 and rec.is_reverse:
+                ref_motif = rc(ref_motif)
+
+        except ValueError:
+            return False
+
+        return ref_motif.upper() == restrict_motif.upper()
 
     mm_warned = False
 
@@ -1076,7 +1112,9 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
                 mm = str(rec.get_tag('Mm')).rstrip(';')
             except:
                 if not mm_warned:
-                    logger.debug('cannot find MM tag in at least one read, ensure this bam has MM and ML tags!')
+                    logger.debug(
+                        'cannot find MM tag in at least one read, ensure this bam has MM and ML tags!'
+                    )
                     mm_warned = True
                 continue
 
@@ -1106,14 +1144,16 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
             mod_relpos = list(map(int, m[1:]))
 
             mod_strand = '+'
-
             if '-' in mod_info:
                 mod_strand = '-'
 
             try:
                 mod_base, mod_type_raw = mod_info.split(mod_strand)
             except ValueError:
-                logger.debug('%s: malformed mod string for read %s (%s) skipped.' % (bam_fn, rec.qname, mod_info))
+                logger.debug(
+                    '%s: malformed mod string for read %s (%s) skipped.'
+                    % (bam_fn, rec.qname, mod_info)
+                )
                 continue
 
             implicit_mode = None
@@ -1136,11 +1176,8 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
             for skip, score in zip(mod_relpos, scores):
 
                 i += 1
-
                 if skip > 0:
                     i += skip
-
-                genome_pos = None
 
                 if i >= len(base_pos):
                     continue
@@ -1161,6 +1198,9 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
                 if genome_pos is None:
                     continue
 
+                if not motif_ok(rec, genome_pos):
+                    continue
+
                 p_mod = score / 255
                 p_can = 1 - p_mod
 
@@ -1174,8 +1214,14 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
                 if p_can > can_thresh:
                     methstate = -1
 
-                yield (rec.qname, rec.reference_name, genome_pos,
-                       p_mod, methstate, mod_type)
+                yield (
+                    rec.qname,
+                    rec.reference_name,
+                    genome_pos,
+                    p_mod,
+                    methstate,
+                    mod_type
+                )
 
                 if called_indices is not None:
                     called_indices.add(i)
@@ -1186,8 +1232,6 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
 
                     if idx in called_indices:
                         continue
-
-                    genome_pos = None
 
                     if rec.is_reverse:
                         genome_pos = ap.get(len(rec.seq) - read_pos - 1)
@@ -1203,67 +1247,21 @@ def parse_methbam(bam_fn, reads, chrom, start, end,infer_implicit, motifsize=2,m
                     if genome_pos is None:
                         continue
 
+                    if not motif_ok(rec, genome_pos):
+                        continue
+
                     p_mod = 0.0
                     p_can = 1.0
                     methstate = -1
 
-                    yield (rec.qname, rec.reference_name, genome_pos,
-                           p_mod, methstate, mod_type)
-def parse_ctbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, can_thresh=0.8, restrict_motif=None, restrict_ref=None, primary_only=False, retry=5):
-    retries = 0
-    bam_open = False
-
-    while not bam_open:
-        try:
-            bam = pysam.AlignmentFile(bam_fn)
-            bam_open = True
-
-        except OSError as e:
-            if retries < retry:
-                logger.warning(f'retry open on {bam_fn}, possibly due to network filesystem')
-                sleep(1)
-                retries += 1
-                
-            else:
-                sys.exit(e)
-
-    for read in bam.fetch(chrom, start, end):
-        if read.is_unmapped:
-            continue
-
-        if read.seq is None:
-            continue
-
-        if len(reads) == 0:
-            continue
-
-        if read.qname not in reads:
-            continue
-
-        if primary_only:
-            if read.is_secondary or read.is_supplementary:
-                continue
-
-        strand = '+'
-        if read.is_reverse:
-            strand = '-'
-
-        if read.has_tag('MD'):
-            for cpg in bs_parse_mm(read):
-                pos, mod_prob = cpg
-
-                methcall = 0
-
-                if mod_prob > 0.8:
-                    methcall = 1
-
-                if mod_prob < 0.2:
-                    methcall = -1 
-
-                data = [read.reference_name, pos, strand, read.query_name, mod_prob, methcall, 'm']
-
-                yield (read.qname, read.reference_name, pos, mod_prob, methcall, 'm')
-
+                    yield (
+                        rec.qname,
+                        rec.reference_name,
+                        genome_pos,
+                        p_mod,
+                        methstate,
+                        mod_type
+                    )
 
 def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, bedmethyl, ct_bams, meth_thresh, can_thresh, lowmethread_thresh, highmethread_thresh, infer_implicit):
 
@@ -6881,6 +6879,7 @@ def wgmeth(args):
 
 def main():
     logger.info('starting methylartist with command: %s' % ' '.join(sys.argv))
+    logger.info("buthoole")
     args = parse_args()
     args.func(args)
 
