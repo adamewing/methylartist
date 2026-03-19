@@ -6868,7 +6868,6 @@ def wgmeth(args):
 
 def main():
     logger.info('starting methylartist with command: %s' % ' '.join(sys.argv))
-    logger.info("buthoole")
     args = parse_args()
     args.func(args)
 
