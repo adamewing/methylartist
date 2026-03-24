@@ -15,7 +15,7 @@ setup(
     packages=find_packages(),
     install_requires = [
         'cython',
-        'pysam',
+        'pysam>=0.19.0',
         'numpy',
         'scipy',
         'pandas',

@@ -1052,8 +1052,6 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
     if restrict_ref is not None:
         restrict_ref = pysam.Fastafile(restrict_ref)
 
-    mm_warned = False
-
     for rec in bam.fetch(chrom, start, end):
         if rec.is_unmapped:
             continue
@@ -1071,103 +1069,31 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
             if rec.is_secondary or rec.is_supplementary:
                 continue
 
-        ap = dict([(k, v) for (k, v) in rec.get_aligned_pairs() if k is not None])
-
-        mm = None
-        ml = None
-
         try:
-            mm = str(rec.get_tag('MM')).rstrip(';')
-
-        except KeyError:
-            try:
-                mm = str(rec.get_tag('Mm')).rstrip(';')
-            except:
-                if not mm_warned:
-                    logger.debug('cannot find MM tag in at least one read, ensure this bam has MM and ML tags!')
-                    mm_warned = True
-                    continue
-
-        try:
-            ml = rec.get_tag('ML')
-        except KeyError:
-            try:
-                ml = rec.get_tag('Ml')
-            except KeyError:
-                continue
-
-        if None in (mm, ml):
+            mods = rec.modified_bases
+        except Exception:
             continue
 
-        mod_strings = mm.split(';')
-        
-        mls = split_ml(mod_strings, ml)
+        if not mods:
+            continue
 
-        seq = rec.seq
+        ap = dict([(k, v) for (k, v) in rec.get_aligned_pairs() if k is not None])
 
-        if rec.is_reverse:
-            seq = rc(seq)
+        for (canonical_base, strand, mod_code), calls in mods.items():
+            mod_type = str(mod_code)
 
-        for mod_string, scores in zip(mod_strings, mls):
-            m = mod_string.split(',')
-            mod_info = m[0]
+            for query_pos, qual in calls:
+                if qual == -1:
+                    continue  # skip unknown implicit probabilities (?-tagged)
 
-            mod_relpos = list(map(int, m[1:]))
-
-            mod_strand = '+'
-
-            if '-' in mod_info:
-                mod_strand = '-'
-
-            try:
-                mod_base, mod_type = mod_info.split(mod_strand)
-                mod_type = mod_type.rstrip('?.')
-            except ValueError:
-                logger.debug('%s: malformed mod string for read %s (%s) skipped.' % (bam_fn, rec.qname, mod_info))
-                continue
-
-            assert len(mod_type) == 1, 'multiple modfications listed this way: %s is not yet supported, please send me an example!' % mod_info
-
-            base_pos = [i for i, b in enumerate(seq) if b == mod_base]
-
-            i = -1
-
-            for skip, score in zip(mod_relpos, scores):
-                i += 1
-
-                if skip > 0:
-                    i += skip
-
-                genome_pos = None
-
-                if rec.is_reverse:
-                    try:
-                        genome_pos = ap[len(rec.seq)-base_pos[i]-1]
-                    except IndexError:
-                        if i >= len(base_pos):
-                            genome_pos = None
-                        else:
-                            raise IndexError(".bam parsing error: position not in aligned pairs")
-
-                    if genome_pos is None:
-                        continue
-
-                    genome_pos -= (int(motifsize)-1)
-
-                else:
-                    try:
-                        genome_pos = ap[base_pos[i]]
-
-                    except IndexError:
-                        if i >= len(base_pos):
-                            genome_pos = None
-                        else:
-                            raise IndexError(".bam parsing error: position not in aligned pairs")
-
+                genome_pos = ap.get(query_pos)
                 if genome_pos is None:
                     continue
 
-                p_mod = score/255
+                if rec.is_reverse:
+                    genome_pos -= (int(motifsize)-1)
+
+                p_mod = qual/255
                 p_can = 1-p_mod
 
                 assert p_mod <= 1.0
@@ -1190,8 +1116,7 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
                             ref_motif = rc(ref_motif)
                     except ValueError:
                         logger.warning('warning, out of bounds motif at position %d in read: %s' % (genome_pos, rec.tostring()))
-
-                    #print(ref_motif, restrict_motif, rec.is_reverse)
+                        continue
 
                     if ref_motif.upper() != restrict_motif.upper():
                         continue
