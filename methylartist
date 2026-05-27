@@ -1002,7 +1002,7 @@ def split_ml(mod_strings, ml):
     return mls
 
 
-def sample_bam(bam_fn, motif, ref, n, infer_implicit):
+def sample_bam(bam_fn, motif, ref, n, infer_implicit, force_implicit=False):
     ref = pysam.Fastafile(ref)
 
     n = int(n)
@@ -1013,7 +1013,7 @@ def sample_bam(bam_fn, motif, ref, n, infer_implicit):
     logger.info('sampling %d mods from %s' % (n, bam_fn))
 
     for chrom in ref.references:
-        for res in parse_methbam(bam_fn, [], chrom, 0, ref.get_reference_length(chrom),infer_implicit, motifsize=len(motif), restrict_motif=motif, primary_only=True):
+        for res in parse_methbam(bam_fn, [], chrom, 0, ref.get_reference_length(chrom),infer_implicit, motifsize=len(motif), restrict_motif=motif, primary_only=True, force_implicit=force_implicit):
             sample.append(res[3])
             c += 1
             if c >= n:
@@ -1038,7 +1038,8 @@ def parse_methbam(
     restrict_motif=None,
     restrict_ref=None,
     primary_only=False,
-    retry=5
+    retry=5,
+    force_implicit=False
 ):
 
     retries = 0
@@ -1167,6 +1168,9 @@ def parse_methbam(
             elif mod_type_raw.endswith('?'):
                 implicit_mode = 'unknown'
 
+            if force_implicit:
+                implicit_mode = 'canonical'
+
             mod_type = mod_type_raw.rstrip('?.')
 
             assert len(mod_type) == 1, \
@@ -1268,7 +1272,7 @@ def parse_methbam(
                         mod_type
                     )
 
-def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, bedmethyl, ct_bams, meth_thresh, can_thresh, lowmethread_thresh, highmethread_thresh, infer_implicit):
+def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, bedmethyl, ct_bams, meth_thresh, can_thresh, lowmethread_thresh, highmethread_thresh, infer_implicit, force_implicit=False):
 
     lowmeth_count = {}
     highmeth_count = {}
@@ -1349,7 +1353,7 @@ def get_segmeth_calls(args, bam_fn, mod_names, meth_dbs, chrom, seg_start, seg_e
             parse_func = parse_ctbam
             multi_warn = False
 
-        for row in parse_func(bam_fn, reads, chrom, seg_start, seg_end, infer_implicit, meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_ref=args.ref, restrict_motif=args.motif, primary_only=args.primary_only):
+        for row in parse_func(bam_fn, reads, chrom, seg_start, seg_end, infer_implicit, meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_ref=args.ref, restrict_motif=args.motif, primary_only=args.primary_only, force_implicit=force_implicit):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if chrom != cg_chrom:
@@ -1555,7 +1559,7 @@ def assess_mean_separation(data, gmm_model):
     }
 
 
-def get_meth_locus(args, bam, meth_dbs, mod, infer_implicit, meth_thresh=0.8, can_thresh=0.8, allele=None, variant=None, phase=None, methbam=False, HP_only=False, restrict_motif=None, restrict_ref=None, ct_bams=None):
+def get_meth_locus(args, bam, meth_dbs, mod, infer_implicit, meth_thresh=0.8, can_thresh=0.8, allele=None, variant=None, phase=None, methbam=False, HP_only=False, restrict_motif=None, restrict_ref=None, ct_bams=None, force_implicit=False):
     # used for locus plots
 
     if phase:
@@ -1631,7 +1635,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, infer_implicit, meth_thresh=0.8, ca
             parse_func = parse_ctbam
             multi_warn = False
 
-        for row in parse_func(bam, reads, chrom, elt_start, elt_end, infer_implicit, motifsize=args.motifsize, meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_motif=restrict_motif, restrict_ref=restrict_ref, primary_only=args.primary_only):
+        for row in parse_func(bam, reads, chrom, elt_start, elt_end, infer_implicit, motifsize=args.motifsize, meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_motif=restrict_motif, restrict_ref=restrict_ref, primary_only=args.primary_only, force_implicit=force_implicit):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if methstate == 0:
@@ -1686,7 +1690,7 @@ def get_meth_locus(args, bam, meth_dbs, mod, infer_implicit, meth_thresh=0.8, ca
     return seg_reads
 
 
-def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, phase, meth_thresh, can_thresh, infer_implicit):
+def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, phase, meth_thresh, can_thresh, infer_implicit, force_implicit=False):
     per_bam_results = {}
 
     for bam in data:
@@ -1717,7 +1721,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
         seg_reads = {}
 
         if methbam:
-            for row in parse_methbam(bam, reads, seg_chrom, seg_start, seg_end,infer_implicit, motifsize=len(args.motif), meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_motif=args.motif, restrict_ref=args.ref, primary_only=args.primary_only):
+            for row in parse_methbam(bam, reads, seg_chrom, seg_start, seg_end,infer_implicit, motifsize=len(args.motif), meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_motif=args.motif, restrict_ref=args.ref, primary_only=args.primary_only, force_implicit=force_implicit):
                 index, cg_chrom, cg_start, stat, methstate, modname = row
 
                 if seg_chrom != cg_chrom:
@@ -1898,7 +1902,7 @@ def get_meth_profile_composite(args, data, methbam, seg_chrom, seg_start, seg_en
     return per_bam_results
 
 
-def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod, motifsize, ct_bams, meth_thresh, can_thresh, infer_implicit):
+def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, mod, motifsize, ct_bams, meth_thresh, can_thresh, infer_implicit, force_implicit=False):
     methbam = False
 
     if args.methdb is None:
@@ -1926,7 +1930,7 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
             parse_func = parse_ctbam
             multi_warn = False
 
-        for row in parse_func(bam_fn, set(reads), chrom, seg_start, seg_end,infer_implicit, meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_ref=args.ref, restrict_motif=args.motif, motifsize=motifsize, primary_only=args.primary_only):
+        for row in parse_func(bam_fn, set(reads), chrom, seg_start, seg_end,infer_implicit, meth_thresh=meth_thresh, can_thresh=can_thresh, restrict_ref=args.ref, restrict_motif=args.motif, motifsize=motifsize, primary_only=args.primary_only, force_implicit=force_implicit):
             index, cg_chrom, cg_start, stat, methstate, modname = row
 
             if mod is not None and mod != modname:
@@ -2344,7 +2348,7 @@ def scoredist(args):
         for bam in args.bam.split(','):
             meth_cutoffs.append(0.8)
             unmeth_cutoffs.append(0.2)
-            sample[os.path.basename(bam)] = sample_bam(bam, args.motif, args.ref, int(args.n), args.infer_implicit)
+            sample[os.path.basename(bam)] = sample_bam(bam, args.motif, args.ref, int(args.n), args.infer_implicit, force_implicit=args.force_implicit)
         
         out_fn = '_'.join(map(os.path.basename, args.bam.split(','))) + '.scoredist'
 
@@ -3253,7 +3257,7 @@ def segmeth(args):
                     seg_start = int(seg_start)
                     seg_end = int(seg_end)
 
-                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, args.bedmethyl, ct_bams, meth_thresh, can_thresh, float(args.lowmeth_thresh), float(args.highmeth_thresh), args.infer_implicit])
+                    res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mod_names, meth_fn, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, args.bedmethyl, ct_bams, meth_thresh, can_thresh, float(args.lowmeth_thresh), float(args.highmeth_thresh), args.infer_implicit], {'force_implicit': args.force_implicit})
 
                     results.append((res, base_name))
 
@@ -3954,7 +3958,7 @@ def locus(args):
                 for phase in phases[bam]:
                     bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + phase + '.' + mod
                     orig_bam[bamname] = bam
-                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod,args.infer_implicit, meth_thresh=meth_thresh, can_thresh=can_thresh, phase=phase, methbam=methbam, HP_only=args.ignore_ps, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod,args.infer_implicit, meth_thresh=meth_thresh, can_thresh=can_thresh, phase=phase, methbam=methbam, HP_only=args.ignore_ps, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams, force_implicit=args.force_implicit)
 
                     for name, read in reads[bamname].items():
                         for loc in read.llrs.keys():
@@ -3971,7 +3975,7 @@ def locus(args):
                 for allele in ('ref', 'alt'):
                     bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + allele + '.' + mod
                     orig_bam[bamname] = bam
-                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, args.infer_implicit, meth_thresh=meth_thresh, can_thresh=can_thresh, allele=allele, variant=variants, methbam=methbam, HP_only=args.ignore_ps, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, args.infer_implicit, meth_thresh=meth_thresh, can_thresh=can_thresh, allele=allele, variant=variants, methbam=methbam, HP_only=args.ignore_ps, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams, force_implicit=args.force_implicit)
 
                     for name, read in reads[bamname].items():
                         for loc in read.llrs.keys():
@@ -3988,7 +3992,7 @@ def locus(args):
             else:
                 bamname = '.'.join(os.path.basename(bam).split('.')[:-1]) + '.' + mod
                 orig_bam[bamname] = bam
-                reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod,args.infer_implicit, meth_thresh=meth_thresh, can_thresh=can_thresh, methbam=methbam, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
+                reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod,args.infer_implicit, meth_thresh=meth_thresh, can_thresh=can_thresh, methbam=methbam, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams, force_implicit=args.force_implicit)
 
                 for name, read in reads[bamname].items():
                     for loc in read.llrs.keys():
@@ -4258,6 +4262,8 @@ def locus(args):
         img_h += 2  # expand figure to cleanly fit density panel
 
     fig.set_size_inches(img_w, img_h)
+    matplotlib.rcParams.update({'font.size': 15 * (img_w / 16.0), 'axes.linewidth': 0.4})
+    fig.subplots_adjust(left=0.07, right=0.98)
 
     if args.panelratios:
         user_p_ratios = list(map(int, args.panelratios.split(',')))
@@ -4275,6 +4281,13 @@ def locus(args):
     sample_color = {}
     for i, sample in enumerate(sample_order):
         sample_color[sample] = sns.color_palette(args.samplepalette, n_colors=len(sample_order))[i]
+
+    if args.phased and not args.color_by_hp and not args.color_by_phase:
+        _hp_colors = {'1': '#1f77b4', '2': '#ff7f0e'}  # blue, orange
+        for sample in sample_color:
+            _hp = sample.split('.')[-2].split(':')[0]
+            if _hp in _hp_colors:
+                sample_color[sample] = _hp_colors[_hp]
 
     if args.color_by_phase:
         if args.phased:
@@ -4393,7 +4406,7 @@ def locus(args):
             if genes[ensg].tx_start-elt_start < 0:
                 nudge_up = tx_offset+0.1
 
-            gtxt = ax0.text(lg_x, y+nudge_up, label, zorder=4, fontsize='small')
+            gtxt = ax0.text(lg_x, y+nudge_up, label, zorder=4, fontsize='medium')
             bb_w = gtxt.get_tightbbox(renderer=fig.canvas.get_renderer()).width
             fig_w = fig.get_size_inches()[0]*fig.dpi
             txt_w = bb_w/fig_w*(elt_end-elt_start)
@@ -4850,8 +4863,8 @@ def locus(args):
             x2.append(x)
             x1.append(coord_to_cpg[x])
 
-    ax2.vlines(x1, 0, 1, color='#777777', zorder=1)
-    ax3.vlines(x2, 9, 10, color='#777777', zorder=1)
+    ax2.vlines(x1, 0, 1, color='#777777', zorder=1, linewidths=0.75)
+    ax3.vlines(x2, 9, 10, color='#777777', zorder=1, linewidths=0.75)
 
     if args.highlight or args.highlight_bed:
         for i in range(len(h_start)):
@@ -4874,12 +4887,12 @@ def locus(args):
         con = ConnectionPatch(xyA=link_end1, xyB=link_end2, coordsA="data", coordsB="data", axesA=ax2, axesB=ax3, color=l_col)
         ax3.add_artist(con)
 
-    ax0.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
-    ax1.set_xlim(ax3.get_xlim())
+    ax0.set_xlim(0, elt_end - elt_start)  # full requested region, consistent across mod types
+    ax1.set_xlim(0, elt_end - elt_start)
     if tag_track:
-        ax_tag.set_xlim(ax3.get_xlim())
+        ax_tag.set_xlim(0, elt_end - elt_start)
     if nd_track:
-        ax_nd.set_xlim(ax3.get_xlim())
+        ax_nd.set_xlim(0, elt_end - elt_start)
     ax2.set_xticks([])
     ax3.set_xticks([])
 
@@ -4897,7 +4910,6 @@ def locus(args):
     tick_list = sorted(list(set(revised_tick_list)))
 
     xt_labels = [str(int(t+elt_start)) for t in tick_list]
-    xt_labels[0] = chrom
 
     ax0.set_xticks(tick_list)
 
@@ -4905,6 +4917,8 @@ def locus(args):
         ax0.set_xticklabels(xt_labels, rotation=45)
     else:
         ax0.set_xticklabels(xt_labels)
+
+    ax0.text(0, 1.0, chrom + ' ', transform=ax0.transAxes, ha='right', va='bottom')
         # deletion spans in mod-space (for breaking lines)
     del_spans_cpg = []
 
@@ -5098,6 +5112,14 @@ def locus(args):
         if frac_masked > 0.1 and args.bams is not None and args.ref is None:
             logger.warning('*** WARNING: specifying a reference genome (indexed via samtools faidx) with --restrict_ref is strongly recommended when using mod .bams ***')
 
+        if args.phased:
+            _parts = sample.split('.')
+            _base = _parts[0].replace('_tumor', '').replace('_normal', '')
+            _hp = _parts[1].split(':')[0] if len(_parts) > 1 else ''
+            label_str = f'{_base} Haplotype {_hp}'
+        else:
+            label_str = sample
+
         ax5.plot(
             list(windowed_methfrac.keys()),
             smoothed_plot,
@@ -5105,7 +5127,7 @@ def locus(args):
             lw=slw,
             color=sample_color[sample],
             alpha=smoothalpha,
-            label=sample
+            label=label_str
         )
 
         order_stack += 1
@@ -5131,7 +5153,7 @@ def locus(args):
 
     if not args.include_raw_plot:
         if not args.hidelegend:
-            ax5.legend()
+            ax5.legend(fontsize='medium')
     else:
         ax4.set_zorder(order_stack)  # adjust z-level of legend after smoothed plot is finished
 
@@ -5358,7 +5380,10 @@ def locus(args):
             phasediff_df.to_csv(phasediff_csv)
             logger.info(f'smoothed phasediff values written to {phasediff_csv}')
 
-    fig.savefig(outfn, bbox_inches='tight')
+    if args.svg:
+        fig.savefig(outfn)  # no tight crop: SVG viewBox = exact figure dimensions
+    else:
+        fig.savefig(outfn, bbox_inches='tight')
     logger.info('plot saved to %s' % outfn)
 
     if args.highlight_subplot and args.highlight and colour_mapping:
@@ -5751,7 +5776,7 @@ def region(args):
                 orig_bam[bamname] = bam
 
                 if not args.skip_align_plot:
-                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, args.infer_implicit, meth_thresh=meth_thresh, can_thresh=can_thresh, phase=phase, methbam=methbam, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams)
+                    reads[bamname] = get_meth_locus(args, bam, meth_dbs, mod, args.infer_implicit, meth_thresh=meth_thresh, can_thresh=can_thresh, phase=phase, methbam=methbam, restrict_motif=args.motif, restrict_ref=args.ref, ct_bams=ct_bams, force_implicit=args.force_implicit)
 
     pool = mp.Pool(processes=int(args.procs))
 
@@ -5767,7 +5792,7 @@ def region(args):
             for bam_fn, meth_dbs in data.items():
                 seg_strand = '.'
                 seg_name = '.'.join(os.path.basename(bam_fn).split('.')[:-1])
-                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, args.bedmethyl, ct_bams, meth_thresh, can_thresh, None, None, args.infer_implicit])
+                res = pool.apply_async(get_segmeth_calls, [args, bam_fn, mods, meth_dbs, chrom, seg_start, seg_end, seg_name, seg_strand, phase, methbam, args.bedmethyl, ct_bams, meth_thresh, can_thresh, None, None, args.infer_implicit], {'force_implicit': args.force_implicit})
                 results.append(res)
 
         logger.info('parsing segments (phase %s)...' % str(phase))
@@ -6359,8 +6384,8 @@ def region(args):
             x1.append(coord_to_pos[x])
 
     
-    ax2.vlines(x1, 0, 1, color='#777777', zorder=1)
-    ax3.vlines(x2, 9, 10, color='#777777', zorder=1)
+    ax2.vlines(x1, 0, 1, color='#777777', zorder=1, linewidths=0.75)
+    ax3.vlines(x2, 9, 10, color='#777777', zorder=1, linewidths=0.75)
 
     if args.highlight or args.highlight_bed:
         for i in range(len(h_start)):
@@ -6734,11 +6759,11 @@ def composite(args):
 
             if args.phased:
                 for phase in ('1','2'):
-                    res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, phase, meth_thresh, can_thresh, args.infer_implicit])
+                    res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, phase, meth_thresh, can_thresh, args.infer_implicit], {'force_implicit': args.force_implicit})
                     results.append(res)
 
             else:
-                res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, None, meth_thresh, can_thresh, args.infer_implicit])
+                res = pool.apply_async(get_meth_profile_composite, [args, data, methbam, seg_chrom, seg_start, seg_end, seg_strand, use_mod, None, meth_thresh, can_thresh, args.infer_implicit], {'force_implicit': args.force_implicit})
                 results.append(res)
 
     # collect mod data
@@ -7023,7 +7048,7 @@ def wgmeth(args):
                 seg_start = int(seg_start)
                 seg_end = int(seg_end)
 
-                res = pool.apply_async(get_meth_calls_wg, [args, args.bam, args.methdb, chrom, seg_start, seg_end, args.phased, args.mod, motifsize, args.ctbam, meth_thresh, can_thresh, args.infer_implicit])
+                res = pool.apply_async(get_meth_calls_wg, [args, args.bam, args.methdb, chrom, seg_start, seg_end, args.phased, args.mod, motifsize, args.ctbam, meth_thresh, can_thresh, args.infer_implicit], {'force_implicit': args.force_implicit})
 
                 results.append(res)
 
@@ -7198,6 +7223,7 @@ def parse_args():
     parser_segmeth.add_argument('--phased', action='store_true', default=False, help='currently only considers two phases (diploid)')
     parser_segmeth.add_argument('--predict_dmr', action='store_true', default=False, help='enable DMR prediction in unphased data')
     parser_segmeth.add_argument('--infer_implicit',action='store_true', default=False, help='If MM tags are marked with an implicitly cannonical base code (i.e ".") then these will be interpreted as a zero probability')
+    parser_segmeth.add_argument('--force_implicit', action='store_true', default=False, help='Force implicit canonical mode for all reads regardless of MM tag suffix (use with --infer_implicit when tags lack the "." marker)')
 
     # options for methylation strip / violin / ridge plots
     parser_segplot.add_argument('-s', '--segmeth', required=True, help='output from segmeth.py')
@@ -7279,7 +7305,7 @@ def parse_args():
     parser_locus.add_argument('--slidingwindowsize', default=2, help='size of initial sliding window for coverage check (default=2)')
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
     parser_locus.add_argument('--smoothalpha', default=1.0, help='alpha (transparency) value for smoothed plot (default = 1.0)')
-    parser_locus.add_argument('--smoothlinewidth', default=4.0, help='smooth line width (default = 4.0)')
+    parser_locus.add_argument('--smoothlinewidth', default=2.0, help='smooth line width (default = 2.0)')
     parser_locus.add_argument('--shuffle', default=False, action='store_true', help='shuffle sample order for smoothed plot (may reduce visual bias due to sample order)')
     parser_locus.add_argument('--smoothed_csv', default=None, help='output values from smoothed plot to CSV format (can specify filename or "auto")')
     parser_locus.add_argument('--maskcutoff', default=1, help='read count masking cutoff (default=1)')
@@ -7311,6 +7337,7 @@ def parse_args():
     parser_locus.add_argument('--notext', default=False, action='store_true', help='remove all text from figure')
     parser_locus.add_argument('--svg', action='store_true')
     parser_locus.add_argument('--infer_implicit', action='store_true', default=False, help='If MM tags are marked with an implicitly cannonical base code (i.e ".") then these will be interpreted as a zero probability')
+    parser_locus.add_argument('--force_implicit', action='store_true', default=False, help='Force implicit canonical mode for all reads regardless of MM tag suffix (use with --infer_implicit when tags lack the "." marker)')
     parser_locus.add_argument('--dist_tolerance', default=50, help='number of allowed basepairs away from a labeled variant position (in vcf) to count as a particular variant')
     parser_locus.add_argument('--size_tolerance', default=0.2, help='allowed percentage difference in size to be considered the same as a variant in a vcf file')
     parser_locus.add_argument('--plot_nuc', default=False, action='store_true', help='plot nucleosomes (ns/nl BAM tags) as purple rectangles in a panel above the read alignment plot')
@@ -7387,6 +7414,7 @@ def parse_args():
     parser_region.add_argument('--scale_fullwidth', default=None, help='scale plot output relative to value (e.g. use length of chrom 1)')
     parser_region.add_argument('--svg', action='store_true', default=False)
     parser_region.add_argument('--infer_implicit', action='store_true', default=False, help='If MM tags are marked with an implicitly cannonical base code (i.e ".") then these will be interpreted as a zero probability')
+    parser_region.add_argument('--force_implicit', action='store_true', default=False, help='Force implicit canonical mode for all reads regardless of MM tag suffix (use with --infer_implicit when tags lack the "." marker)')
 
     # options for composite plots
     parser_composite.add_argument('-d', '--data', default=None, help='text file with .bam filename and corresponding methylation database per line(whitespace-delimited)')
@@ -7427,6 +7455,7 @@ def parse_args():
     parser_composite.add_argument('--output_table', default=False, action='store_true', help='output per-site data to table (.tsv)')
     parser_composite.add_argument('--svg', action='store_true', default=False)
     parser_composite.add_argument('--infer_implicit', action='store_true', default=False, help='If MM tags are marked with an implicitly cannonical base code (i.e ".") then these will be interpreted as a zero probability')
+    parser_composite.add_argument('--force_implicit', action='store_true', default=False, help='Force implicit canonical mode for all reads regardless of MM tag suffix (use with --infer_implicit when tags lack the "." marker)')
 
     # options for whole genome output
     parser_wgmeth.add_argument('-b', '--bam', required=True, help='bam used for methylation calling')
@@ -7449,6 +7478,7 @@ def parse_args():
     parser_wgmeth.add_argument('--phased', action='store_true', default=False, help='split output into phases (currently just 1,2)')
     parser_wgmeth.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
     parser_wgmeth.add_argument('--infer_implicit', action='store_true', default=False, help='If MM tags are marked with an implicitly cannonical base code (i.e ".") then these will be interpreted as a zero probability')
+    parser_wgmeth.add_argument('--force_implicit', action='store_true', default=False, help='Force implicit canonical mode for all reads regardless of MM tag suffix (use with --infer_implicit when tags lack the "." marker)')
 
     # options for custom db
     parser_custom.add_argument('-m', '--methdata', required=True, help='per-read methylation output table')
@@ -7489,6 +7519,7 @@ def parse_args():
     parser_guppy.add_argument('--motifsize', default=2, help='mod motif size (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
     parser_guppy.add_argument('--force', default=False, action='store_true')
     parser_guppy.add_argument('--infer_implicit', action='store_true', default=False, help='If MM tags are marked with an implicitly cannonical base code (i.e ".") then these will be interpreted as a zero probability')
+    parser_guppy.add_argument('--force_implicit', action='store_true', default=False, help='Force implicit canonical mode for all reads regardless of MM tag suffix (use with --infer_implicit when tags lack the "." marker)')
 
     # options for nanopolish db
     parser_nanopolish.add_argument('-m', '--methdata', required=True, help='whole genome nanopolish methylation output, can be comma-delimited')
@@ -7504,6 +7535,7 @@ def parse_args():
     parser_substitution.add_argument('-d', '--db', required=True, help='database name (will append .db if necessary)')
     parser_substitution.add_argument('--append', default=False, action='store_true', help='append to database')
     parser_substitution.add_argument('--infer_implicit', action='store_true', default=False, help='If MM tags are marked with an implicitly cannonical base code (i.e ".") then these will be interpreted as a zero probability')
+    parser_substitution.add_argument('--force_implicit', action='store_true', default=False, help='Force implicit canonical mode for all reads regardless of MM tag suffix (use with --infer_implicit when tags lack the "." marker)')
 
     # options for adjusting methylation / unmethylation cutoffs in methylartist db
     parser_adjustcutoffs.add_argument('-d', '--db', required=True, help='methylartist database')
@@ -7525,6 +7557,7 @@ def parse_args():
     parser_scoredist.add_argument('--palette', default="tab10", help='palette for phases (default = "tab10"), see https://seaborn.pydata.org/tutorial/color_palettes.html')
     parser_scoredist.add_argument('--svg', action='store_true', default=False)
     parser_scoredist.add_argument('--infer_implicit', action='store_true', default=False, help='If MM tags are marked with an implicitly cannonical base code (i.e ".") then these will be interpreted as a zero probability')
+    parser_scoredist.add_argument('--force_implicit', action='store_true', default=False, help='Force implicit canonical mode for all reads regardless of MM tag suffix (use with --infer_implicit when tags lack the "." marker)')
 
     args = parser.parse_args()
     return args
