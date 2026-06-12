@@ -813,6 +813,20 @@ def is_bam(fn):
     return True
 
 
+def find_bed(prefix):
+    found = None
+    for fn in os.listdir('.'):
+        fn = fn.strip()
+        if fn.startswith(prefix) and fn.endswith('.bed.gz'):
+            if found is not None:
+                logger.warning(f'ambiguous .bed.gz: {found} vs {fn}')
+                return None
+            
+            found = fn
+    logger.warning(f'assumed {found} is a bedMethyl file for {prefix}')
+    return found
+
+
 def get_bincover(bam_fn, chrom, start, end):
     start = int(start)
     end = int(end)
@@ -2995,17 +3009,31 @@ def segmeth(args):
                 logger.info('-b input does not end in .gz, assuming this is a file with a list of bedMethyl .gz files...')
                 with open(args.bams) as bed_list:
                     for line in bed_list:
-                        if not line.strip().split()[0].endswith('.gz'):
-                            sys.exit('cannot identify input type')
-                        bams.append(line.strip().split()[0])
+                        c = line.strip().split()
+                        if not c[0].endswith('.gz'):
+                            found_bm = find_bed(c[0])
+
+                            if found_bm is not None and os.path.exists(found_bm):
+                                c[0] = found_bm
+                            else:
+                                sys.exit('cannot identify input type')
+
+                        bams.append(c[0])
 
         else:
             logger.info('assuming %s contains a list of .bams' % args.bams)
             with open(args.bams) as bam_list:
                 for line in bam_list:
-                    if not is_bam(line.strip().split()[0]):
+                    c = line.strip().split()
+                    if not c[0].endswith('.bam'):
+                        if os.path.exists(c[0]+'.bam'):
+                            logger.warning(f'{c[0]} doesnt end with .bam, appending a .bam because {c[0]}.bam exists')
+                            c[0] += '.bam'
+
+                    if not is_bam(c[0]):
                         sys.exit('cannot identify input type')
-                    bams.append(line.strip().split()[0])
+
+                    bams.append(c[0])
 
         ct_bams = []
 
@@ -5052,6 +5080,7 @@ def locus(args):
                 else:
                     out_fn = out_prefix + '.png'
 
+                plt.ylim([0,1])
                 plt.title(f'{fn_prefix} highlight {h}')
                 plt.xlabel('median methylation in highlight')
                 plt.savefig(out_fn)
@@ -5089,6 +5118,7 @@ def locus(args):
                 else:
                     out_fn = out_prefix+'.png'
 
+                plt.ylim([0,1])
                 plt.title(f'{fn_prefix} phasediff hl {h}')
                 plt.xlabel('median phasediff in highlight')
                 plt.savefig(out_fn)
