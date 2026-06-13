@@ -9,6 +9,7 @@ import scikit_posthocs as sp
 import numpy as np
 
 from itertools import combinations
+from statsmodels.stats.multitest import multipletests
 
 FORMAT = '%(asctime)s %(message)s'
 logging.basicConfig(format=FORMAT)
@@ -120,6 +121,108 @@ def kruskal(args):
                 print('\n')
 
 
+def groupcompare(args):
+    data = pd.read_csv(args.tsv, sep='\t', header=0)
+
+    # metadata: two whitespace-delimited columns -> sample prefix, group label
+    meta = pd.read_csv(args.metadata, sep=r'\s+', header=None, names=['sample', 'group'], dtype=str)
+
+    groups = list(dict.fromkeys(meta['group']))  # preserve order of first appearance
+
+    if len(groups) != 2:
+        sys.exit(f'groupcompare requires exactly two groups in {args.metadata}, found {len(groups)}: {",".join(groups)}')
+
+    suffix = f'_{args.mod}_methfrac'
+    methfrac_cols = [c for c in data.columns if c.endswith(suffix)]
+
+    if len(methfrac_cols) == 0:
+        sys.exit(f'no columns ending in "{suffix}" found in {args.tsv} (try a different --mod)')
+
+    # assign each metadata sample prefix to exactly one methfrac column
+    sample_to_col = {}
+    for sample in meta['sample']:
+        matches = [c for c in methfrac_cols if c.startswith(sample)]
+        if len(matches) == 0:
+            logger.error(f'no "{suffix}" column found for sample prefix "{sample}". Available methfrac columns:')
+            logger.error('\n'+'\n'.join(methfrac_cols))
+            sys.exit(1)
+        if len(matches) > 1:
+            logger.error(f'sample prefix "{sample}" matches multiple "{suffix}" columns:')
+            logger.error('\n'+'\n'.join(matches))
+            sys.exit(1)
+        sample_to_col[sample] = matches[0]
+
+    group_cols = {g: [] for g in groups}
+    for _, row in meta.iterrows():
+        group_cols[row['group']].append(sample_to_col[row['sample']])
+
+    g1, g2 = groups
+    logger.info(f'group "{g1}": {len(group_cols[g1])} samples ({", ".join(group_cols[g1])})')
+    logger.info(f'group "{g2}": {len(group_cols[g2])} samples ({", ".join(group_cols[g2])})')
+
+    avail_annots = set(data['seg_name'])
+    annots = list(avail_annots)
+
+    if args.annotations:
+        annots = args.annotations.split(',')
+        for ann in annots:
+            if ann not in avail_annots:
+                logger.error(f'{ann} not found in annotations. Available annotations:')
+                logger.error('\n'+'\n'.join(list(avail_annots)))
+                sys.exit(1)
+
+    data = data[data['seg_name'].isin(annots)]
+
+    records = []
+    for _, row in data.iterrows():
+        v1 = pd.to_numeric(row[group_cols[g1]], errors='coerce').dropna()
+        v2 = pd.to_numeric(row[group_cols[g2]], errors='coerce').dropna()
+
+        mean1 = v1.mean() if len(v1) else np.nan
+        mean2 = v2.mean() if len(v2) else np.nan
+
+        stat = np.nan
+        pval = np.nan
+
+        if len(v1) >= args.minsamples and len(v2) >= args.minsamples:
+            if args.test == 'mannwhitney':
+                try:
+                    stat, pval = ss.mannwhitneyu(v1, v2, alternative='two-sided')
+                except ValueError:  # e.g. all values identical
+                    stat, pval = np.nan, np.nan
+            elif args.test == 'ttest':
+                stat, pval = ss.ttest_ind(v1, v2, equal_var=False)
+
+        records.append({
+            'seg_id': row['seg_id'],
+            'seg_chrom': row['seg_chrom'],
+            'seg_start': row['seg_start'],
+            'seg_end': row['seg_end'],
+            'seg_name': row['seg_name'],
+            f'n_{g1}': len(v1),
+            f'n_{g2}': len(v2),
+            f'mean_{g1}': mean1,
+            f'mean_{g2}': mean2,
+            f'delta_{g1}-{g2}': mean1 - mean2,
+            'statistic': stat,
+            'p_value': pval,
+        })
+
+    res = pd.DataFrame.from_records(records)
+
+    # Benjamini-Hochberg FDR across all segments with a valid p-value
+    res['fdr'] = np.nan
+    valid = res['p_value'].notna()
+    if valid.sum() > 0:
+        res.loc[valid, 'fdr'] = multipletests(res.loc[valid, 'p_value'], method='fdr_bh')[1]
+    else:
+        logger.warning('no segments had enough data for a valid comparison')
+
+    res = res.sort_values('p_value', na_position='last')
+
+    res.to_csv(sys.stdout, sep='\t', index=False, na_rep='NA')
+
+
 def effsize(args):
     data = pd.read_csv(args.tsv, sep='\t', header=0)
 
@@ -194,6 +297,7 @@ def parse_args():
     parser_median = subparsers.add_parser('median')
     parser_kruskal = subparsers.add_parser('kruskal')
     parser_effsize = subparsers.add_parser('effsize')
+    parser_groupcompare = subparsers.add_parser('groupcompare')
 
     parser_mean.set_defaults(func=mean)
     parser_std.set_defaults(func=std)
@@ -201,6 +305,7 @@ def parse_args():
     parser_median.set_defaults(func=median)
     parser_kruskal.set_defaults(func=kruskal)
     parser_effsize.set_defaults(func=effsize)
+    parser_groupcompare.set_defaults(func=groupcompare)
 
     parser_mean.add_argument('-c', '--columns', default=None, help='which columns to output (comma-delimited, default = all)')
     parser_std.add_argument('-c', '--columns', default=None, help='which columns to output (comma-delimited, default = all)')
@@ -210,6 +315,10 @@ def parse_args():
     parser_kruskal.add_argument('-c', '--columns', default=None, help='comma-delimited columns')
     parser_kruskal.add_argument('--posthoc', action='store_true', default=False, help='perform post-hoc Dunn\'s tests')
     parser_effsize.add_argument('-c', '--columns', default=None, help='columns to compare (pairwise comparisons)')
+    parser_groupcompare.add_argument('-m', '--metadata', required=True, help='two-column (sample group) whitespace-delimited file assigning samples to exactly two groups; sample names are prefixes of methfrac column names')
+    parser_groupcompare.add_argument('--mod', default='m', help='modification code in the methfrac suffix "_<mod>_methfrac" (default: m for 5mC)')
+    parser_groupcompare.add_argument('--test', default='mannwhitney', choices=('mannwhitney', 'ttest'), help='per-segment test between the two groups (default: mannwhitney)')
+    parser_groupcompare.add_argument('--minsamples', type=int, default=3, help='minimum non-NA methfrac values required in each group to test a segment (default: 3)')
 
     return parser.parse_args()
 
