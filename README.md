@@ -2,6 +2,8 @@
 
 Tools for parsing and plotting methylation patterns
 
+**Try the [methylartist browser](https://genome.coffee/mabrowse)!**
+
 ## Installation
 Available through pip and conda:
 
