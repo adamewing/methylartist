@@ -1112,7 +1112,7 @@ Raw alignment plots are automatically omitted for intervals exceeding 5 Mb to av
    image width in inches (default = 16)
 .. option:: --height
 
-   image height in inches (default = 8)
+   image height in inches (default = 8, or 4.5 with ``--skip_align_plot``)
 .. option:: --svg
 .. option:: -o, --outfile
 

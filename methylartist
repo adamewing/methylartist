@@ -6120,9 +6120,13 @@ def region(args):
     img_w = 16
     img_h = 8
 
-    if args.skip_align_plot:
-        if '--height' not in sys.argv[0]:
-            args.height = 4.5
+    # A blank alignment panel leaves a tall gap, so the default height drops --
+    # but only when the user has not asked for one. This tested sys.argv[0],
+    # the program path, which never carries an option, so the test was always
+    # true and an explicit --height was discarded on every --skip_align_plot
+    # run.
+    if args.skip_align_plot and args.height is None:
+        args.height = 4.5
 
     if args.width:
         img_w = float(args.width)
@@ -7502,7 +7506,7 @@ def parse_args():
     parser_region.add_argument('--show_transcripts', default=False, action='store_true', help='plot all transcripts, use transcript_id/transcript_name attrs')
     parser_region.add_argument('--exonheight', default=0.8, help='set exon height (default=0.8)')
     parser_region.add_argument('--width', default=16, help='image width (inches, default=16)')
-    parser_region.add_argument('--height', default=8, help='image width (inches, default=8)')
+    parser_region.add_argument('--height', default=None, help='image height (inches, default=8, or 4.5 with --skip_align_plot)')
     parser_region.add_argument('--dmr_minreads', default=8, help='minimum reads per group for DMR prediction (default=8)')
     parser_region.add_argument('--dmr_minratio', default=0.3, help='minimum reads ratio for DMR prediction (default=0.3)')
     parser_region.add_argument('--dmr_maxoverlap', default=0.0, help='max overlap between distributions (default = 0.0)')
