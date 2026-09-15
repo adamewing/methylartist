@@ -787,7 +787,8 @@ The annotated output image and its sections from top to bottom are described `he
    image width in inches (default = 16)
 .. option:: --height
 
-   image height in inches (default = 8)
+   image height in inches (default = 8, or grown to fit the panel count under
+   ``--rna``)
 .. option:: --notext
 
    remove all text from the figure
@@ -873,6 +874,12 @@ The annotated output image and its sections from top to bottom are described `he
    not asserting a value. ``--mincalls`` is worth setting -- a site called on a
    single read draws at full height beside one called on six hundred.
 
+   Because each mod gets a panel, the figure grows taller with the number of
+   mods rather than dividing a fixed height between them -- otherwise the read
+   panel is squeezed until a column of modified bases is too compressed to see
+   the bar above it pointing at it. Every panel keeps the height it would have
+   with one mod; ``--height`` overrides, and ``--panelratios`` is honoured.
+
 
 **Example usage:**
 
@@ -884,7 +891,7 @@ The annotated output image and its sections from top to bottom are described `he
 
 .. code-block:: console
 
-   methylartist locus -b rna.bam -i chr19:47742400-47743300 -m a,m,17802,19227 --rna --mincalls 3 --ref /path/to/ref/hg38/Homo_sapiens_assembly38.fasta --height 11
+   methylartist locus -b rna.bam -i chr19:47742400-47743300 -m a,m,17802,19227 --rna --mincalls 3 --ref /path/to/ref/hg38/Homo_sapiens_assembly38.fasta
 
 This generates an annotated methylation plot of two genome samples covering a region on chromosome 7 with one highlight. The output image has a width of 18.
 

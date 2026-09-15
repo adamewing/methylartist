@@ -4039,12 +4039,23 @@ def locus(args):
                 mods = sorted(get_modnames(meth_db))
                 logger.info('found mods: %s in db %s' % (','.join(mods), meth_db))
 
-        for mod in mods:
-            if use_mods:
-                if mod not in use_mods:
-                    logger.info('skipping %s, not specified in -m/--mods %s' % (mod, args.mods))
-                    continue
-            else:
+        # In the order the user asked for them, where they asked. mods_methbam
+        # returns whatever order the tags came out of the file -- for one test bam
+        # that was 19229,17802,a,m,19228,19227 -- and sample_order follows this
+        # loop, so the colour a modification gets moved when a different set was
+        # selected: 6mA was the first colour with -m a,m,17802 and the third with
+        # all six. A modification should look the same however many it is shown
+        # beside.
+        if use_mods:
+            ordered_mods = [m for m in use_mods if m in mods]
+            for m in mods:
+                if m not in use_mods:
+                    logger.info('skipping %s, not specified in -m/--mods %s' % (m, args.mods))
+        else:
+            ordered_mods = mods
+
+        for mod in ordered_mods:
+            if not use_mods:
                 use_mods = mods
 
             if args.phased:
@@ -4391,17 +4402,6 @@ def locus(args):
     fig = plt.figure()
     gs = gridspec.GridSpec(len(p_ratios),1,height_ratios=p_ratios, hspace=0)
 
-    img_w = 16
-    img_h = 8
-
-    if args.width:
-        img_w = float(args.width)
-
-    if args.height:
-        img_h = float(args.height)
-
-    fig.set_size_inches(img_w, img_h)
-
     if args.panelratios:
         user_p_ratios = list(map(int, args.panelratios.split(',')))
         if len(user_p_ratios) != len(p_ratios):
@@ -4414,6 +4414,33 @@ def locus(args):
             p_ratios[3] = 0
 
         gs = gridspec.GridSpec(len(p_ratios),1,height_ratios=p_ratios, hspace=0)
+
+    img_w = 16
+    img_h = 8
+
+    if args.width:
+        img_w = float(args.width)
+
+    if args.height:
+        img_h = float(args.height)
+
+    elif args.rna and n_mod_panels > 1:
+        # Every mod panel added takes its height out of the panels already
+        # there, and the read panel is what loses most of it: six mods left it
+        # 1.43in of an 8in figure for 700 reads and 5,600 dots, against 3.08in
+        # for one mod. The column a bar refers to is still drawn -- 562 dots,
+        # counted -- but squeezed to a smear and overdrawn by the other mods,
+        # so the bar looks like it points at nothing.
+        #
+        # Grow the figure with the panels instead of letting the panels shrink
+        # into it, which leaves every panel the height it would have with one
+        # mod. Capped, and --height still overrides.
+        extra_units = sum(p_ratios[5:4+n_mod_panels])
+        one_mod_units = sum(p_ratios) - extra_units
+        img_h = min(28.0, img_h * sum(p_ratios) / max(1, one_mod_units))
+        logger.info('--rna: %d mod panels, figure height %.1f in (--height overrides)' % (n_mod_panels, img_h))
+
+    fig.set_size_inches(img_w, img_h)
 
     sample_color = {}
     for i, sample in enumerate(sample_order):
@@ -7415,7 +7442,7 @@ def parse_args():
     parser_locus.add_argument('--primary_only', action='store_true', default=False, help='ignore non-primary alignments')
     parser_locus.add_argument('--unambig_highlight', action='store_true', default=False)
     parser_locus.add_argument('--width', default=16, help='image width (inches, default=16)')
-    parser_locus.add_argument('--height', default=8, help='image width (inches, default=8)')
+    parser_locus.add_argument('--height', default=None, help='image height (inches, default=8, or scaled to the panel count under --rna)')
     parser_locus.add_argument('--notext', default=False, action='store_true', help='remove all text from figure')
     parser_locus.add_argument('--svg', action='store_true')
 
