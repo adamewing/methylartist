@@ -2055,6 +2055,54 @@ def get_meth_calls_wg(args, bam_fn, meth_fn, chrom, seg_start, seg_end, phased, 
     return [meth_table[1], meth_table[2]]
 
 
+def rna_site_fracs(sample_data):
+    """Modified fraction at each site, with no window and no kernel.
+
+    The direct RNA counterpart to slide_window + smooth. A window of CpG indices
+    and a Hanning kernel across them both assume the value between neighbouring
+    sites is a real gradient, which holds for CpG methylation -- it comes in
+    domains -- and does not along a transcript, where the unmodified bases
+    between two modified ones are separate measurements that happen to be
+    adjacent.
+
+    Ambiguous calls (0) belong to neither side of the fraction and are excluded
+    from the count as well, matching slide_window.
+
+    Returns (positions, fractions, call counts), ascending by position.
+    """
+    firm = sample_data[sample_data['call'] != 0]
+
+    if len(firm) == 0:
+        return [], [], []
+
+    grouped = firm.groupby('loc')['call']
+    counts = grouped.size()
+    meth = grouped.apply(lambda c: int((c == 1).sum()))
+
+    pos = list(counts.index)
+    n = [int(x) for x in counts.values]
+    frac = [int(m)/int(c) for m, c in zip(meth.values, counts.values)]
+
+    return pos, frac, n
+
+
+def rna_bar_width(elt_start, elt_end, img_w, min_px=2.0, dpi=100.0, axes_frac=0.8):
+    """Bar width in bases, so a single-base site is still visible.
+
+    On a genome axis a site owns one base, which is well under a pixel at any
+    interval worth plotting. The width is therefore a mark rather than a
+    measurement, floored at min_px pixels' worth.
+
+    No cap: where two sites of one mod fall closer together than that, their
+    bars merge. That is a property of the interval being plotted and not
+    something a width can fix -- an invisible bar is a worse answer than a
+    merged one. Narrow the interval to separate them.
+    """
+    span = max(1, elt_end - elt_start)
+    px = max(1.0, float(img_w) * dpi * axes_frac)
+    return max(1.0, min_px * span / px)
+
+
 def slide_window(meth_table, sample, width=20, slide=2):
     sample_data = meth_table[meth_table['sample'] == sample]
     
@@ -3831,6 +3879,22 @@ def locus(args):
                 if len(c) == 3:
                     user_colours[bam] = c[2]
 
+    if args.rna:
+        # A direct RNA run calls several mods on different canonical bases (m6A on
+        # A, 5mC on C, pseudouridine and Um on T, Gm on G), and --motif is a single
+        # string shared by all of them, so there is no value that is correct for
+        # more than one. Restriction becomes opt-in rather than silently wrong for
+        # every mod but one.
+        if args.motif is None:
+            logger.info('--rna: --motif not given, modification calls will not be restricted by reference motif')
+
+        # None of the RNA mods is a palindromic dinucleotide, so the reverse-strand
+        # back-off in parse_methbam (pos -= motifsize-1) would move every call on a
+        # reverse-strand read one base to the left.
+        if int(args.motifsize) != 1 and args.motif is None:
+            logger.info('--rna: setting --motifsize 1 (single-base modifications)')
+            args.motifsize = 1
+
     if args.motif is not None:
         if len(args.motif) != int(args.motifsize):
             logger.warning('motif size (set with --motifsize) %d does not match length of --motif (%s), changed --motifsize' % (int(args.motifsize), args.motif))
@@ -3839,8 +3903,8 @@ def locus(args):
     if args.bams is not None:
         logger.info('mod motif size (--motifsize) = %d (ensure this is correct for your data)' % int(args.motifsize))
 
-        if None in (args.ref, args.motif):
-            logger.warning('--ref and --motif are required when using --bams')
+        if args.ref is None or (args.motif is None and not args.rna):
+            logger.warning('--ref and --motif are required when using --bams (--motif is optional with --rna)')
             sys.exit(1)
 
         methbam = True
@@ -4044,7 +4108,19 @@ def locus(args):
     meth_table['modstat'] = pd.to_numeric(meth_table['modstat'])
 
     meth_table['orig_loc'] = meth_table['loc']
-    meth_table['loc'] = ss.rankdata(meth_table['loc'], method='dense')
+
+    # Mod space gives every call position equal width, so a CpG island occupies as
+    # much of the panel as it does of the data -- the right trade when sites are
+    # dense and the value between them is a real gradient. It is the wrong one for
+    # a handful of methylated adenines scattered over a transcript: rank space
+    # spreads them evenly and says nothing about where in the gene they are.
+    #
+    # Leaving 'loc' as the genome coordinate is all --rna needs to do about it.
+    # coord_to_cpg below then becomes the identity, ax2 and ax3 end up with the
+    # same limits, and every downstream set_xlim(ax2.get_xlim()) keeps working
+    # without knowing anything has changed.
+    if not args.rna:
+        meth_table['loc'] = ss.rankdata(meth_table['loc'], method='dense')
 
     if len(meth_table['orig_loc']) == 0:
         sys.exit('%s: insufficient coverage for plot' % args.interval)        
@@ -4070,7 +4146,8 @@ def locus(args):
         logger.info('dropping %d positions' % len(drop_ix))
         meth_table.drop(drop_ix, inplace=True)
 
-        meth_table['loc'] = ss.rankdata(meth_table['loc'], method='dense')
+        if not args.rna:
+            meth_table['loc'] = ss.rankdata(meth_table['loc'], method='dense')
 
         if len(meth_table['orig_loc']) == 0:
             sys.exit('%s: insufficient coverage for plot' % args.interval)
@@ -4117,6 +4194,7 @@ def locus(args):
     # data for coverage plot
 
     cover_bams = {}
+    cover_pos = {}
 
     if args.plot_coverage:
         cov_bams = []
@@ -4150,8 +4228,17 @@ def locus(args):
             
             cover_table = pd.DataFrame.from_dict(cover_table).T
 
-            windowed_cover = slide_window_cover(cover_table, c_name, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
-            cover_bams[c_name] = smooth(np.asarray(list(windowed_cover.values())), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
+            if args.rna:
+                # 'loc' is a genome offset under --rna, so slide_window_cover would
+                # step a base at a time across the interval instead of a site at a
+                # time across mod space. `cover` is already one value per distinct
+                # position, which is what the panel wants, so it is kept as it is
+                # and its positions carried alongside.
+                cover_bams[c_name] = np.asarray(cover)
+                cover_pos[c_name] = sorted_locs
+            else:
+                windowed_cover = slide_window_cover(cover_table, c_name, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
+                cover_bams[c_name] = smooth(np.asarray(list(windowed_cover.values())), window_len=int(args.smoothwindowsize), window=args.smoothfunc)
 
 
     # highlights
@@ -4250,7 +4337,16 @@ def locus(args):
             readmask.append(list(map(int, ivl.split('-'))))
 
     # set up plot
-    p_ratios=[1,5,1,3,3]
+    #
+    # --rna gets one mod panel per mod instead of one shared one. The mods in a
+    # direct RNA run sit on different canonical bases, so they do not share call
+    # positions and cannot be grouped within a site the way samples and phases
+    # can -- drawn on one axis, a site of one mod a base or two from a site of
+    # another would collide, and the taller bar would be read as belonging to
+    # whichever mod the reader expected.
+    n_mod_panels = len(use_mods) if args.rna else 1
+
+    p_ratios=[1,5,1,3] + [3]*n_mod_panels
     if args.plot_coverage:
         p_ratios.append(3)
 
@@ -4262,6 +4358,13 @@ def locus(args):
     
     if not args.include_raw_plot:
         p_ratios[3] = 0
+
+    # The mod-space panel maps genome coordinates onto mod space. Under --rna
+    # there is no mod space, so it has nothing to explain. It is still built --
+    # ax0 and ax1 take their genome limits from ax3, which is ax2.twiny() -- it
+    # just gets no height, the same way --skip_align_plot treats the read panel.
+    if args.rna:
+        p_ratios[2] = 0
 
     fig = plt.figure()
     gs = gridspec.GridSpec(len(p_ratios),1,height_ratios=p_ratios, hspace=0)
@@ -4743,21 +4846,28 @@ def locus(args):
             orig_highlight_box = matplotlib.patches.Rectangle((h_start[i],9), h_end[i]-h_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=2)
             cpg_highlight_box = matplotlib.patches.Rectangle((h_cpg_start[i],0), h_cpg_end[i]-h_cpg_start[i], 1.0, lw=1, edgecolor='#777777', facecolor=h_colors[i], zorder=3)
 
-            ax3.add_patch(orig_highlight_box)
-            ax2.add_patch(cpg_highlight_box)
+            if not args.rna:
+                ax3.add_patch(orig_highlight_box)
+                ax2.add_patch(cpg_highlight_box)
 
-    for x1_x, x2_x in zip(x1, x2):
-        link_end1 = (x1_x, 1)
-        link_end2 = (x2_x, 9)
+    # The vlines above stay even under --rna: ax3 has no explicit limits, so its
+    # autoscale over them is what ax0, ax1 and the mod panels all take their
+    # genome range from. The links between the two axes do not -- a
+    # ConnectionPatch needs both transforms invertible, and the panel has been
+    # given zero height, which makes ax2's singular and fails at savefig.
+    if not args.rna:
+        for x1_x, x2_x in zip(x1, x2):
+            link_end1 = (x1_x, 1)
+            link_end2 = (x2_x, 9)
 
-        l_col = '#777777'
+            l_col = '#777777'
 
-        for i in range(len(h_start)):
-            if x2_x >= h_start[i] and x2_x <= h_end[i]:
-                l_col = h_colors[i]
+            for i in range(len(h_start)):
+                if x2_x >= h_start[i] and x2_x <= h_end[i]:
+                    l_col = h_colors[i]
 
-        con = ConnectionPatch(xyA=link_end1, xyB=link_end2, coordsA="data", coordsB="data", axesA=ax2, axesB=ax3, color=l_col)
-        ax3.add_artist(con)
+            con = ConnectionPatch(xyA=link_end1, xyB=link_end2, coordsA="data", coordsB="data", axesA=ax2, axesB=ax3, color=l_col)
+            ax3.add_artist(con)
 
     ax0.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
     ax1.set_xlim(ax3.get_xlim())
@@ -4842,6 +4952,28 @@ def locus(args):
     logger.info('building meth frac plot...')
     ax5 = plt.subplot(gs[4])
 
+    # ax5 stays the first mod panel, so everything below that already refers to it
+    # -- legends, highlight patches, z-order, limits -- keeps working unchanged and
+    # simply gains a loop over the rest.
+    mod_axes = [ax5]
+    mod_of_panel = [use_mods[0] if args.rna else None]
+
+    if args.rna:
+        for i, mod in enumerate(use_mods[1:], start=1):
+            # deliberately not sharex: every panel has its limits set from ax2
+            # below, and sharing would put the tick formatter in common too, so
+            # the last set_xticklabels call would win for the whole stack
+            mod_axes.append(plt.subplot(gs[4+i]))
+            mod_of_panel.append(mod)
+
+    # which panel a series belongs to. `sample` is basename[.phase].mod, so the
+    # mod is the last field -- the same convention sample_order is built with.
+    def panel_for(sample):
+        if not args.rna:
+            return 0
+        return mod_of_panel.index(sample.split('.')[-1])
+
+
     order_stack = 2
 
     smoothalpha = float(args.smoothalpha)
@@ -4865,21 +4997,40 @@ def locus(args):
     for sample in sample_order:
         sample_data = sample_filtered_data[sample]
 
-        windowed_methfrac, meth_n = slide_window(sample_data, sample, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
-        methfrac_values = np.asarray(list(windowed_methfrac.values()))
+        masked_segs = []
+        bar_x, bar_y, bar_n = [], [], []
 
-        smoothed_methfrac = smooth(methfrac_values, window_len=int(args.smoothwindowsize), window=args.smoothfunc)
+        if args.rna:
+            # 'loc' is the genome coordinate under --rna, so slide_window would
+            # step a base at a time across the whole interval rather than a site
+            # at a time across mod space -- tens of thousands of array scans for
+            # one gene, to produce a per-base window that is a per-site value
+            # anyway. Computed directly instead.
+            bar_x, bar_y, bar_n = rna_site_fracs(sample_data)
 
-        ix = np.asarray(list(windowed_methfrac.keys()))
+            for x, y in zip(bar_x, bar_y):
+                smoothed_values[sample][x] = y
 
-        for i, smooth_val in enumerate(smoothed_methfrac):
-            smoothed_values[sample][ix[i]] = smooth_val
+            frac_masked = 0.0
+            if len(bar_n) > 0:
+                frac_masked = sum(1 for n in bar_n if n <= int(args.maskcutoff)) / len(bar_n)
 
-        masked_segs = mask_methfrac(list(meth_n.values()), cutoff=args.maskcutoff)
+        else:
+            windowed_methfrac, meth_n = slide_window(sample_data, sample, width=int(args.slidingwindowsize), slide=int(args.slidingwindowstep))
+            methfrac_values = np.asarray(list(windowed_methfrac.values()))
 
-        frac_masked = 0.0
-        if len(meth_n) > 0:
-            frac_masked = len(list(itertools.chain(*masked_segs))) / len(meth_n.values())
+            smoothed_methfrac = smooth(methfrac_values, window_len=int(args.smoothwindowsize), window=args.smoothfunc)
+
+            ix = np.asarray(list(windowed_methfrac.keys()))
+
+            for i, smooth_val in enumerate(smoothed_methfrac):
+                smoothed_values[sample][ix[i]] = smooth_val
+
+            masked_segs = mask_methfrac(list(meth_n.values()), cutoff=args.maskcutoff)
+
+            frac_masked = 0.0
+            if len(meth_n) > 0:
+                frac_masked = len(list(itertools.chain(*masked_segs))) / len(meth_n.values())
 
         logger.info('%s:%d-%d (%s), sample %s fraction masked: %.3f' % (chrom, elt_start, elt_end, ''.join(use_mods), sample, frac_masked))
 
@@ -4891,25 +5042,68 @@ def locus(args):
         if frac_masked > 0.1 and args.bams is not None and args.ref is None:
             logger.warning('*** WARNING: specifying a reference genome (indexed via samtools faidx) with --restrict_ref is strongly recommended when using mod .bams ***')
 
-        ax5.plot(list(windowed_methfrac.keys()), smoothed_methfrac, marker='', lw=slw, color=sample_color[sample], alpha=smoothalpha, label=sample)
+        ax_s = mod_axes[panel_for(sample)]
 
-        order_stack += 1
+        if args.rna:
+            # One bar per site at its own genome coordinate, at the fraction the
+            # calls there give. No window, no kernel: a line between two sites and
+            # a kernel across them each assume the value in between is a real
+            # gradient, which holds for CpG methylation in domains and not along a
+            # transcript, where the unmodified bases between two modified ones are
+            # separate measurements.
+            # A site is one base, which is well under a pixel at any interval worth
+            # plotting, so the width is a mark rather than a measurement. Several
+            # series of one mod DO share positions -- samples, and phases of a
+            # sample -- so they split the mark between them rather than overdrawing.
+            n_series = max(1, sum(1 for o in sample_order if panel_for(o) == panel_for(sample)))
+            slot = rna_bar_width(elt_start, elt_end, img_w)
+            k = sorted(o for o in sample_order if panel_for(o) == panel_for(sample)).index(sample)
+            width = slot / n_series
+            offset = (k - (n_series-1)/2) * width
 
-        if not args.nomask:
-            for seg in masked_segs:
-                if len(seg) > 2:
-                    mf_seg = np.asarray(smoothed_methfrac)[seg]
-                    pos_seg = np.asarray(list(windowed_methfrac.keys()))[seg]
-                
-                    ax5.plot(pos_seg, mf_seg, marker='', lw=slw, color='#ffffff', alpha=0.8, zorder=order_stack)
+            # Below --maskcutoff a bar is outlined rather than filled: measured,
+            # but not asserting a value. The two sets are drawn separately rather
+            # than one over the other -- an outline on top of a fill is still a
+            # fill, and says nothing.
+            cutoff = -1 if args.nomask else int(args.maskcutoff)
+            solid = [i for i, n in enumerate(bar_n) if n > cutoff]
+            thin  = [i for i, n in enumerate(bar_n) if n <= cutoff]
 
-                    order_stack += 1
+            if solid:
+                ax_s.bar([bar_x[i] + offset for i in solid], [bar_y[i] for i in solid],
+                         width=width, color=sample_color[sample], alpha=smoothalpha,
+                         label=sample, zorder=order_stack, linewidth=0)
+                order_stack += 1
+
+            if thin:
+                ax_s.bar([bar_x[i] + offset for i in thin], [bar_y[i] for i in thin],
+                         width=width, facecolor='none', edgecolor=sample_color[sample],
+                         alpha=smoothalpha, zorder=order_stack, linewidth=0.5,
+                         label=None if solid else sample)
+                order_stack += 1
+
+        else:
+            ax_s.plot(list(windowed_methfrac.keys()), smoothed_methfrac, marker='', lw=slw, color=sample_color[sample], alpha=smoothalpha, label=sample)
+
+            order_stack += 1
+
+            if not args.nomask:
+                for seg in masked_segs:
+                    if len(seg) > 2:
+                        mf_seg = np.asarray(smoothed_methfrac)[seg]
+                        pos_seg = np.asarray(list(windowed_methfrac.keys()))[seg]
+
+                        ax_s.plot(pos_seg, mf_seg, marker='', lw=slw, color='#ffffff', alpha=0.8, zorder=order_stack)
+
+                        order_stack += 1
 
     smoothed_df = pd.DataFrame(smoothed_values)
 
     if not args.include_raw_plot:
         if not args.hidelegend:
-            ax5.legend()
+            for ax_m in mod_axes:
+                if ax_m.get_legend_handles_labels()[0]:
+                    ax_m.legend()
     else:
         ax4.set_zorder(order_stack)  # adjust z-level of legend after smoothed plot is finished
 
@@ -4954,38 +5148,62 @@ def locus(args):
         else:
             ax4.legend([mpatches.Patch(color=c) for c in colour_mapping.values()], colour_mapping.keys())
 
-    ax5.set_xlim(ax2.get_xlim())
-    ax5.set_ylim((float(args.ymin),float(args.ymax)))
+    for i, ax_m in enumerate(mod_axes):
+        ax_m.set_xlim(ax2.get_xlim())
+        ax_m.set_ylim((float(args.ymin),float(args.ymax)))
 
-    highlight_patches = []
+        if args.rna:
+            # With a panel each, this is the only thing saying which mod the panel
+            # is -- the legend names the sample, not the modification.
+            ax_m.set_ylabel(mod_of_panel[i])
+
+            # The panel is on the same axis as the ruler now: positions are
+            # offsets into the interval, so the same tick list and the same
+            # elt_start-relative labels apply, and the bars read against genome
+            # coordinates rather than against a rank. Only the bottom panel keeps
+            # the labels, since the stack shares an x.
+            ax_m.set_xticks(tick_list)
+            if i == len(mod_axes)-1 and not args.plot_coverage:
+                ax_m.set_xticklabels(xt_labels, rotation=45 if n_ticks > 11 else 0)
+            else:
+                ax_m.set_xticklabels([])
+
+    highlight_patches = dd(list)
 
     if args.highlight_alpha:
         a = float(args.highlight_alpha)
         if args.highlight or args.highlight_bed:
-            for h, h_s in enumerate(h_cpg_start):
-                h_e = h_cpg_end[h]
-                h_color = h_colors[h]
-                ymin = min(ax5.get_ybound())
-                yheight = max(ax5.get_ybound())-ymin
-                highlight_patches.append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
+            for i, ax_m in enumerate(mod_axes):
+                for h, h_s in enumerate(h_cpg_start):
+                    h_e = h_cpg_end[h]
+                    h_color = h_colors[h]
+                    ymin = min(ax_m.get_ybound())
+                    yheight = max(ax_m.get_ybound())-ymin
+                    highlight_patches[i].append(matplotlib.patches.Rectangle([h_s, ymin], h_e-h_s, yheight, edgecolor=None, facecolor=h_color, alpha=a, zorder=1))
 
-    for h in highlight_patches:
-        ax5.add_patch(h)
+    for i, ax_m in enumerate(mod_axes):
+        for h in highlight_patches[i]:
+            ax_m.add_patch(h)
 
-    if not args.include_raw_plot:
-        ax5.set_zorder(1)
+        if not args.include_raw_plot:
+            ax_m.set_zorder(1)
 
     # coverage plot (optional)
 
     if args.plot_coverage:
         logger.info('building coverage plot...')
-        ax6 = plt.subplot(gs[5])
+        ax6 = plt.subplot(gs[4+len(mod_axes)])
 
         for sample in cover_bams:
-            offset = list(windowed_methfrac.keys())[0]
-            matched_cover = [cover_bams[sample][i-offset] for i in windowed_methfrac.keys()]
-            
-            ax6.plot(list(windowed_methfrac.keys()), matched_cover, marker='', lw=slw, color=cover_color[sample], zorder=3, label=sample, alpha=smoothalpha)
+            if args.rna:
+                # positions carried from the build above, since there is no
+                # windowed series to align against
+                ax6.plot(cover_pos[sample], cover_bams[sample], marker='', lw=slw, color=cover_color[sample], zorder=3, label=sample, alpha=smoothalpha)
+            else:
+                offset = list(windowed_methfrac.keys())[0]
+                matched_cover = [cover_bams[sample][i-offset] for i in windowed_methfrac.keys()]
+
+                ax6.plot(list(windowed_methfrac.keys()), matched_cover, marker='', lw=slw, color=cover_color[sample], zorder=3, label=sample, alpha=smoothalpha)
 
         ax6.legend()
         ax6.set_xlim(ax2.get_xlim())
@@ -5004,6 +5222,12 @@ def locus(args):
 
         for h in highlight_patches:
             ax6.add_patch(h)
+
+        if args.rna:
+            # coverage is the bottom panel when it is drawn, so the genome labels
+            # belong to it rather than to the last mod panel above
+            ax6.set_xticks(tick_list)
+            ax6.set_xticklabels(xt_labels, rotation=45 if n_ticks > 11 else 0)
 
     # phase difference plot (optional)
     if args.phased and args.phasediff:
@@ -7039,6 +7263,7 @@ def parse_args():
     parser_locus.add_argument('--variantpalette', default='Set1', help='colour palette for variant ticks (default = Set1)')
     parser_locus.add_argument('--variantsize', default=6, help='size of variant ticks (default = 6)')
     parser_locus.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
+    parser_locus.add_argument('--rna', default=False, action='store_true', help='direct RNA mode: plot each mod as bars against genome coordinates with no smoothing and no mod-space translation. Implies --motifsize 1 and makes --motif optional.')
     parser_locus.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_locus.add_argument('--phased', default=False, action='store_true', help='split samples into phases')
     parser_locus.add_argument('--phasediff', default=False, action='store_true', help='add absolute difference between phases as output')

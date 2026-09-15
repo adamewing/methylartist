@@ -816,6 +816,40 @@ The annotated output image and its sections from top to bottom are described `he
 .. option:: --motifsize
 
    motif glyph size (default = 2; set to 1 for 6mA)
+.. option:: --rna
+
+   direct RNA mode. Each modification is drawn as bars at their own positions
+   against genome coordinates, with no translation into mod space and no
+   smoothing -- just the fraction modified at each site.
+
+   The smoothing kernel and the line joining two sites both assume the value
+   between neighbouring sites is a real gradient. That holds for CpG
+   methylation, which comes in domains, and not along a transcript, where the
+   unmodified bases between two modified ones are separate measurements that
+   happen to be adjacent.
+
+   Each modification gets its own panel. The mods a direct RNA run calls sit on
+   different canonical bases -- m6A on A, 5mC on C, pseudouridine and Um on T,
+   Gm on G -- so they do not share call positions and cannot be grouped within a
+   site the way samples and phases can. On one axis, a site of one mod a base or
+   two from a site of another would collide, and the taller bar would be read as
+   belonging to whichever mod the reader expected. Samples and phases *do* share
+   a mod's positions, so those still share a panel, splitting each site's bar
+   between them.
+
+   The mod space panel is dropped, since there is no mod space for it to
+   explain, and ``--motifsize`` defaults to 1: none of the RNA modifications is
+   a palindromic dinucleotide, so the reverse-strand adjustment that a CpG needs
+   would move every call on a reverse-strand read one base.
+
+   ``--motif`` becomes optional. It is a single string shared by every
+   modification, so with mods on several bases there is no value that is correct
+   for more than one; restriction becomes opt-in rather than silently wrong for
+   all but one of them. ``--ref`` is still required.
+
+   Sites below ``--maskcutoff`` are outlined rather than filled: measured, but
+   not asserting a value. ``--mincalls`` is worth setting -- a site called on a
+   single read draws at full height beside one called on six hundred.
 
 
 **Example usage:**
@@ -823,6 +857,12 @@ The annotated output image and its sections from top to bottom are described `he
 .. code-block:: console
 
    methylartist locus -b bam1.bam,bam2.bam -i chr7:1072339-1107779 -l 1100000-1101234 -g /path/to/ref/gtf/Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz --motif CG --ref /path/to/ref/hg38/Homo_sapiens_assembly38.fasta --labelgenes --width 18
+
+**Direct RNA example:**
+
+.. code-block:: console
+
+   methylartist locus -b rna.bam -i chr19:47742400-47743300 -m a,m,17802,19227 --rna --mincalls 3 --ref /path/to/ref/hg38/Homo_sapiens_assembly38.fasta --height 11
 
 This generates an annotated methylation plot of two genome samples covering a region on chromosome 7 with one highlight. The output image has a width of 18.
 
