@@ -4682,16 +4682,76 @@ def locus(args):
             fetch_reads_bam.close()
 
         # Build readstack with position data
+        #
+        # A read is one row, not one row per modification. `reads` is keyed by
+        # bamname, which carries the mod, so the same physical alignment appears
+        # once per mod -- six mods drew six copies of every read, stacked, with
+        # only their dots differing. The rows are keyed on the bam and phase
+        # instead and the mods merged into the row they share; which mod a call
+        # belongs to moves onto the dot, which is where it is legible.
+        #
+        # Only when there is more than one mod to merge. With one, row_key is the
+        # bamname and nothing about the panel changes.
+        merge_mods = len(use_mods) > 1
+
+        def row_key(bamname):
+            return '.'.join(bamname.split('.')[:-1]) if merge_mods else bamname
+
+        def mod_of(bamname):
+            return bamname.split('.')[-1]
+
         max_y = 1
+        seen_rows = {}
+
         for bamname in reads:
+            rkey = row_key(bamname)
+            mod = mod_of(bamname)
+
             for readname, read in reads[bamname].items():
                 if readname not in pos_cache or read.call_count == 0:
                     continue
 
-                read.ypos = max_y
-                max_y += 1
-                read.starts, read.ends = pos_cache[readname]
-                readstack[bamname].append(read)
+                seen = seen_rows.get((rkey, readname))
+
+                if seen is None:
+                    # first mod to carry this read supplies the geometry; the
+                    # others only add calls
+                    read.ypos = max_y
+                    max_y += 1
+                    read.starts, read.ends = pos_cache[readname]
+                    read.mod_calls = {mod: read.meth_calls}
+                    seen_rows[(rkey, readname)] = read
+                    readstack[rkey].append(read)
+
+                else:
+                    seen.mod_calls[mod] = read.meth_calls
+
+        # A merged row covers several bamnames, so its colour cannot come from
+        # sample_color, which is keyed per mod -- and must not, since the profile
+        # panels still need one colour per mod. The first bamname in each group
+        # supplies it, which leaves a single-mod run on exactly the colour it had.
+        row_color = {}
+        for bamname in reads:
+            row_color.setdefault(row_key(bamname), sample_color[bamname])
+
+        # Desaturated once the mods are merged. The row is an alignment then, not
+        # a modification, and it inherits the first mod's colour -- which would
+        # put that mod's dots on a line of their own colour and hide them. Muting
+        # the line makes every mod legible against it while still telling two bams
+        # apart, which a flat grey would not.
+        if merge_mods:
+            row_color = {k: sns.desaturate(v, 0.25) for k, v in row_color.items()}
+
+        # Dots carry the mod once there is more than one to tell apart, in the
+        # colour that mod already has below. A second palette here would mean a
+        # mod was one colour on the reads and another on its own panel, which is
+        # the opposite of telling them apart. With several bams the first one
+        # carrying that mod supplies it.
+        mod_dot_color = None
+        if merge_mods:
+            mod_dot_color = {}
+            for bamname in reads:
+                mod_dot_color.setdefault(mod_of(bamname), sample_color[bamname])
 
         if args.readmask:
             logger.info('masked %d reads due to --readmask' % masked_count)
@@ -4750,24 +4810,41 @@ def locus(args):
             lw = float(args.readlinewidth)
             la = float(args.readlinealpha)
             ma = float(args.markeralpha)
-            uec = sample_color[bamname]
+            uec = row_color[bamname]
             
             if args.readopenmarkeredgecolor is not None:
                 uec = args.readopenmarkeredgecolor
             
             # Collect all plotting data first for this sample
             unmeth_markers = []
-            meth_markers = []
+            meth_markers = dd(list)
             read_lines = []
             variant_markers = []
             
             for read in readstack[bamname]:
-                # Collect methylation markers
-                for call_pos, call in read.meth_calls.items():
+                # Collect methylation markers, keeping the mod that made each
+                # call: with the rows merged, the dot is the only thing left that
+                # can say which modification a call belongs to.
+                #
+                # One dot per position, not one per mod. 5hmC and 5mC are called
+                # on the same C, so both land on the same point -- an open circle
+                # and a filled one on top of each other, the winner decided by
+                # draw order. The modified call takes it, and the first mod to
+                # assert it keeps the dot, so "modified, and it is 5hmC" survives
+                # instead of the position going to whichever mod came last. Mods
+                # on different bases never collide and are unaffected.
+                by_pos = {}
+                for mod, calls in read.mod_calls.items():
+                    for call_pos, call in calls.items():
+                        cur = by_pos.get(call_pos)
+                        if cur is None or (call == 1 and cur[0] != 1):
+                            by_pos[call_pos] = (call, mod)
+
+                for call_pos, (call, mod) in by_pos.items():
                     if call == -1:
                         unmeth_markers.append((call_pos, read.ypos))
                     elif call == 1:
-                        meth_markers.append((call_pos, read.ypos))
+                        meth_markers[mod].append((call_pos, read.ypos))
                 
                 # Collect read lines
                 for i in range(len(read.starts)):
@@ -4785,13 +4862,18 @@ def locus(args):
                 x, y = zip(*unmeth_markers)
                 ax1.scatter(x, y, marker=rm, edgecolor=uec, facecolor='white', s=ms**2, zorder=3, alpha=ma)
             
-            if meth_markers:
-                x, y = zip(*meth_markers)
-                ax1.scatter(x, y, marker=rm, edgecolor='black', facecolor='black', s=ms**2, zorder=3, alpha=ma)
+            for mod, markers in meth_markers.items():
+                if not markers:
+                    continue
+                x, y = zip(*markers)
+                # black with a single mod, as before: a colour there would
+                # distinguish nothing and change every existing figure
+                mc = mod_dot_color[mod] if mod_dot_color else 'black'
+                ax1.scatter(x, y, marker=rm, edgecolor=mc, facecolor=mc, s=ms**2, zorder=3, alpha=ma)
             
             # Plot read lines for this sample
             for (x1, y1), (x2, y2) in read_lines:
-                ax1.add_line(matplotlib.lines.Line2D([x1, x2], [y1, y2], lw=lw, zorder=2, color=sample_color[bamname], alpha=la))
+                ax1.add_line(matplotlib.lines.Line2D([x1, x2], [y1, y2], lw=lw, zorder=2, color=row_color[bamname], alpha=la))
             
             # Plot variant markers for this sample
             for x, y, color in variant_markers:
@@ -4812,7 +4894,7 @@ def locus(args):
             sample_box_patches = []
 
             for bamname, sample_box_y in bam_ylims.items():
-                sample_box_patches.append(matplotlib.patches.Rectangle([sample_box_x1, sample_box_y[0]-0.5], sample_box_width, sample_box_y[1]-sample_box_y[0]+1, edgecolor='black', facecolor=sample_color[bamname], zorder=1))
+                sample_box_patches.append(matplotlib.patches.Rectangle([sample_box_x1, sample_box_y[0]-0.5], sample_box_width, sample_box_y[1]-sample_box_y[0]+1, edgecolor='black', facecolor=row_color[bamname], zorder=1))
                 if not args.notext:
                     ax1.text(sample_box_x1+sample_box_width+sample_box_pad, sum(sample_box_y)/2, bamname, ha='left', va='center', fontsize='x-small')
 

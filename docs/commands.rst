@@ -816,6 +816,28 @@ The annotated output image and its sections from top to bottom are described `he
 .. option:: --motifsize
 
    motif glyph size (default = 2; set to 1 for 6mA)
+.. option:: -m, --mods
+
+   modifications to plot, comma-delimited for more than one (default: all
+   available).
+
+   With more than one modification displayed, a read occupies **one row** and its
+   dots are coloured by the modification that made each call, in the colour that
+   modification has in its own panel below. Previously the read panel was keyed
+   on the modification as well as the sample, so the same alignment was drawn
+   once per modification -- six modifications drew six copies of every read,
+   identical but for their dots.
+
+   Where two modifications are called on the same base -- 5hmC and 5mC both sit
+   on a C -- one dot is drawn per position rather than one per modification, and
+   a modified call takes it, so an open circle cannot land on top of a filled
+   one and hide it. Modifications on different bases never collide.
+
+   The read lines are muted when modifications are merged: the row is an
+   alignment then rather than a modification, and leaving it at full strength put
+   one modification's dots on a line of its own colour. A single modification is
+   unaffected -- same colours, same black dots, same output.
+
 .. option:: --rna
 
    direct RNA mode. Each modification is drawn as bars at their own positions
