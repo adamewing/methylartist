@@ -4128,21 +4128,43 @@ def locus(args):
     # optional mincall filter
 
     if int(args.mincalls) > 0:
-        drop_ix = []
-
         logger.info('assessing coverage per --mincalls, per-read sites to consider: %d' % len(meth_table['loc']))
-        tick = 5000
-        for i, new_loc in enumerate(meth_table['loc'], 1):
-            for sample in sample_order:
-                call_count = len(meth_table.loc[(meth_table['sample'] == sample) & (meth_table['loc'] == new_loc)])
 
-                if call_count < int(args.mincalls):
-                    drop_ix += list(meth_table.loc[(meth_table['loc'] == new_loc)].index)
-            
-            if i % tick == 0:
-                logger.info('%s %s: processed %d sites' % (args.data, args.interval, i))
-        
-        drop_ix = list(set(drop_ix))
+        # One pass with a groupby rather than a scan of the whole table per row.
+        # The condition is unchanged: a position is kept only where every sample
+        # has at least --mincalls calls on it, and a sample with no calls there
+        # counts as zero, which is why the columns are reindexed onto
+        # sample_order -- a sample absent from the grouping has to fail the test
+        # rather than be skipped.
+        #
+        # Counting rows, so ambiguous calls count toward the total exactly as they
+        # did before.
+        counts = meth_table.groupby(['loc', 'sample']).size()
+
+        if args.rna:
+            # Per sample, not across all of them. Under --rna a "sample" is a
+            # modification, and modifications sit on different canonical bases --
+            # an adenine is never also a cytosine -- so no position has calls from
+            # every one of them and the all-samples rule drops the entire table.
+            # It emptied a two-mod run completely: 43,177 of 43,177 rows.
+            #
+            # Each modification has its own panel here, so requiring them to agree
+            # on a position means nothing. A site is kept for the mods that
+            # actually measured it.
+            key = pd.MultiIndex.from_arrays([meth_table['loc'], meth_table['sample']])
+            keep = counts.reindex(key).fillna(0).values >= int(args.mincalls)
+            drop_ix = meth_table.index[~keep]
+
+        else:
+            # Unchanged: a position is kept only where every sample has at least
+            # --mincalls calls on it, and a sample with no calls there counts as
+            # zero -- which is why the columns are reindexed onto sample_order, so
+            # a sample absent from the grouping fails the test rather than being
+            # skipped.
+            wide = counts.unstack(fill_value=0).reindex(columns=sample_order, fill_value=0)
+            keep_locs = wide.index[(wide >= int(args.mincalls)).all(axis=1)]
+            drop_ix = meth_table.index[~meth_table['loc'].isin(keep_locs)]
+
         logger.info('dropping %d positions' % len(drop_ix))
         meth_table.drop(drop_ix, inplace=True)
 
