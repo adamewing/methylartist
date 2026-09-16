@@ -55,77 +55,6 @@ Notes on RNA mode:
 
 ![locus rna plot multimod](https://github.com/adamewing/methylartist/blob/main/docs/HPDE6c7.RNA.allmods.sorted.mapped_only.chr19_47722400_47763300.a17802.ms1.smw34.mc20.mt0.8.ct0.8.locus.meth.png?raw=true)
 
-### db-nanopolish
-
-Load nanopolish methylation into sqlite db.
-
-Example:
-
-Loading results from `nanopolish call-methylation` to a database:
-
-```
-methylartist db-nanopolish -m MCF7_ATCC_REP1.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db
-```
-
-Appending additional results to the above database:
-
-```
-methylartist db-nanopolish -m MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -a
-```
-
-Loading results with the current recommended cutoffs for nanopolish (abs(llr) > 2.0, scale grouped CpGs):
-
-```
-methylartist db-nanopolish -m MCF7_ATCC_REP1.nanopolish.tsv.gz,MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -t 2.0 -s
-```
-
-Inputs can be uncompressed or .gzipped.
-
-
-### db-megalodon
-
-Load megalodon methylation into sqlite db.
-
-The input file is the output of `megalodon_extras per_read_text modified_bases /path/to/megalodon_output`, which needs to be run prior to this script.
-
-The default filename (`/path/to/megalodon_output/per_read_modified_base_calls.txt`) is the same for all megalodon runs, so the `--db` option is recommended to make the output database more identifiable for downstream analysis.
-
-Example:
-
-```
-methylartist db-megalodon -m MCF7_ATCC_REP1/per_read_modified_base_calls.txt --db MCF7_ATCC.megalodon.db
-```
-
-Appending (`-a`) additional results to the above database:
-
-```
-methylartist db-megalodon -m MCF7_ATCC_REP2/per_read_modified_base_calls.txt --db MCF7_ATCC.megalodon.db -a
-```
-
-Input files can be uncompressed or .gzipped.
-
-### db-custom
-
-This enables free-form parsing of modified basecall tables into methylartist .db files for tools where modified base .bam files are not available and certain requirements are met. The table must contain, at a minimum, the read names, genomic position (chromosome and position), strand, and probability of the target base being modified. If not specified by a column (`--modbasecol`), the modification is specified by `--modbase`. The probability is assumed to be a raw probability between 0 and 1 of a given base being modified i.e. 1-p(canonical), other schemes may be used but `--canprob` and `--mincanprob` must be specified to set a column for canoncial base scores and a cutoff for a base being canonical.
-
-For example, modified basecalls from [deepsignal-plant](https://github.com/PengNi/deepsignal-plant) can be loaded as follows:
-
-
-`/home/taewing/methylartist/methylartist db-custom -m deepsignal_example.C.call_mods.tsv --readname 4 --chrom 0 --pos 1 --strand 2 --modprob 7 --modbase m -d deepsignal_example.db`
-
-### db-sub
-
-#### methylartist now supports C/T data if the .bam file is noted as being C/T substitution data via `--ctbam` (works for locus, region, segmeth, wgmeth)
-
-As of 1.3.0, methylartist supports display of C/U base substitution data (i.e. WGBS or EM-seq data) via creation of a methylartist .db file, simply pass the .bam file as input and specify an output file:
-
-```
-methylartist db-sub -b NA12878.EMSEQ.GAPDH.bam -d NA12878.EMSEQ.GAPDH.db
-```
-
-Note that the .bam file has to include the `MD` tag  (aligners for bisulfite/em-seq data should do this).
-
-
 ### segmeth
 
 Outputs aggregate methylation / demethylation call counts over intervals. Required before generating strip / violin plots with `segplot`
@@ -458,6 +387,78 @@ methylartist scoredist -d MCF7_ATCC.megalodon.db,MCF7_ECACC.megalodon.db -m m
 ```
 
 ![score distribution](https://github.com/adamewing/methylartist/blob/main/docs/MCF7_ATCC.megalodon.db_MCF7_ECACC.megalodon.db.scoredist.png)
+
+## Older commands (pre-modbam)
+
+### db-nanopolish
+
+Load nanopolish methylation into sqlite db.
+
+Example:
+
+Loading results from `nanopolish call-methylation` to a database:
+
+```
+methylartist db-nanopolish -m MCF7_ATCC_REP1.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db
+```
+
+Appending additional results to the above database:
+
+```
+methylartist db-nanopolish -m MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -a
+```
+
+Loading results with the current recommended cutoffs for nanopolish (abs(llr) > 2.0, scale grouped CpGs):
+
+```
+methylartist db-nanopolish -m MCF7_ATCC_REP1.nanopolish.tsv.gz,MCF7_ATCC_REP2.nanopolish.tsv.gz -d MCF7_ATCC.nanopolish.db -t 2.0 -s
+```
+
+Inputs can be uncompressed or .gzipped.
+
+
+### db-megalodon
+
+Load megalodon methylation into sqlite db.
+
+The input file is the output of `megalodon_extras per_read_text modified_bases /path/to/megalodon_output`, which needs to be run prior to this script.
+
+The default filename (`/path/to/megalodon_output/per_read_modified_base_calls.txt`) is the same for all megalodon runs, so the `--db` option is recommended to make the output database more identifiable for downstream analysis.
+
+Example:
+
+```
+methylartist db-megalodon -m MCF7_ATCC_REP1/per_read_modified_base_calls.txt --db MCF7_ATCC.megalodon.db
+```
+
+Appending (`-a`) additional results to the above database:
+
+```
+methylartist db-megalodon -m MCF7_ATCC_REP2/per_read_modified_base_calls.txt --db MCF7_ATCC.megalodon.db -a
+```
+
+Input files can be uncompressed or .gzipped.
+
+### db-custom
+
+This enables free-form parsing of modified basecall tables into methylartist .db files for tools where modified base .bam files are not available and certain requirements are met. The table must contain, at a minimum, the read names, genomic position (chromosome and position), strand, and probability of the target base being modified. If not specified by a column (`--modbasecol`), the modification is specified by `--modbase`. The probability is assumed to be a raw probability between 0 and 1 of a given base being modified i.e. 1-p(canonical), other schemes may be used but `--canprob` and `--mincanprob` must be specified to set a column for canoncial base scores and a cutoff for a base being canonical.
+
+For example, modified basecalls from [deepsignal-plant](https://github.com/PengNi/deepsignal-plant) can be loaded as follows:
+
+
+`/home/taewing/methylartist/methylartist db-custom -m deepsignal_example.C.call_mods.tsv --readname 4 --chrom 0 --pos 1 --strand 2 --modprob 7 --modbase m -d deepsignal_example.db`
+
+### db-sub
+
+#### methylartist now supports C/T data if the .bam file is noted as being C/T substitution data via `--ctbam` (works for locus, region, segmeth, wgmeth)
+
+As of 1.3.0, methylartist supports display of C/U base substitution data (i.e. WGBS or EM-seq data) via creation of a methylartist .db file, simply pass the .bam file as input and specify an output file:
+
+```
+methylartist db-sub -b NA12878.EMSEQ.GAPDH.bam -d NA12878.EMSEQ.GAPDH.db
+```
+
+Note that the .bam file has to include the `MD` tag  (aligners for bisulfite/em-seq data should do this).
 
 ## Citation
 
