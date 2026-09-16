@@ -3,7 +3,9 @@
 Tools for parsing and plotting methylation patterns
 
 **Try the [methylartist browser](https://genome.coffee/mabrowse)!**
+
 **Try [RNA mode](https://github.com/adamewing/methylartist/tree/main#locus-rna-mode-new)**
+
 (and report bugs)
 
 ## Installation
