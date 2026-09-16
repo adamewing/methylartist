@@ -59,6 +59,9 @@ Notes on RNA mode:
 
 ![locus rna plot multimod](https://github.com/adamewing/methylartist/blob/main/docs/HPDE6c7.RNA.allmods.sorted.mapped_only.chr19_47722400_47763300.a17802.ms1.smw34.mc20.mt0.8.ct0.8.locus.meth.png?raw=true)
 
+- When plotting multiple samples, the spike plot is replaced with a dumbell plot:
+![locus rna plot multi](https://github.com/adamewing/methylartist/blob/main/docs/BxPC3.RNA.allmods.sorted.chr19_47722400_47763300.a17802.cohort.ms1.smw34.mc20.mt0.8.ct0.8.locus.meth.png?raw=true)
+
 ### segmeth
 
 Outputs aggregate methylation / demethylation call counts over intervals. Required before generating strip / violin plots with `segplot`
