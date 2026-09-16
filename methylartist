@@ -5211,16 +5211,21 @@ def locus(args):
                     order_stack += 1
 
             else:
-                width = rna_bar_width(elt_start, elt_end, img_w, n_sites=len(bar_x))
+                # Series share a site's mark rather than overdrawing it: without
+                # the offset the taller bar hides the shorter one completely.
+                slot = rna_bar_width(elt_start, elt_end, img_w, n_sites=len(bar_x))
+                width = slot / n_series
+                k = sorted(o for o in sample_order if panel_for(o) == panel_for(sample)).index(sample)
+                offset = (k - (n_series-1)/2) * width
 
                 if solid:
-                    ax_s.bar([bar_x[i] for i in solid], [bar_y[i] for i in solid],
+                    ax_s.bar([bar_x[i] + offset for i in solid], [bar_y[i] for i in solid],
                              width=width, color=sample_color[sample], alpha=smoothalpha,
                              label=sample, zorder=order_stack, linewidth=0)
                     order_stack += 1
 
                 if thin:
-                    ax_s.bar([bar_x[i] for i in thin], [bar_y[i] for i in thin],
+                    ax_s.bar([bar_x[i] + offset for i in thin], [bar_y[i] for i in thin],
                              width=width, facecolor='none', edgecolor=sample_color[sample],
                              alpha=smoothalpha, zorder=order_stack, linewidth=0.5,
                              label=None if solid else sample)
@@ -5229,7 +5234,7 @@ def locus(args):
                 # A bar a few pixels wide ends in antialiasing, so where it stops
                 # is a guess. The cap states it.
                 if solid and not args.nocaps:
-                    ax_s.scatter([bar_x[i] for i in solid], [bar_y[i] for i in solid],
+                    ax_s.scatter([bar_x[i] + offset for i in solid], [bar_y[i] for i in solid],
                                  s=dotsize*0.45, color=sample_color[sample],
                                  zorder=order_stack, linewidths=0)
                     order_stack += 1
