@@ -4526,6 +4526,7 @@ def locus(args):
         
         genes = new_genes
 
+    gene_labels = []            # (text, px width, anchor, y, nudge); placed once ax0 is final
     gene_colours = sns.color_palette(args.genepalette, n_colors=len(genes))
 
     y = 1
@@ -4563,15 +4564,15 @@ def locus(args):
 
             lg_x = max(genes[ensg].tx_start-elt_start, 0)
 
-            nudge_up = 0.0
-            if genes[ensg].tx_start-elt_start < 0:
-                nudge_up = tx_offset+0.1
-
-            gtxt = ax0.text(lg_x, y+nudge_up, label, zorder=4, fontsize='small')
+            gtxt = ax0.text(lg_x, y, label, zorder=4, fontsize='small')
             bb_w = gtxt.get_tightbbox(renderer=fig.canvas.get_renderer()).width
             fig_w = fig.get_size_inches()[0]*fig.dpi
             txt_w = bb_w/fig_w*(elt_end-elt_start)
-            gtxt.set_x(lg_x-txt_w*1.42)
+
+            # Placed below, once ax0 has its real limits; this is only the width
+            # the row packing reserves for it.
+            gene_labels.append((gtxt, bb_w, genes[ensg].tx_start-elt_start,
+                                y, tx_offset+0.1))
 
             genemap[y].add_interval(Interval(genes[ensg].tx_start-elt_start-(txt_w*1.5), genes[ensg].tx_end-elt_start+(txt_w*1.5)))
 
@@ -4996,6 +4997,32 @@ def locus(args):
             ax3.add_artist(con)
 
     ax0.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
+    # Gene labels, now that ax0 has its real limits.
+    #
+    # They sit to the left of the gene they name, offset by their own width --
+    # and that width was converted from pixels using the interval span and the
+    # figure width, because when they are created ax0 is still on matplotlib's
+    # default 0-1 and there is nothing better to ask. The line above then gives
+    # it the range that carries calls, which with --mincalls is a good deal
+    # narrower, so the offset came out too large and a gene starting at or
+    # before the interval -- clamped to x=0, a coordinate that is no longer the
+    # left edge -- ended up off the panel entirely. Measured on one 41kb
+    # interval: EHD2 at -1878 and AC010519.1 at -3312 against a left bound of
+    # 1852.
+    #
+    # The transform knows the answer exactly, so ask it. A label with no room to
+    # its left is kept at the edge over its own gene, on the same backing box the
+    # bed labels use -- raising it clear would put it in the next row.
+    inv = ax0.transData.inverted()
+    for gtxt, bb_w, anchor, gy, nudge in gene_labels:
+        txt_w = inv.transform((bb_w, 0))[0] - inv.transform((0, 0))[0]
+        x_lo, x_hi = ax0.get_xbound()
+        x = max(anchor, x_lo) - txt_w*1.42
+        if x < x_lo:
+            x = x_lo
+            gtxt.set_bbox(dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7, lw=0))
+        gtxt.set_x(x)
+
     ax1.set_xlim(ax3.get_xlim())
     # Sample boxes, now that ax1's limits are final.
     #
