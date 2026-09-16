@@ -2086,21 +2086,41 @@ def rna_site_fracs(sample_data):
     return pos, frac, n
 
 
-def rna_bar_width(elt_start, elt_end, img_w, min_px=2.0, dpi=100.0, axes_frac=0.8):
-    """Bar width in bases, so a single-base site is still visible.
+def rna_bar_width(elt_start, elt_end, img_w, n_sites=0, slot_px=3.5, max_px=16.0,
+                  dpi=100.0, axes_frac=0.8):
+    """Bar width in bases: what a bar wants, capped by the room between sites.
 
-    On a genome axis a site owns one base, which is well under a pixel at any
-    interval worth plotting. The width is therefore a mark rather than a
-    measurement, floored at min_px pixels' worth.
-
-    No cap: where two sites of one mod fall closer together than that, their
-    bars merge. That is a property of the interval being plotted and not
-    something a width can fix -- an invisible bar is a worse answer than a
-    merged one. Narrow the interval to separate them.
+    A site owns one base, which is well under a pixel at any interval worth
+    plotting, so the width is a mark rather than a measurement. Sizing it from
+    the base alone leaves it invisible; the room a site actually has is the
+    distance to the next one, which over 900bp of chr19 is 67px against a base's
+    1.3px.
     """
     span = max(1, elt_end - elt_start)
     px = max(1.0, float(img_w) * dpi * axes_frac)
-    return max(1.0, min_px * span / px)
+    one_px = span / px
+    room = span / max(1, n_sites) if n_sites else slot_px * one_px
+    w = min(max(1.0, min(slot_px * one_px, room)), max_px * one_px)
+    return max(w, 0.75 * one_px)
+
+
+def rna_dumbbells(site_values):
+    """Per site, the lowest and highest value across a panel's series.
+
+    {sample: (positions, fractions)} in, (positions, lows, highs) out, for the
+    sites where at least two series disagree. Sites they agree on have no length
+    to draw and are left to the dots.
+    """
+    lo, hi = {}, {}
+    for pos, frac in site_values.values():
+        for x, y in zip(pos, frac):
+            if x not in lo or y < lo[x]: lo[x] = y
+            if x not in hi or y > hi[x]: hi[x] = y
+
+    out = [(x, lo[x], hi[x]) for x in sorted(lo) if hi[x] - lo[x] > 1e-9]
+    if not out:
+        return [], [], []
+    return [o[0] for o in out], [o[1] for o in out], [o[2] for o in out]
 
 
 def slide_window(meth_table, sample, width=20, slide=2):
@@ -4746,16 +4766,15 @@ def locus(args):
         if merge_mods:
             row_color = {k: sns.desaturate(v, 0.25) for k, v in row_color.items()}
 
-        # Dots carry the mod once there is more than one to tell apart, in the
-        # colour that mod already has below. A second palette here would mean a
-        # mod was one colour on the reads and another on its own panel, which is
-        # the opposite of telling them apart. With several bams the first one
-        # carrying that mod supplies it.
+        # Dots carry the mod, in the colour that mod has on its own panel below.
+        # Keyed per row as well as per mod: with two bams a mod has a colour in
+        # each, and keying on the mod alone painted every bam's reads in the
+        # first one's colours.
         mod_dot_color = None
         if merge_mods:
             mod_dot_color = {}
             for bamname in reads:
-                mod_dot_color.setdefault(mod_of(bamname), sample_color[bamname])
+                mod_dot_color[(row_key(bamname), mod_of(bamname))] = sample_color[bamname]
 
         if args.readmask:
             logger.info('masked %d reads due to --readmask' % masked_count)
@@ -4872,7 +4891,7 @@ def locus(args):
                 x, y = zip(*markers)
                 # black with a single mod, as before: a colour there would
                 # distinguish nothing and change every existing figure
-                mc = mod_dot_color[mod] if mod_dot_color else 'black'
+                mc = mod_dot_color.get((bamname, mod), 'black') if mod_dot_color else 'black'
                 ax1.scatter(x, y, marker=rm, edgecolor=mc, facecolor=mc, s=ms**2, zorder=3, alpha=ma)
             
             # Plot read lines for this sample
@@ -5099,6 +5118,10 @@ def locus(args):
 
     skipped_samples = []
 
+    # {panel: {sample: (positions, fractions)}}, for the dumbbell pass below
+    rna_points = dd(dict)
+    dotsize = float(args.dotsize)
+
     if args.shuffle:
         random.shuffle(sample_order)
 
@@ -5153,42 +5176,63 @@ def locus(args):
         ax_s = mod_axes[panel_for(sample)]
 
         if args.rna:
-            # One bar per site at its own genome coordinate, at the fraction the
-            # calls there give. No window, no kernel: a line between two sites and
-            # a kernel across them each assume the value in between is a real
-            # gradient, which holds for CpG methylation in domains and not along a
-            # transcript, where the unmodified bases between two modified ones are
-            # separate measurements.
-            # A site is one base, which is well under a pixel at any interval worth
-            # plotting, so the width is a mark rather than a measurement. Several
-            # series of one mod DO share positions -- samples, and phases of a
-            # sample -- so they split the mark between them rather than overdrawing.
+            # One mark per site at its own genome coordinate, at the fraction the
+            # calls there give. No window, no kernel: both assume the value
+            # between two sites is a gradient, which holds for CpG methylation in
+            # domains and not along a transcript.
             n_series = max(1, sum(1 for o in sample_order if panel_for(o) == panel_for(sample)))
-            slot = rna_bar_width(elt_start, elt_end, img_w)
-            k = sorted(o for o in sample_order if panel_for(o) == panel_for(sample)).index(sample)
-            width = slot / n_series
-            offset = (k - (n_series-1)/2) * width
+            rna_points[panel_for(sample)][sample] = (bar_x, bar_y)
 
-            # Below --maskcutoff a bar is outlined rather than filled: measured,
-            # but not asserting a value. The two sets are drawn separately rather
-            # than one over the other -- an outline on top of a fill is still a
-            # fill, and says nothing.
+            # Below --maskcutoff a mark is hollow rather than filled: measured,
+            # but not asserting a value. Drawn as two sets, since an outline over
+            # a fill is still a fill.
             cutoff = -1 if args.nomask else int(args.maskcutoff)
             solid = [i for i, n in enumerate(bar_n) if n > cutoff]
             thin  = [i for i, n in enumerate(bar_n) if n <= cutoff]
 
-            if solid:
-                ax_s.bar([bar_x[i] + offset for i in solid], [bar_y[i] for i in solid],
-                         width=width, color=sample_color[sample], alpha=smoothalpha,
-                         label=sample, zorder=order_stack, linewidth=0)
-                order_stack += 1
+            if n_series > 1 and not args.rnabars:
+                # Side by side, a site's footprint grows with every series added,
+                # so two mod sites a base apart collide -- and worse with the
+                # third series and the fourth. A dot on the site's own coordinate
+                # costs one dot however many there are, and the comparison moves
+                # to the axis with room for it. See rna_dumbbells for the line.
+                if solid:
+                    ax_s.scatter([bar_x[i] for i in solid], [bar_y[i] for i in solid],
+                                 s=dotsize, color=sample_color[sample], alpha=smoothalpha,
+                                 label=sample, zorder=order_stack, linewidths=0.6,
+                                 edgecolors='#ffffff')
+                    order_stack += 1
 
-            if thin:
-                ax_s.bar([bar_x[i] + offset for i in thin], [bar_y[i] for i in thin],
-                         width=width, facecolor='none', edgecolor=sample_color[sample],
-                         alpha=smoothalpha, zorder=order_stack, linewidth=0.5,
-                         label=None if solid else sample)
-                order_stack += 1
+                if thin:
+                    ax_s.scatter([bar_x[i] for i in thin], [bar_y[i] for i in thin],
+                                 s=dotsize, facecolor='none', edgecolors=sample_color[sample],
+                                 alpha=smoothalpha, zorder=order_stack, linewidths=0.9,
+                                 label=None if solid else sample)
+                    order_stack += 1
+
+            else:
+                width = rna_bar_width(elt_start, elt_end, img_w, n_sites=len(bar_x))
+
+                if solid:
+                    ax_s.bar([bar_x[i] for i in solid], [bar_y[i] for i in solid],
+                             width=width, color=sample_color[sample], alpha=smoothalpha,
+                             label=sample, zorder=order_stack, linewidth=0)
+                    order_stack += 1
+
+                if thin:
+                    ax_s.bar([bar_x[i] for i in thin], [bar_y[i] for i in thin],
+                             width=width, facecolor='none', edgecolor=sample_color[sample],
+                             alpha=smoothalpha, zorder=order_stack, linewidth=0.5,
+                             label=None if solid else sample)
+                    order_stack += 1
+
+                # A bar a few pixels wide ends in antialiasing, so where it stops
+                # is a guess. The cap states it.
+                if solid and not args.nocaps:
+                    ax_s.scatter([bar_x[i] for i in solid], [bar_y[i] for i in solid],
+                                 s=dotsize*0.45, color=sample_color[sample],
+                                 zorder=order_stack, linewidths=0)
+                    order_stack += 1
 
         else:
             ax_s.plot(list(windowed_methfrac.keys()), smoothed_methfrac, marker='', lw=slw, color=sample_color[sample], alpha=smoothalpha, label=sample)
@@ -5204,6 +5248,21 @@ def locus(args):
                         ax_s.plot(pos_seg, mf_seg, marker='', lw=slw, color='#ffffff', alpha=0.8, zorder=order_stack)
 
                         order_stack += 1
+
+    # The spread at each site: a line from the lowest series to the highest,
+    # drawn under the dots. Zero length where they agree, absent where only one
+    # series called the site, which is a real difference between them.
+    if args.rna and not args.rnabars:
+        for panel, series in rna_points.items():
+            if len(series) < 2:
+                continue
+            xs, los, his = rna_dumbbells(series)
+            if not xs:
+                continue
+            mod_axes[panel].vlines(xs, los, his, color=args.dumbbellcolor,
+                                   lw=float(args.dumbbellwidth), alpha=smoothalpha,
+                                   zorder=order_stack)
+            order_stack += 1
 
     smoothed_df = pd.DataFrame(smoothed_values)
 
@@ -7375,6 +7434,11 @@ def parse_args():
     parser_locus.add_argument('--variantpalette', default='Set1', help='colour palette for variant ticks (default = Set1)')
     parser_locus.add_argument('--variantsize', default=6, help='size of variant ticks (default = 6)')
     parser_locus.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
+    parser_locus.add_argument('--rnabars', default=False, action='store_true', help='--rna: keep bars when more than one series shares a panel, instead of dots joined by their spread')
+    parser_locus.add_argument('--nocaps', default=False, action='store_true', help='--rna: do not mark the top of each bar with a dot')
+    parser_locus.add_argument('--dotsize', default=22, help='--rna: marker area for site dots (default=22)')
+    parser_locus.add_argument('--dumbbellcolor', default='#8c8c8c', help='--rna: colour of the line joining a site\'s lowest and highest series (default=#8c8c8c)')
+    parser_locus.add_argument('--dumbbellwidth', default=1.2, help='--rna: width of that line (default=1.2)')
     parser_locus.add_argument('--rna', default=False, action='store_true', help='direct RNA mode: plot each mod as bars against genome coordinates with no smoothing and no mod-space translation. Implies --motifsize 1 and makes --motif optional.')
     parser_locus.add_argument('--allreads', default=False, action='store_true', help='show all alignments (secondary/supplementary alignments hidden by default)')
     parser_locus.add_argument('--phased', default=False, action='store_true', help='split samples into phases')

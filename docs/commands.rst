@@ -839,6 +839,23 @@ The annotated output image and its sections from top to bottom are described `he
    one modification's dots on a line of its own colour. A single modification is
    unaffected -- same colours, same black dots, same output.
 
+.. option:: --rnabars
+
+   with ``--rna``, keep bars where more than one series shares a panel instead
+   of dots joined by their spread
+.. option:: --nocaps
+
+   with ``--rna``, do not mark the top of each bar with a dot
+.. option:: --dotsize
+
+   with ``--rna``, marker area for site dots (default = 22)
+.. option:: --dumbbellcolor
+
+   with ``--rna``, colour of the line joining a site's lowest and highest series
+   (default = #8c8c8c)
+.. option:: --dumbbellwidth
+
+   with ``--rna``, width of that line (default = 1.2)
 .. option:: --rna
 
    direct RNA mode. Each modification is drawn as bars at their own positions
@@ -879,6 +896,20 @@ The annotated output image and its sections from top to bottom are described `he
    panel is squeezed until a column of modified bases is too compressed to see
    the bar above it pointing at it. Every panel keeps the height it would have
    with one mod; ``--height`` overrides, and ``--panelratios`` is honoured.
+
+   Where more than one series shares a panel -- two samples, or two phases of
+   one -- the bars are replaced by a dot per series at the site's own
+   coordinate, joined by a line from the lowest value to the highest. Bars side
+   by side make a site as wide as the number of series, so two modified bases a
+   base or two apart collide, and worse with each series after that; a dot costs
+   one dot however many there are, and the comparison moves to the vertical axis
+   where there is room for it. The line is the disagreement at that site: it has
+   no length where the series agree, and no line is drawn at all where only one
+   of them called the site, which is a real difference between them.
+
+   ``--rnabars`` keeps the bars instead. ``--dotsize``, ``--dumbbellcolor`` and
+   ``--dumbbellwidth`` size and colour the marks; ``--nocaps`` drops the dot
+   that marks the top of a single-series bar.
 
 
 **Example usage:**
