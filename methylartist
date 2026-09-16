@@ -2104,23 +2104,30 @@ def rna_bar_width(elt_start, elt_end, img_w, n_sites=0, slot_px=3.5, max_px=16.0
     return max(w, 0.75 * one_px)
 
 
-def rna_dumbbells(site_values):
-    """Per site, the lowest and highest value across a panel's series.
+def rna_dumbbells(site_values, eps=0.0):
+    """Per site, the spread across a panel's series, split by whether it shows.
 
-    {sample: (positions, fractions)} in, (positions, lows, highs) out, for the
-    sites where at least two series disagree. Sites they agree on have no length
-    to draw and are left to the dots.
+    {sample: (positions, fractions)} in. Out: (positions, lows, highs) for the
+    sites whose series are more than `eps` apart, and (positions, midpoints) for
+    the sites where two or more series land within `eps` -- close enough that
+    their dots overlap into one, which otherwise reads as a single sample.
+
+    `eps` is a marker diameter in axis units, so it answers to how the figure is
+    actually drawn rather than to a fixed fraction.
     """
-    lo, hi = {}, {}
+    lo, hi, n = {}, {}, {}
     for pos, frac in site_values.values():
         for x, y in zip(pos, frac):
             if x not in lo or y < lo[x]: lo[x] = y
             if x not in hi or y > hi[x]: hi[x] = y
+            n[x] = n.get(x, 0) + 1
 
-    out = [(x, lo[x], hi[x]) for x in sorted(lo) if hi[x] - lo[x] > 1e-9]
-    if not out:
-        return [], [], []
-    return [o[0] for o in out], [o[1] for o in out], [o[2] for o in out]
+    apart = [(x, lo[x], hi[x]) for x in sorted(lo) if hi[x] - lo[x] > eps]
+    same  = [(x, (lo[x] + hi[x]) / 2) for x in sorted(lo)
+             if n[x] > 1 and hi[x] - lo[x] <= eps]
+
+    return ([a[0] for a in apart], [a[1] for a in apart], [a[2] for a in apart],
+            [t[0] for t in same], [t[1] for t in same])
 
 
 def slide_window(meth_table, sample, width=20, slide=2):
@@ -4764,7 +4771,12 @@ def locus(args):
         # the line makes every mod legible against it while still telling two bams
         # apart, which a flat grey would not.
         if merge_mods:
-            row_color = {k: sns.desaturate(v, 0.25) for k, v in row_color.items()}
+            # Desaturated and lightened: with several mods the row is a backdrop
+            # for their dots, and a saturated one at this depth swallows them.
+            lift = float(args.readlinelight)
+            row_color = {k: tuple(c + (1.0-c)*lift
+                                  for c in mcolors.to_rgb(sns.desaturate(v, 0.25)))
+                         for k, v in row_color.items()}
 
         # Dots carry the mod, in the colour that mod has on its own panel below.
         # Keyed per row as well as per mod: with two bams a mod has a colour in
@@ -5121,6 +5133,7 @@ def locus(args):
     # {panel: {sample: (positions, fractions)}}, for the dumbbell pass below
     rna_points = dd(dict)
     dotsize = float(args.dotsize)
+    dumbbell_z = order_stack - 1        # under every dot the loop goes on to draw
 
     if args.shuffle:
         random.shuffle(sample_order)
@@ -5261,13 +5274,25 @@ def locus(args):
         for panel, series in rna_points.items():
             if len(series) < 2:
                 continue
-            xs, los, his = rna_dumbbells(series)
-            if not xs:
-                continue
-            mod_axes[panel].vlines(xs, los, his, color=args.dumbbellcolor,
-                                   lw=float(args.dumbbellwidth), alpha=smoothalpha,
-                                   zorder=order_stack)
-            order_stack += 1
+
+            # A marker diameter in axis units, from the height this panel will
+            # actually be drawn at. Series closer together than this land on one
+            # another and need saying so.
+            panel_h = img_h * p_ratios[4+panel] / max(1, sum(p_ratios))
+            eps = (dotsize ** 0.5 / 72.0) / max(0.1, panel_h)
+
+            xs, los, his, same_x, same_y = rna_dumbbells(series, eps)
+
+            if xs:
+                mod_axes[panel].vlines(xs, los, his, color=args.dumbbellcolor,
+                                       lw=float(args.dumbbellwidth), alpha=smoothalpha,
+                                       zorder=dumbbell_z)
+            # Ringed where the series agree: one dot there is every sample, not
+            # one of them, and nothing else in the panel says so.
+            if same_x and not args.norings:
+                mod_axes[panel].scatter(same_x, same_y, s=dotsize*2.8, facecolor='none',
+                                        edgecolors=args.dumbbellcolor, linewidths=0.8,
+                                        alpha=smoothalpha, zorder=dumbbell_z)
 
     smoothed_df = pd.DataFrame(smoothed_values)
 
@@ -7441,6 +7466,7 @@ def parse_args():
     parser_locus.add_argument('--motifsize', default=2, help='mod motif size, only used with -b/--bams (default is 2 as "CG" is most common use case, e.g. set to 1 for 6mA)')
     parser_locus.add_argument('--rnabars', default=False, action='store_true', help='--rna: keep bars when more than one series shares a panel, instead of dots joined by their spread')
     parser_locus.add_argument('--nocaps', default=False, action='store_true', help='--rna: do not mark the top of each bar with a dot')
+    parser_locus.add_argument('--norings', default=False, action='store_true', help='--rna: do not ring sites where every series lands on the same value')
     parser_locus.add_argument('--dotsize', default=22, help='--rna: marker area for site dots (default=22)')
     parser_locus.add_argument('--dumbbellcolor', default='#8c8c8c', help='--rna: colour of the line joining a site\'s lowest and highest series (default=#8c8c8c)')
     parser_locus.add_argument('--dumbbellwidth', default=1.2, help='--rna: width of that line (default=1.2)')
@@ -7460,6 +7486,7 @@ def parse_args():
     parser_locus.add_argument('--readmarkersize', default=2.0, help='marker size for (un)methylated glpyhs in read panel (default=2.0)')
     parser_locus.add_argument('--readlinewidth', default=1.0, help='width for lines representing read alignments (default=1.0)')
     parser_locus.add_argument('--readlinealpha', default=0.25, help='alpha (transparency) for read mapping lines (default=0.25)')
+    parser_locus.add_argument('--readlinelight', default=0.45, help='lighten read lines toward white by this fraction when more than one mod is shown, so mod dots stay legible over them (default=0.45)')
     parser_locus.add_argument('--readopenmarkeredgecolor', default=None, help='edge color for open (unmethylated) markers in read plot (default = sample color)')
     parser_locus.add_argument('--slidingwindowsize', default=2, help='size of initial sliding window for coverage check (default=2)')
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')

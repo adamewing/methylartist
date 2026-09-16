@@ -846,6 +846,13 @@ The annotated output image and its sections from top to bottom are described `he
 .. option:: --nocaps
 
    with ``--rna``, do not mark the top of each bar with a dot
+.. option:: --norings
+
+   with ``--rna``, do not ring sites where every series lands on the same value
+.. option:: --readlinelight
+
+   lighten read lines toward white by this fraction when more than one mod is
+   shown, so the mod dots stay legible over them (default = 0.45)
 .. option:: --dotsize
 
    with ``--rna``, marker area for site dots (default = 22)
@@ -907,9 +914,18 @@ The annotated output image and its sections from top to bottom are described `he
    no length where the series agree, and no line is drawn at all where only one
    of them called the site, which is a real difference between them.
 
+   Series that land on the same value stack into one dot, which would
+   otherwise read as a single sample having called the site. Those are ringed.
+   The threshold is a marker diameter converted to axis units from the height
+   the panel is actually drawn at, so it tracks ``--dotsize`` and the figure
+   rather than being a fixed fraction. In a dense panel agreement is the common
+   case and the rings become texture; ``--norings`` drops them.
+
    ``--rnabars`` keeps the bars instead. ``--dotsize``, ``--dumbbellcolor`` and
    ``--dumbbellwidth`` size and colour the marks; ``--nocaps`` drops the dot
-   that marks the top of a single-series bar.
+   that marks the top of a single-series bar. With more than one mod the read
+   lines are lightened as well as desaturated, since they are a backdrop for
+   the mod dots at that point -- ``--readlinelight`` sets how far.
 
 
 **Example usage:**
