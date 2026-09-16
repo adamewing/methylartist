@@ -4644,6 +4644,8 @@ def locus(args):
     ax1.set_yticks([])
     ax1.set_frame_on(False)
 
+    samplebox = None            # set by the read plot, drawn once ax1 is final
+
     if not args.skip_align_plot:
         logger.info('building read alignment plot...')
 
@@ -4917,24 +4919,9 @@ def locus(args):
             bam_ylims[bamname] = [min([r[0][1] for r in read_lines]), max([r[0][1] for r in read_lines])]
             bam_xlims[bamname] = [min([r[1][0] for r in read_lines]), max([r[1][0] for r in read_lines])]
         
-        if args.samplebox:
-            xlim_max = max([v[1] for v in bam_xlims.values()])
-
-            sample_margin = abs(ax1.get_xbound()[1])-xlim_max
-            sample_box_width = sample_margin*.2
-            sample_box_pad = sample_margin*.1
-
-            sample_box_x1 = xlim_max + sample_box_pad
-
-            sample_box_patches = []
-
-            for bamname, sample_box_y in bam_ylims.items():
-                sample_box_patches.append(matplotlib.patches.Rectangle([sample_box_x1, sample_box_y[0]-0.5], sample_box_width, sample_box_y[1]-sample_box_y[0]+1, edgecolor='black', facecolor=row_color[bamname], zorder=1))
-                if not args.notext:
-                    ax1.text(sample_box_x1+sample_box_width+sample_box_pad, sum(sample_box_y)/2, bamname, ha='left', va='center', fontsize='x-small')
-
-            for sb in sample_box_patches:
-                ax1.add_patch(sb)
+        # Drawn later: ax1's x limits are still the interval's here and are reset
+        # to ax3's below, which would carry the boxes off the edge.
+        samplebox = (bam_ylims, bam_xlims, row_color) if args.samplebox else None
 
         highlight_patches = []
 
@@ -5010,6 +4997,36 @@ def locus(args):
 
     ax0.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
     ax1.set_xlim(ax3.get_xlim())
+    # Sample boxes, now that ax1's limits are final.
+    #
+    # They used to be drawn with the reads, against the interval's own limits,
+    # and the line above then rescales ax1 to the range that actually carries
+    # calls -- so the boxes landed outside it and were clipped away while the
+    # labels, which matplotlib does not clip, drifted off to the right. With
+    # --mincalls the two ranges differ by a lot.
+    if samplebox is not None:
+        sb_ylims, sb_xlims, sb_color = samplebox
+        x_lo, x_hi = ax1.get_xbound()
+        span = x_hi - x_lo
+
+        # The blank margin right of the reads, where the box belongs. Reads can
+        # run past the edge now, leaving none, so keep a strip regardless and
+        # put it over them rather than under.
+        reads_end = min(max(v[1] for v in sb_xlims.values()), x_hi)
+        margin = max(x_hi - reads_end, span * 0.05)
+
+        box_w = margin * 0.2
+        box_pad = margin * 0.1
+        box_x = min(x_hi - box_w - box_pad, reads_end + box_pad)
+
+        for bamname, box_y in sb_ylims.items():
+            ax1.add_patch(matplotlib.patches.Rectangle(
+                [box_x, box_y[0]-0.5], box_w, box_y[1]-box_y[0]+1,
+                edgecolor='black', facecolor=sb_color[bamname], zorder=5))
+            if not args.notext:
+                ax1.text(box_x + box_w + box_pad, sum(box_y)/2, bamname,
+                         ha='left', va='center', fontsize='x-small')
+
     ax2.set_xticks([])
     ax3.set_xticks([])
 
