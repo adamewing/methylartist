@@ -42,6 +42,19 @@ Once coverted, the sqlite .db file can be input to methylartist functions (e.g. 
 
 ## Commands:
 
+### locus: RNA mode (new!)
+
+```
+methylartist locus -b /home/data/panc_cell_bams/HPDE6c7.RNA.allmods.sorted.mapped_only.bam -i chr19:47722400-47763300 -m a --rna -r /home/data/ref/hg38_agrf/hg38_agrf.fasta --mincalls 20 -g Homo_sapiens.GRCh38.97.chr.sorted.gtf.gz
+```
+![locus rna plot](https://github.com/adamewing/methylartist/blob/main/docs/HPDE6c7.RNA.allmods.sorted.mapped_only.chr19_47722400_47763300.a.ms1.smw20.mc20.mt0.8.ct0.8.locus.meth.png?raw=true)
+
+Notes on RNA mode:
+- The correct setting for `--mincalls` depends on the read depth in the region. Setting too low will yield lots of spikes where e.g. 2/3 reads with a modificaion call yields a peak of 0.67. Setting too high may yield false negatives.
+- When multiple modifications are plotted at once, you will get one spike-plot per modification and alignment colours will change to focus on on the modification rather than on the sample (`--samplebox`) can help differentiate between samples:
+
+![locus rna plot multimod](https://github.com/adamewing/methylartist/blob/main/docs/HPDE6c7.RNA.allmods.sorted.mapped_only.chr19_47722400_47763300.a17802.ms1.smw34.mc20.mt0.8.ct0.8.locus.meth.png?raw=true)
+
 ### db-nanopolish
 
 Load nanopolish methylation into sqlite db.

@@ -4039,13 +4039,7 @@ def locus(args):
                 mods = sorted(get_modnames(meth_db))
                 logger.info('found mods: %s in db %s' % (','.join(mods), meth_db))
 
-        # In the order the user asked for them, where they asked. mods_methbam
-        # returns whatever order the tags came out of the file -- for one test bam
-        # that was 19229,17802,a,m,19228,19227 -- and sample_order follows this
-        # loop, so the colour a modification gets moved when a different set was
-        # selected: 6mA was the first colour with -m a,m,17802 and the third with
-        # all six. A modification should look the same however many it is shown
-        # beside.
+        # In the order per -m/--mods.
         if use_mods:
             ordered_mods = [m for m in use_mods if m in mods]
             for m in mods:
@@ -4120,54 +4114,37 @@ def locus(args):
 
     meth_table['orig_loc'] = meth_table['loc']
 
-    # Mod space gives every call position equal width, so a CpG island occupies as
-    # much of the panel as it does of the data -- the right trade when sites are
-    # dense and the value between them is a real gradient. It is the wrong one for
-    # a handful of methylated adenines scattered over a transcript: rank space
-    # spreads them evenly and says nothing about where in the gene they are.
-    #
-    # Leaving 'loc' as the genome coordinate is all --rna needs to do about it.
-    # coord_to_cpg below then becomes the identity, ax2 and ax3 end up with the
-    # same limits, and every downstream set_xlim(ax2.get_xlim()) keeps working
-    # without knowing anything has changed.
+    # RNA does not need translation into mod-space as modifications are punctate and discontinuous moreso than e.g. 5mCpG in DNA.
+
     if not args.rna:
         meth_table['loc'] = ss.rankdata(meth_table['loc'], method='dense')
 
     if len(meth_table['orig_loc']) == 0:
         sys.exit('%s: insufficient coverage for plot' % args.interval)        
 
+    if args.mincalls is None:
+        if args.rna:
+            logger.info('set --mincalls to 3 for --rna mode')
+            args.mincalls = 3
+        else:
+            args.mincalls = 0
+
     # optional mincall filter
 
     if int(args.mincalls) > 0:
         logger.info('assessing coverage per --mincalls, per-read sites to consider: %d' % len(meth_table['loc']))
 
-        # One pass with a groupby rather than a scan of the whole table per row.
-        # The condition is unchanged: a position is kept only where every sample
-        # has at least --mincalls calls on it, and a sample with no calls there
-        # counts as zero, which is why the columns are reindexed onto
-        # sample_order -- a sample absent from the grouping has to fail the test
-        # rather than be skipped.
-        #
-        # Counting rows, so ambiguous calls count toward the total exactly as they
-        # did before.
+        # More efficient for counting call counts
         counts = meth_table.groupby(['loc', 'sample']).size()
 
         if args.rna:
-            # Per sample, not across all of them. Under --rna a "sample" is a
-            # modification, and modifications sit on different canonical bases --
-            # an adenine is never also a cytosine -- so no position has calls from
-            # every one of them and the all-samples rule drops the entire table.
-            # It emptied a two-mod run completely: 43,177 of 43,177 rows.
-            #
-            # Each modification has its own panel here, so requiring them to agree
-            # on a position means nothing. A site is kept for the mods that
-            # actually measured it.
+            # Per sample, not across all of them, each modification has its own panel here.
             key = pd.MultiIndex.from_arrays([meth_table['loc'], meth_table['sample']])
             keep = counts.reindex(key).fillna(0).values >= int(args.mincalls)
             drop_ix = meth_table.index[~keep]
 
         else:
-            # Unchanged: a position is kept only where every sample has at least
+            # A position is kept only where every sample has at least
             # --mincalls calls on it, and a sample with no calls there counts as
             # zero -- which is why the columns are reindexed onto sample_order, so
             # a sample absent from the grouping fails the test rather than being
@@ -7413,7 +7390,7 @@ def parse_args():
     parser_locus.add_argument('--markeralpha', default=1.0, help='alpha (transparency) for (un)methylation marker (default=1.0)')
     parser_locus.add_argument('--readmarkersize', default=2.0, help='marker size for (un)methylated glpyhs in read panel (default=2.0)')
     parser_locus.add_argument('--readlinewidth', default=1.0, help='width for lines representing read alignments (default=1.0)')
-    parser_locus.add_argument('--readlinealpha', default=0.5, help='alpha (transparency) for read mapping lines (default=0.4)')
+    parser_locus.add_argument('--readlinealpha', default=0.25, help='alpha (transparency) for read mapping lines (default=0.25)')
     parser_locus.add_argument('--readopenmarkeredgecolor', default=None, help='edge color for open (unmethylated) markers in read plot (default = sample color)')
     parser_locus.add_argument('--slidingwindowsize', default=2, help='size of initial sliding window for coverage check (default=2)')
     parser_locus.add_argument('--smoothfunc', default='hanning', help='smoothing function, one of: flat,hanning,hamming,bartlett,blackman (default = hanning)')
@@ -7424,7 +7401,7 @@ def parse_args():
     parser_locus.add_argument('--maskcutoff', default=1, help='read count masking cutoff (default=1)')
     parser_locus.add_argument('--maxmaskedfrac', default=1.0, help='skip smoothed plot if fraction of sample masked (--maskcutoff) > this value (default = 1.0)')
     parser_locus.add_argument('--nomask', default=False, action='store_true', help='skip drawing segment masks')
-    parser_locus.add_argument('--mincalls', default=0, help='drop modspace positions if call count (meth+unmeth) < --mincalls (default=0)')
+    parser_locus.add_argument('--mincalls', default=None, help='drop modspace positions if call count (meth+unmeth) < --mincalls (default = 0; 3 for --rna)')
     parser_locus.add_argument('--max_read_density', default=None, help='filter reads with call density greater >= value, can be helpful in footprinting assays (default=None)')
     parser_locus.add_argument('--modspace', default=None, help='spacing between links in top panel (default=auto)')
     parser_locus.add_argument('--genes', default=None, help='genes of interest (comma delimited)')
