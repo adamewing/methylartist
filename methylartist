@@ -4429,16 +4429,11 @@ def locus(args):
         img_h = float(args.height)
 
     elif args.rna and n_mod_panels > 1:
-        # Every mod panel added takes its height out of the panels already
-        # there, and the read panel is what loses most of it: six mods left it
-        # 1.43in of an 8in figure for 700 reads and 5,600 dots, against 3.08in
-        # for one mod. The column a bar refers to is still drawn -- 562 dots,
-        # counted -- but squeezed to a smear and overdrawn by the other mods,
-        # so the bar looks like it points at nothing.
-        #
+
         # Grow the figure with the panels instead of letting the panels shrink
         # into it, which leaves every panel the height it would have with one
-        # mod. Capped, and --height still overrides.
+        # mod. --height overrides.
+
         extra_units = sum(p_ratios[5:4+n_mod_panels])
         one_mod_units = sum(p_ratios) - extra_units
         img_h = min(28.0, img_h * sum(p_ratios) / max(1, one_mod_units))
@@ -4612,7 +4607,7 @@ def locus(args):
                     else:
                         label = '<<' + label
 
-                gtxt  = ax0.text(lg_x, y, label, bbox=dict(boxstyle="round,pad=0.3", fc="lavender", alpha=0.5, lw=0), zorder=4)
+                gtxt = ax0.text(lg_x, y, label, bbox=dict(boxstyle="round,pad=0.3", fc="lavender", alpha=0.5, lw=0), zorder=4)
 
     ax0.set_ylim(0, gene_height)
     ax0.set_yticks([])
@@ -4997,40 +4992,21 @@ def locus(args):
             ax3.add_artist(con)
 
     ax0.set_xlim(ax3.get_xlim()) # sync axes between orig coords and gtf plot
-    # Gene labels, now that ax0 has its real limits.
-    #
-    # They sit to the left of the gene they name, offset by their own width --
-    # and that width was converted from pixels using the interval span and the
-    # figure width, because when they are created ax0 is still on matplotlib's
-    # default 0-1 and there is nothing better to ask. The line above then gives
-    # it the range that carries calls, which with --mincalls is a good deal
-    # narrower, so the offset came out too large and a gene starting at or
-    # before the interval -- clamped to x=0, a coordinate that is no longer the
-    # left edge -- ended up off the panel entirely. Measured on one 41kb
-    # interval: EHD2 at -1878 and AC010519.1 at -3312 against a left bound of
-    # 1852.
-    #
-    # The transform knows the answer exactly, so ask it. A label with no room to
-    # its left is kept at the edge over its own gene, on the same backing box the
-    # bed labels use -- raising it clear would put it in the next row.
+    # Gene label placement
+
     inv = ax0.transData.inverted()
     for gtxt, bb_w, anchor, gy, nudge in gene_labels:
         txt_w = inv.transform((bb_w, 0))[0] - inv.transform((0, 0))[0]
         x_lo, x_hi = ax0.get_xbound()
-        x = max(anchor, x_lo) - txt_w*1.42
+        x = max(anchor, x_lo) - txt_w*1.05
         if x < x_lo:
             x = x_lo
             gtxt.set_bbox(dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7, lw=0))
         gtxt.set_x(x)
 
     ax1.set_xlim(ax3.get_xlim())
-    # Sample boxes, now that ax1's limits are final.
-    #
-    # They used to be drawn with the reads, against the interval's own limits,
-    # and the line above then rescales ax1 to the range that actually carries
-    # calls -- so the boxes landed outside it and were clipped away while the
-    # labels, which matplotlib does not clip, drifted off to the right. With
-    # --mincalls the two ranges differ by a lot.
+    # Sample boxes
+
     if samplebox is not None:
         sb_ylims, sb_xlims, sb_color = samplebox
         x_lo, x_hi = ax1.get_xbound()
@@ -5052,7 +5028,7 @@ def locus(args):
                 edgecolor='black', facecolor=sb_color[bamname], zorder=5))
             if not args.notext:
                 ax1.text(box_x + box_w + box_pad, sum(box_y)/2, bamname,
-                         ha='left', va='center', fontsize='x-small')
+                         ha='left', va='center', fontsize='small')
 
     ax2.set_xticks([])
     ax3.set_xticks([])
