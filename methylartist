@@ -1189,7 +1189,11 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
         if not mods:
             continue
 
-        ap = dict([(k, v) for (k, v) in rec.get_aligned_pairs() if k is not None])
+        # Keep the existing mapping for padded alignments.
+        if any(op == 6 for op, length in rec.cigartuples):
+            ap = dict((k, v) for k, v in rec.get_aligned_pairs() if k is not None)
+        else:
+            ap = dict(enumerate(rec.get_reference_positions(full_length=True)))
 
         for (canonical_base, strand, mod_code), calls in mods.items():
             mod_type = str(mod_code)
