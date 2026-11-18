@@ -4131,6 +4131,10 @@ def locus(args):
                         if bamname not in sample_order:
                             sample_order.append(bamname)
 
+    # a phase can hold reads with no calls in the interval (e.g. a supplementary
+    # alignment without MM/ML), which never reach sample_order and have no colour
+    reads = {bamname: r for bamname, r in reads.items() if bamname in sample_order}
+
     meth_table = pd.DataFrame.from_dict(meth_table).T
 
     if 'loc' not in meth_table:
