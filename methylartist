@@ -811,10 +811,12 @@ def single_seq_fa(fn):
     return seq
 
 
+COMPLEMENTS = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
+
+
 def rc(dna):
     ''' reverse complement '''
-    complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
-    return dna.translate(complements)[::-1]
+    return dna.translate(COMPLEMENTS)[::-1]
 
 
 def iupac(motif):
@@ -1225,6 +1227,68 @@ def sample_bam(bam_fn, motif, ref_fn, n):
     return np.asarray(sample)
 
 
+MM_ENTRY = re.compile(r'([ACGTUN])([-+])([A-Za-z]+|\d+)\.(,|$)')
+
+
+def implicit_mods(rec):
+    ''' modified_bases keys whose MM entry is flagged '.' (e.g. C+m.): the bases it skips are unmodified,
+    but htslib (so pysam) reports only the listed ones. Unflagged legacy tags (megalodon, older guppy) are
+    '.' by the spec but also skip CpGs that were never called, so they keep only their listed calls. '''
+    for tag in ('MM', 'Mm'):
+        if rec.has_tag(tag):
+            mm = rec.get_tag(tag)
+            break
+    else:
+        return set()
+
+    keys = set()
+
+    for entry in mm.split(';'):
+        m = MM_ENTRY.match(entry.strip())
+
+        if m is None:
+            continue
+
+        base, strand, codes, _ = m.groups()
+
+        # match modified_bases: U is reported as T, ChEBI codes as ints, strand relative to SEQ as stored
+        base = base.replace('U', 'T')
+        strand = int((strand == '-') != rec.is_reverse)
+        codes = [int(codes)] if codes.isdigit() else list(codes)
+
+        for code in codes:
+            keys.add((base, strand, code))
+
+    return keys
+
+
+def add_implicit_calls(rec, mods, implicit, ap, start, end):
+    ''' add a qual 0 call at each base an implicit MM entry skips, but only within start..end: callers
+    keep no more, and there is one per C (or A, ...) in the read '''
+    seq = np.frombuffer(rec.query_sequence.encode(), dtype=np.uint8)
+    mods = dict(mods or {})  # modified_bases can be None when nothing is listed
+
+    for key in implicit:
+        canonical_base = key[0]
+
+        if canonical_base == 'N':
+            positions = np.arange(len(seq))
+        else:
+            # MM counts the canonical base in the read as sequenced, i.e. its complement in SEQ on a reverse-mapped read
+            seq_base = rc(canonical_base) if rec.is_reverse else canonical_base
+            positions = np.flatnonzero(seq == ord(seq_base))
+
+        genome_pos = np.array([ap.get(pos) for pos in positions.tolist()], dtype=float)  # unaligned: None -> nan
+        positions = positions[(genome_pos >= start) & (genome_pos <= end)].tolist()
+
+        calls = mods.get(key, [])
+        listed = set(pos for pos, qual in calls)
+
+        mods[key] = sorted(calls + [(pos, 0) for pos in positions if pos not in listed])
+
+    return mods
+
+
 def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8, can_thresh=0.8, restrict_motif=None, restrict_ref=None, primary_only=False, retry=5):
     retries = 0
     bam_open = False
@@ -1277,7 +1341,10 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
         except Exception:
             continue
 
-        if not mods:
+        # an implicit entry with nothing listed (e.g. C+m.; on an unmethylated read) gives no modified_bases at all
+        implicit = implicit_mods(rec)
+
+        if not mods and not implicit:
             continue
 
         # Keep the existing mapping for padded alignments.
@@ -1285,6 +1352,16 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
             ap = dict((k, v) for k, v in rec.get_aligned_pairs() if k is not None)
         else:
             ap = dict(enumerate(rec.get_reference_positions(full_length=True)))
+
+        if implicit:
+            # pad for the reverse-strand shifts below, which move a call by up to motifsize-1
+            pad = int(motifsize)
+            mods = add_implicit_calls(rec, mods, implicit, ap, start - pad, end + pad)
+
+        if use_motif:
+            # one fetch per read rather than per call: implicit tags make a call of every C (or A, ...) in the read
+            ref_start = max(0, rec.reference_start - motif.size)
+            ref_seq = restrict_ref.fetch(rec.reference_name, ref_start, rec.reference_end + motif.size)
 
         for (canonical_base, strand, mod_code), calls in mods.items():
             mod_type = str(mod_code)
@@ -1317,11 +1394,8 @@ def parse_methbam(bam_fn, reads, chrom, start, end, motifsize=2, meth_thresh=0.8
                     if motif_start < 0:
                         continue
 
-                    try:
-                        ref_motif = restrict_ref.fetch(rec.reference_name, motif_start, motif_start + motif.size)
-                    except ValueError:
-                        logger.warning('warning, out of bounds motif at position %d in read: %s' % (genome_pos, rec.tostring()))
-                        continue
+                    # short at the end of the contig, so won't match
+                    ref_motif = ref_seq[motif_start - ref_start:motif_start - ref_start + motif.size]
 
                     if mod_reverse:
                         ref_motif = rc(ref_motif)
